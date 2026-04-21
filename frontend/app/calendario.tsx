@@ -177,6 +177,11 @@ export default function CalendarScreen() {
             style={[s.viewChip, view === v && s.viewChipActive]}
             onPress={() => setView(v)}
           >
+            <Ionicons
+              name={v === "day" ? "today-outline" : v === "week" ? "calendar-outline" : "grid-outline"}
+              size={16}
+              color={view === v ? "#fff" : COLORS.navy}
+            />
             <Text style={[s.viewChipText, view === v && { color: "#fff" }]}>
               {v === "day" ? "Día" : v === "week" ? "Semana" : "Mes"}
             </Text>
@@ -459,7 +464,7 @@ function DayColumn({
   }), [isAdmin, dragRange, onCreate]);
 
   return (
-    <View style={{ flex: 1, height: HOURS * HOUR_H, position: "relative" }}>
+    <View style={{ flex: 1, height: HOURS * HOUR_H, position: "relative", borderLeftWidth: 1, borderLeftColor: COLORS.border, backgroundColor: isToday ? "rgba(59,130,246,0.04)" : "transparent" }}>
       <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} {...pan.panHandlers} />
       {Array.from({ length: HOURS + 1 }).map((_, i) => (
         <View key={i} style={[s.hourLine, { top: i * HOUR_H }]} />
@@ -616,19 +621,34 @@ function DraggableEvent({
         opacity: mode === "move" ? 0.85 : 1,
         zIndex: mode === "idle" ? 2 : 10,
         elevation: mode === "idle" ? 2 : 10,
+        // @ts-ignore web-only cursor hint
+        cursor: isAdmin ? (mode === "idle" ? "grab" : "grabbing") : "pointer",
       }]}
       {...(isAdmin ? panMove.panHandlers : {})}
     >
-      <TouchableOpacity onPress={onTap} activeOpacity={0.8} disabled={isAdmin}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-          {isRecurring && <Ionicons name="repeat" size={10} color={baseColor} />}
-          <Text style={[s.eventTitle, { color: baseColor }]} numberOfLines={compact ? 2 : 3}>{event.title}</Text>
+      {isAdmin ? (
+        <View pointerEvents="none" style={{ padding: 2 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+            {isRecurring && <Ionicons name="repeat" size={10} color={baseColor} />}
+            <Text style={[s.eventTitle, { color: baseColor }]} numberOfLines={compact ? 2 : 3}>{event.title}</Text>
+          </View>
+          <Text style={s.eventTime}>{fmtTime(new Date(event.start_at))} - {fmtTime(new Date(event.end_at))}</Text>
+          {!compact && event.material && (
+            <Text style={s.eventMeta} numberOfLines={1}>📍 {event.material.ubicacion || ""}</Text>
+          )}
         </View>
-        <Text style={s.eventTime}>{fmtTime(new Date(event.start_at))} - {fmtTime(new Date(event.end_at))}</Text>
-        {!compact && event.material && (
-          <Text style={s.eventMeta} numberOfLines={1}>📍 {event.material.ubicacion || ""}</Text>
-        )}
-      </TouchableOpacity>
+      ) : (
+        <TouchableOpacity onPress={onTap} activeOpacity={0.8} style={{ padding: 2 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+            {isRecurring && <Ionicons name="repeat" size={10} color={baseColor} />}
+            <Text style={[s.eventTitle, { color: baseColor }]} numberOfLines={compact ? 2 : 3}>{event.title}</Text>
+          </View>
+          <Text style={s.eventTime}>{fmtTime(new Date(event.start_at))} - {fmtTime(new Date(event.end_at))}</Text>
+          {!compact && event.material && (
+            <Text style={s.eventMeta} numberOfLines={1}>📍 {event.material.ubicacion || ""}</Text>
+          )}
+        </TouchableOpacity>
+      )}
       {isAdmin && (
         <View style={s.resizeHandle} {...panResize.panHandlers}>
           <View style={s.resizeBar} />
@@ -1227,8 +1247,9 @@ const s = StyleSheet.create({
     flexDirection: "row", gap: 6, padding: 8, backgroundColor: COLORS.surface,
   },
   viewChip: {
-    flex: 1, height: 36, borderRadius: 8, backgroundColor: COLORS.bg,
+    flex: 1, height: 40, borderRadius: 10, backgroundColor: COLORS.bg,
     alignItems: "center", justifyContent: "center",
+    flexDirection: "row", gap: 6,
   },
   viewChipActive: { backgroundColor: COLORS.primary },
   viewChipText: { fontSize: 13, fontWeight: "800", color: COLORS.navy, letterSpacing: 0.3 },
