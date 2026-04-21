@@ -224,7 +224,7 @@ const s = StyleSheet.create({
   badgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
   pill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
   pillBlue: { backgroundColor: "#DBEAFE" },
-  pillOrange: { backgroundColor: "#FED7AA" },
+  pillOrange: { backgroundColor: "#FEF3C7" },
   pillText: { fontSize: 10, fontWeight: "800", color: COLORS.navy, letterSpacing: 0.5 },
 });
 

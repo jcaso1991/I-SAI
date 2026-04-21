@@ -441,7 +441,7 @@ const s = StyleSheet.create({
     alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 2,
     borderRadius: 6, marginTop: 2,
   },
-  roleAdmin: { backgroundColor: "#FED7AA" },
+  roleAdmin: { backgroundColor: "#DBEAFE" },
   roleUser: { backgroundColor: COLORS.bg },
   roleBadgeText: { fontSize: 10, fontWeight: "900", letterSpacing: 1, color: COLORS.textSecondary },
   actions: { flexDirection: "row", gap: 4 },

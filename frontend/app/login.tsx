@@ -1,11 +1,10 @@
 import { useState } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator,
+  KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator, Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import { api, setToken, COLORS } from "../src/api";
 
 export default function Login() {
@@ -38,11 +37,12 @@ export default function Login() {
         style={{ flex: 1 }}
       >
         <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
-          <View style={s.logoRow}>
-            <View style={s.logoBox}>
-              <Ionicons name="cube" size={36} color="#fff" />
-            </View>
-            <Text style={s.brand}>Materiales</Text>
+          <View style={s.logoContainer}>
+            <Image
+              source={require("../assets/images/logo.png")}
+              style={s.logoImage}
+              resizeMode="contain"
+            />
           </View>
 
           <Text style={s.title}>Iniciar sesión</Text>
@@ -99,12 +99,15 @@ export default function Login() {
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   scroll: { flexGrow: 1, padding: 24, justifyContent: "center" },
-  logoRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 32 },
-  logoBox: {
-    width: 56, height: 56, backgroundColor: COLORS.primary,
-    borderRadius: 14, alignItems: "center", justifyContent: "center",
+  logoContainer: {
+    alignItems: "center",
+    marginBottom: 32,
+    paddingVertical: 8,
   },
-  brand: { fontSize: 24, fontWeight: "900", color: COLORS.navy, letterSpacing: -0.5 },
+  logoImage: {
+    width: 220,
+    height: 110,
+  },
   title: { fontSize: 32, fontWeight: "900", color: COLORS.text, marginBottom: 8 },
   subtitle: { fontSize: 15, color: COLORS.textSecondary, marginBottom: 32, lineHeight: 22 },
   form: { gap: 8 },
