@@ -65,6 +65,18 @@ export const api = {
     request(`/users/${id}/reset-password`, { method: "POST", body: JSON.stringify({ password }) }),
   deleteUser: (id: string) => request(`/users/${id}`, { method: "DELETE" }),
   listTechnicians: () => request("/technicians"),
+  // Plans
+  listPlans: () => request("/plans"),
+  createPlan: (body: { title: string; data?: any }) => request("/plans", { method: "POST", body: JSON.stringify(body) }),
+  getPlan: (id: string) => request(`/plans/${id}`),
+  updatePlan: (id: string, body: { title?: string; data?: any }) =>
+    request(`/plans/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deletePlan: (id: string) => request(`/plans/${id}`, { method: "DELETE" }),
+  // Stamps
+  listStamps: () => request("/stamps"),
+  createStamp: (body: { name: string; image_base64: string }) =>
+    request("/stamps", { method: "POST", body: JSON.stringify(body) }),
+  deleteStamp: (id: string) => request(`/stamps/${id}`, { method: "DELETE" }),
 };
 
 export const COLORS = {

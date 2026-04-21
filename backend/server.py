@@ -527,6 +527,142 @@ async def delete_user(uid: str, admin: dict = Depends(current_admin)):
     await db.users.delete_one({"id": uid})
     return {"ok": True}
 
+# ---------------- Plans & Stamps ----------------
+class PlanCreate(BaseModel):
+    title: str
+    data: Optional[dict] = None  # {shapes: [...]}
+
+class PlanPatch(BaseModel):
+    title: Optional[str] = None
+    data: Optional[dict] = None
+
+class PlanOut(BaseModel):
+    id: str
+    title: str
+    data: dict
+    created_at: str
+    updated_at: str
+    created_by: str
+
+class PlanListItem(BaseModel):
+    id: str
+    title: str
+    created_at: str
+    updated_at: str
+    created_by: str
+    shape_count: int = 0
+
+class StampCreate(BaseModel):
+    name: str
+    image_base64: str  # data URI: "data:image/png;base64,...."
+
+class StampOut(BaseModel):
+    id: str
+    name: str
+    is_builtin: bool
+    image_base64: Optional[str] = None  # null for builtin (frontend knows icons)
+    icon_key: Optional[str] = None      # key for builtin SVG on frontend
+
+BUILTIN_STAMPS = [
+    {"id": "builtin_door", "name": "Puerta", "is_builtin": True, "icon_key": "door"},
+    {"id": "builtin_door_handle", "name": "Manilla puerta", "is_builtin": True, "icon_key": "door_handle"},
+    {"id": "builtin_camera", "name": "Cámara", "is_builtin": True, "icon_key": "camera"},
+    {"id": "builtin_barrier", "name": "Barrera vehículo", "is_builtin": True, "icon_key": "barrier"},
+]
+
+@api_router.get("/plans", response_model=List[PlanListItem])
+async def list_plans(user: dict = Depends(current_user)):
+    plans = await db.plans.find({}, {"_id": 0, "data": 0}).to_list(2000)
+    out: List[PlanListItem] = []
+    # fetch shape counts in one pass
+    all_data = await db.plans.find({}, {"_id": 0, "id": 1, "data": 1}).to_list(2000)
+    counts = {p["id"]: len((p.get("data") or {}).get("shapes", [])) for p in all_data}
+    plans.sort(key=lambda p: p.get("updated_at", ""), reverse=True)
+    for p in plans:
+        out.append(PlanListItem(
+            id=p["id"], title=p["title"],
+            created_at=p.get("created_at", ""), updated_at=p.get("updated_at", ""),
+            created_by=p.get("created_by", ""),
+            shape_count=counts.get(p["id"], 0),
+        ))
+    return out
+
+@api_router.post("/plans", response_model=PlanOut)
+async def create_plan(payload: PlanCreate, user: dict = Depends(current_user)):
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": str(uuid.uuid4()),
+        "title": payload.title.strip() or "Plano sin título",
+        "data": payload.data or {"shapes": []},
+        "created_at": now,
+        "updated_at": now,
+        "created_by": user["email"],
+    }
+    await db.plans.insert_one(doc)
+    return PlanOut(**{k: v for k, v in doc.items() if k != "_id"})
+
+@api_router.get("/plans/{pid}", response_model=PlanOut)
+async def get_plan(pid: str, user: dict = Depends(current_user)):
+    p = await db.plans.find_one({"id": pid}, {"_id": 0})
+    if not p:
+        raise HTTPException(404, "Plano no encontrado")
+    return p
+
+@api_router.patch("/plans/{pid}", response_model=PlanOut)
+async def update_plan(pid: str, payload: PlanPatch, user: dict = Depends(current_user)):
+    upd = {k: v for k, v in payload.dict().items() if v is not None}
+    if not upd:
+        raise HTTPException(400, "Nada que actualizar")
+    upd["updated_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.plans.update_one({"id": pid}, {"$set": upd})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Plano no encontrado")
+    p = await db.plans.find_one({"id": pid}, {"_id": 0})
+    return p
+
+@api_router.delete("/plans/{pid}")
+async def delete_plan(pid: str, user: dict = Depends(current_user)):
+    res = await db.plans.delete_one({"id": pid})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Plano no encontrado")
+    return {"ok": True}
+
+@api_router.get("/stamps", response_model=List[StampOut])
+async def list_stamps(user: dict = Depends(current_user)):
+    customs = await db.stamps.find({}, {"_id": 0}).to_list(500)
+    out = [StampOut(**s) for s in BUILTIN_STAMPS]
+    for c in customs:
+        out.append(StampOut(
+            id=c["id"], name=c["name"], is_builtin=False,
+            image_base64=c["image_base64"],
+        ))
+    return out
+
+@api_router.post("/stamps", response_model=StampOut)
+async def create_stamp(payload: StampCreate, admin: dict = Depends(current_admin)):
+    doc = {
+        "id": str(uuid.uuid4()),
+        "name": payload.name.strip() or "Sello personalizado",
+        "image_base64": payload.image_base64,
+        "is_builtin": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": admin["email"],
+    }
+    await db.stamps.insert_one(doc)
+    return StampOut(
+        id=doc["id"], name=doc["name"], is_builtin=False,
+        image_base64=doc["image_base64"],
+    )
+
+@api_router.delete("/stamps/{sid}")
+async def delete_stamp(sid: str, admin: dict = Depends(current_admin)):
+    if sid.startswith("builtin_"):
+        raise HTTPException(400, "No puedes eliminar sellos predefinidos")
+    res = await db.stamps.delete_one({"id": sid})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Sello no encontrado")
+    return {"ok": True}
+
 # ---------------- OneDrive routes ----------------
 @api_router.get("/auth/onedrive/login")
 async def onedrive_login(user: dict = Depends(current_admin)):
