@@ -71,6 +71,7 @@ class UserOut(BaseModel):
     email: str
     name: Optional[str] = None
     role: str = "user"
+    color: Optional[str] = None
 
 class TokenOut(BaseModel):
     access_token: str
@@ -409,7 +410,7 @@ async def register(payload: UserRegister):
     }
     await db.users.insert_one(user)
     token = create_jwt(user)
-    return TokenOut(access_token=token, user=UserOut(id=user["id"], email=user["email"], name=user["name"], role=user["role"]))
+    return TokenOut(access_token=token, user=UserOut(id=user["id"], email=user["email"], name=user["name"], role=user["role"], color=user.get("color")))
 
 @api_router.post("/auth/login", response_model=TokenOut)
 async def login(payload: UserLogin):
@@ -417,7 +418,7 @@ async def login(payload: UserLogin):
     if not user or not verify_password(payload.password, user["password"]):
         raise HTTPException(401, "Credenciales inválidas")
     token = create_jwt(user)
-    return TokenOut(access_token=token, user=UserOut(id=user["id"], email=user["email"], name=user.get("name"), role=user.get("role", "user")))
+    return TokenOut(access_token=token, user=UserOut(id=user["id"], email=user["email"], name=user.get("name"), role=user.get("role", "user"), color=user.get("color")))
 
 class TechnicianOut(BaseModel):
     id: str
@@ -439,7 +440,7 @@ async def list_technicians(user: dict = Depends(current_user)):
 
 @api_router.get("/auth/me", response_model=UserOut)
 async def me(user: dict = Depends(current_user)):
-    return UserOut(id=user["id"], email=user["email"], name=user.get("name"), role=user.get("role", "user"))
+    return UserOut(id=user["id"], email=user["email"], name=user.get("name"), role=user.get("role", "user"), color=user.get("color"))
 
 # ---------------- User management (admin only) ----------------
 class UserCreate(BaseModel):
@@ -447,10 +448,12 @@ class UserCreate(BaseModel):
     password: str
     name: Optional[str] = None
     role: Literal["admin", "user"] = "user"
+    color: Optional[str] = None
 
 class UserPatch(BaseModel):
     name: Optional[str] = None
     role: Optional[Literal["admin", "user"]] = None
+    color: Optional[str] = None
 
 class PasswordReset(BaseModel):
     password: str
@@ -460,7 +463,29 @@ class UserListItem(BaseModel):
     email: str
     name: Optional[str] = None
     role: str
+    color: Optional[str] = None
     created_at: Optional[str] = None
+
+# Default color palette rotated per newly created user
+DEFAULT_USER_COLORS = [
+    "#3B82F6",  # blue
+    "#10B981",  # green
+    "#F59E0B",  # amber
+    "#EF4444",  # red
+    "#8B5CF6",  # violet
+    "#EC4899",  # pink
+    "#06B6D4",  # cyan
+    "#F97316",  # orange
+    "#84CC16",  # lime
+    "#14B8A6",  # teal
+]
+
+def _next_default_color(existing_colors: List[str]) -> str:
+    used = set(existing_colors or [])
+    for c in DEFAULT_USER_COLORS:
+        if c not in used:
+            return c
+    return DEFAULT_USER_COLORS[len(used) % len(DEFAULT_USER_COLORS)]
 
 @api_router.get("/users", response_model=List[UserListItem])
 async def list_users(admin: dict = Depends(current_admin)):
@@ -473,18 +498,25 @@ async def create_user(payload: UserCreate, admin: dict = Depends(current_admin))
     existing = await db.users.find_one({"email": payload.email.lower()})
     if existing:
         raise HTTPException(400, "Email ya registrado")
+    # Pick a unique default color if none provided
+    if payload.color:
+        color = payload.color
+    else:
+        existing_colors = [u.get("color") for u in await db.users.find({}, {"_id": 0, "color": 1}).to_list(1000)]
+        color = _next_default_color([c for c in existing_colors if c])
     user = {
         "id": str(uuid.uuid4()),
         "email": payload.email.lower(),
         "name": payload.name or payload.email.split("@")[0],
         "password": hash_password(payload.password),
         "role": payload.role,
+        "color": color,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.users.insert_one(user)
     return UserListItem(
         id=user["id"], email=user["email"], name=user["name"],
-        role=user["role"], created_at=user["created_at"],
+        role=user["role"], color=user["color"], created_at=user["created_at"],
     )
 
 @api_router.patch("/users/{uid}", response_model=UserListItem)
@@ -761,7 +793,10 @@ async def _attach_users(ev: dict) -> dict:
     ids = ev.get("assigned_user_ids") or []
     if ids:
         users = await db.users.find({"id": {"$in": ids}}, {"_id": 0, "password": 0}).to_list(200)
-        ev["assigned_users"] = [{"id": u["id"], "email": u["email"], "name": u.get("name")} for u in users]
+        ev["assigned_users"] = [
+            {"id": u["id"], "email": u["email"], "name": u.get("name"), "color": u.get("color")}
+            for u in users
+        ]
     else:
         ev["assigned_users"] = []
     return ev
@@ -1212,6 +1247,25 @@ logger = logging.getLogger(__name__)
 async def on_startup():
     await seed_admin_user()
     await seed_initial_data()
+    await backfill_user_colors()
+
+async def backfill_user_colors():
+    """Assign a color to any user that doesn't have one."""
+    users_without = await db.users.find(
+        {"$or": [{"color": {"$exists": False}}, {"color": None}, {"color": ""}]},
+        {"_id": 0, "id": 1}
+    ).to_list(1000)
+    if not users_without:
+        return
+    existing_colors = [u.get("color") for u in await db.users.find(
+        {"color": {"$exists": True, "$ne": None, "$nin": [""]}},
+        {"_id": 0, "color": 1}
+    ).to_list(1000)]
+    used = [c for c in existing_colors if c]
+    for u in users_without:
+        c = _next_default_color(used)
+        await db.users.update_one({"id": u["id"]}, {"$set": {"color": c}})
+        used.append(c)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

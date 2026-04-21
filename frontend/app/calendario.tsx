@@ -36,7 +36,7 @@ type EventT = {
   material_id?: string | null;
   material?: any;
   assigned_user_ids?: string[];
-  assigned_users?: { id: string; name?: string; email: string }[];
+  assigned_users?: { id: string; name?: string; email: string; color?: string }[];
   recurrence?: { type: RecurrenceType; until?: string | null } | null;
   attachments?: Array<{ id: string; filename: string; mime_type: string; size: number; uploaded_at?: string; uploaded_by?: string }>;
   base_event_id?: string | null;
@@ -531,8 +531,8 @@ function DraggableEvent({
   const panMove = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => isAdmin,
     onStartShouldSetPanResponderCapture: () => isAdmin,
-    onMoveShouldSetPanResponder: (_, g) => isAdmin && (Math.abs(g.dy) > 4 || Math.abs(g.dx) > 4),
-    onMoveShouldSetPanResponderCapture: (_, g) => isAdmin && (Math.abs(g.dy) > 4 || Math.abs(g.dx) > 4),
+    onMoveShouldSetPanResponder: (_, g) => isAdmin && (Math.abs(g.dy) > 2 || Math.abs(g.dx) > 2),
+    onMoveShouldSetPanResponderCapture: (_, g) => isAdmin && (Math.abs(g.dy) > 2 || Math.abs(g.dx) > 2),
     onPanResponderGrant: () => {
       tapTimeRef.current = Date.now();
       hasMovedRef.current = false;
@@ -599,13 +599,20 @@ function DraggableEvent({
 
   const hasMaterial = !!event.material_id;
   const isRecurring = event.recurrence && event.recurrence.type !== "none";
+  // Determine color based on first assigned user's color, fallback to palette by material
+  const userColor = event.assigned_users && event.assigned_users.length > 0
+    ? event.assigned_users[0].color
+    : null;
+  const baseColor = userColor || (hasMaterial ? COLORS.primary : "#6366F1");
+  // Compute a light tint from the user color (use 22 alpha hex = ~13% opacity)
+  const bgTint = baseColor + "33";
   return (
     <View
       style={[s.eventBox, {
         top, height,
         transform: [{ translateX: leftOffset }],
-        backgroundColor: hasMaterial ? "#DBEAFE" : "#E0E7FF",
-        borderLeftColor: hasMaterial ? COLORS.primary : "#6366F1",
+        backgroundColor: bgTint,
+        borderLeftColor: baseColor,
         opacity: mode === "move" ? 0.85 : 1,
         zIndex: mode === "idle" ? 2 : 10,
         elevation: mode === "idle" ? 2 : 10,
@@ -614,8 +621,8 @@ function DraggableEvent({
     >
       <TouchableOpacity onPress={onTap} activeOpacity={0.8} disabled={isAdmin}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-          {isRecurring && <Ionicons name="repeat" size={10} color={COLORS.primary} />}
-          <Text style={s.eventTitle} numberOfLines={compact ? 2 : 3}>{event.title}</Text>
+          {isRecurring && <Ionicons name="repeat" size={10} color={baseColor} />}
+          <Text style={[s.eventTitle, { color: baseColor }]} numberOfLines={compact ? 2 : 3}>{event.title}</Text>
         </View>
         <Text style={s.eventTime}>{fmtTime(new Date(event.start_at))} - {fmtTime(new Date(event.end_at))}</Text>
         {!compact && event.material && (
@@ -1080,7 +1087,7 @@ function EventDetailsModal({
                 <View style={{ gap: 4 }}>
                   {event.assigned_users.map((u) => (
                     <View key={u.id} style={s.assignedRow}>
-                      <Ionicons name="person-circle" size={20} color={COLORS.primary} />
+                      <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: u.color || COLORS.primary }} />
                       <Text style={s.descText}>{u.name || u.email}</Text>
                     </View>
                   ))}

@@ -8,8 +8,14 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../src/api";
 
-type User = { id: string; email: string; name?: string; role: string; created_at?: string };
+type User = { id: string; email: string; name?: string; role: string; color?: string; created_at?: string };
 type Role = "admin" | "user";
+
+const USER_COLOR_PALETTE = [
+  "#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6",
+  "#EC4899", "#06B6D4", "#F97316", "#84CC16", "#14B8A6",
+  "#6366F1", "#0EA5E9",
+];
 
 export default function Users() {
   const router = useRouter();
@@ -100,11 +106,11 @@ export default function Users() {
               style={s.userCard}
               testID={`user-card-${u.id}`}
             >
-              <View style={s.avatarBox}>
+              <View style={[s.avatarBox, { backgroundColor: u.color ? u.color + "22" : COLORS.bg, borderWidth: u.color ? 2 : 0, borderColor: u.color || "transparent" }]}>
                 <Ionicons
                   name={u.role === "admin" ? "shield-checkmark" : "person"}
                   size={22}
-                  color={u.role === "admin" ? COLORS.primary : COLORS.textSecondary}
+                  color={u.color || (u.role === "admin" ? COLORS.primary : COLORS.textSecondary)}
                 />
               </View>
               <View style={{ flex: 1, gap: 2 }}>
@@ -276,19 +282,21 @@ function CreateUserModal({ visible, onClose, onDone }: { visible: boolean; onClo
 function EditUserModal({ user, onClose, onDone }: { user: User | null; onClose: () => void; onDone: () => void }) {
   const [name, setName] = useState(user?.name || "");
   const [role, setRole] = useState<Role>((user?.role as Role) || "user");
+  const [color, setColor] = useState<string>(user?.color || USER_COLOR_PALETTE[0]);
   const [saving, setSaving] = useState(false);
 
   // reset state when user changes
   useFocusEffect(useCallback(() => {
     setName(user?.name || "");
     setRole((user?.role as Role) || "user");
+    setColor(user?.color || USER_COLOR_PALETTE[0]);
   }, [user?.id]));
 
   const submit = async () => {
     if (!user) return;
     setSaving(true);
     try {
-      await api.updateUser(user.id, { name: name || undefined, role });
+      await api.updateUser(user.id, { name: name || undefined, role, color });
       onDone();
     } catch (e: any) {
       Alert.alert("Error", e.message);
@@ -338,6 +346,22 @@ function EditUserModal({ user, onClose, onDone }: { user: User | null; onClose: 
                 <Ionicons name="shield-checkmark" size={18} color={role === "admin" ? "#fff" : COLORS.navy} />
                 <Text style={[s.roleChipText, role === "admin" && { color: "#fff" }]}>Admin</Text>
               </TouchableOpacity>
+            </View>
+            <Text style={s.mLabel}>Color del usuario</Text>
+            <Text style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 8 }}>
+              Los eventos asignados a este usuario se mostrarán con este color en el calendario.
+            </Text>
+            <View style={s.colorGrid}>
+              {USER_COLOR_PALETTE.map((c) => (
+                <TouchableOpacity
+                  key={c}
+                  testID={`color-${c}`}
+                  style={[s.colorDot, { backgroundColor: c }, color === c && s.colorDotActive]}
+                  onPress={() => setColor(c)}
+                >
+                  {color === c && <Ionicons name="checkmark" size={18} color="#fff" />}
+                </TouchableOpacity>
+              ))}
             </View>
             <TouchableOpacity
               style={[s.primary, saving && { opacity: 0.6 }]}
@@ -483,4 +507,13 @@ const s = StyleSheet.create({
     alignItems: "center", justifyContent: "center", marginTop: 20,
   },
   primaryText: { color: "#fff", fontSize: 15, fontWeight: "800", letterSpacing: 1 },
+  colorGrid: {
+    flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 4,
+  },
+  colorDot: {
+    width: 42, height: 42, borderRadius: 21,
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 3, borderColor: "transparent",
+  },
+  colorDotActive: { borderColor: COLORS.navy },
 });
