@@ -6,7 +6,44 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { api, COLORS } from "../../src/api";
+
+// ---------- date helpers ----------
+function todayISO(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
+function parseToDate(str?: string | null): Date {
+  if (!str) return new Date();
+  // accept YYYY-MM-DD or DD/MM/YYYY
+  const iso = /^\d{4}-\d{2}-\d{2}/.exec(str);
+  if (iso) return new Date(str.slice(0, 10) + "T00:00:00");
+  const es = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(str);
+  if (es) return new Date(`${es[3]}-${es[2]}-${es[1]}T00:00:00`);
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? new Date() : d;
+}
+
+function formatES(str?: string | null): string {
+  if (!str) return "";
+  const d = parseToDate(str);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yy = d.getFullYear();
+  return `${dd}/${mm}/${yy}`;
+}
+
+function toISOString(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
 
 const ENTREGA_OPTS = ["Entrega", "Recogida"];
 const TP_OPTS = ["TOTAL", "PARCIAL"];
@@ -56,6 +93,7 @@ export default function MaterialDetail() {
   const [dirty, setDirty] = useState(false);
   const [techs, setTechs] = useState<{ id: string; name: string; email: string }[]>([]);
   const [showTechPicker, setShowTechPicker] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -65,12 +103,14 @@ export default function MaterialDetail() {
           api.listTechnicians().catch(() => []),
         ]);
         setM(data);
-        setFecha(data.fecha || "");
+        setFecha(data.fecha || todayISO());
         setEntrega(data.entrega_recogida || "");
         setTp(data.total_parcial || "");
         setTecnico(data.tecnico || "");
         setComentarios(data.comentarios || "");
         setTechs(tlist);
+        // if fecha was empty, mark dirty so user sees the default today is pending save
+        if (!data.fecha) setDirty(true);
       } catch (e: any) {
         Alert.alert("Error", e.message);
       } finally {
@@ -148,14 +188,28 @@ export default function MaterialDetail() {
             <Text style={s.sectionTitle}>EDITABLE</Text>
 
             <Text style={s.fieldLabel}>Fecha</Text>
-            <TextInput
-              testID="input-fecha"
-              style={s.input}
-              value={fecha}
-              onChangeText={(v) => { setFecha(v); setDirty(true); }}
-              placeholder="dd/mm/aaaa"
-              placeholderTextColor={COLORS.textDisabled}
-            />
+            <TouchableOpacity
+              testID="picker-fecha"
+              style={s.picker}
+              onPress={() => setShowDatePicker(true)}
+              activeOpacity={0.7}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                <Ionicons name="calendar" size={20} color={COLORS.primary} />
+                <Text style={[s.pickerText, !fecha && { color: COLORS.textDisabled }]}>
+                  {fecha ? formatES(fecha) : "Selecciona fecha..."}
+                </Text>
+              </View>
+              {fecha !== "" && (
+                <TouchableOpacity
+                  testID="btn-clear-fecha"
+                  onPress={() => { setFecha(""); setDirty(true); }}
+                  hitSlop={10}
+                >
+                  <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+              )}
+            </TouchableOpacity>
 
             <Text style={s.fieldLabel}>Entrega / Recogida</Text>
             <ChipGroup
@@ -217,6 +271,65 @@ export default function MaterialDetail() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={showDatePicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDatePicker(false)}
+      >
+        <View style={s.modalRoot}>
+          <View style={s.datePickerCard}>
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitle}>Selecciona fecha</Text>
+              <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                <Ionicons name="close" size={26} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ alignItems: "center", paddingVertical: 8 }}>
+              <DateTimePicker
+                value={parseToDate(fecha || todayISO())}
+                mode="date"
+                display={Platform.OS === "ios" ? "inline" : "default"}
+                onChange={(event: any, d?: Date) => {
+                  if (Platform.OS === "android") {
+                    setShowDatePicker(false);
+                    if (event.type === "set" && d) {
+                      setFecha(toISOString(d));
+                      setDirty(true);
+                    }
+                  } else if (d) {
+                    setFecha(toISOString(d));
+                    setDirty(true);
+                  }
+                }}
+                locale="es-ES"
+                themeVariant="light"
+              />
+            </View>
+            <View style={s.dateActions}>
+              <TouchableOpacity
+                testID="btn-today"
+                style={s.btnSecondary}
+                onPress={() => {
+                  setFecha(todayISO());
+                  setDirty(true);
+                }}
+              >
+                <Ionicons name="today" size={18} color={COLORS.navy} />
+                <Text style={s.btnSecondaryText}>Hoy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="btn-date-ok"
+                style={s.btnPrimarySmall}
+                onPress={() => setShowDatePicker(false)}
+              >
+                <Text style={s.btnPrimaryText}>LISTO</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={showTechPicker}
@@ -375,4 +488,23 @@ const s = StyleSheet.create({
   },
   techName: { fontSize: 15, fontWeight: "700", color: COLORS.text },
   techEmail: { fontSize: 12, color: COLORS.textSecondary, marginTop: 1 },
+  datePickerCard: {
+    backgroundColor: COLORS.surface, borderRadius: 20,
+    marginHorizontal: 20, padding: 16, width: "90%", maxWidth: 420,
+    alignSelf: "center",
+  },
+  dateActions: {
+    flexDirection: "row", gap: 10, marginTop: 8,
+  },
+  btnSecondary: {
+    flex: 1, height: 48, borderRadius: 10, backgroundColor: COLORS.bg,
+    borderWidth: 2, borderColor: COLORS.borderInput,
+    alignItems: "center", justifyContent: "center",
+    flexDirection: "row", gap: 6,
+  },
+  btnSecondaryText: { fontSize: 14, fontWeight: "800", color: COLORS.navy, letterSpacing: 0.5 },
+  btnPrimarySmall: {
+    flex: 1, height: 48, borderRadius: 10, backgroundColor: COLORS.primary,
+    alignItems: "center", justifyContent: "center",
+  },
 });
