@@ -75,6 +75,21 @@ export const api = {
   uploadBackground: (id: string, body: { file_base64: string; mime_type: string }) =>
     request(`/plans/${id}/background`, { method: "POST", body: JSON.stringify(body) }),
   removeBackground: (id: string) => request(`/plans/${id}/background`, { method: "DELETE" }),
+  // Events (calendar)
+  listEvents: (from?: string, to?: string) => {
+    const p = new URLSearchParams();
+    if (from) p.set("from", from);
+    if (to) p.set("to", to);
+    const qs = p.toString();
+    return request(`/events${qs ? "?" + qs : ""}`);
+  },
+  createEvent: (body: {
+    title: string; start_at: string; end_at: string;
+    description?: string; material_id?: string;
+  }) => request("/events", { method: "POST", body: JSON.stringify(body) }),
+  updateEvent: (id: string, body: any) =>
+    request(`/events/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteEvent: (id: string) => request(`/events/${id}`, { method: "DELETE" }),
   // Stamps
   listStamps: () => request("/stamps"),
   createStamp: (body: { name: string; image_base64: string }) =>

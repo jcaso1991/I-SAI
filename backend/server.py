@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Query
 from fastapi.responses import RedirectResponse, HTMLResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -685,6 +685,94 @@ async def remove_background(pid: str, user: dict = Depends(current_user)):
     await db.plans.update_one({"id": pid}, {
         "$set": {"data": data, "updated_at": datetime.now(timezone.utc).isoformat()}
     })
+    return {"ok": True}
+
+# ---------------- Calendar Events ----------------
+class EventCreate(BaseModel):
+    title: str
+    start_at: str  # ISO
+    end_at: str    # ISO
+    description: Optional[str] = None
+    material_id: Optional[str] = None
+
+class EventPatch(BaseModel):
+    title: Optional[str] = None
+    start_at: Optional[str] = None
+    end_at: Optional[str] = None
+    description: Optional[str] = None
+    material_id: Optional[str] = None
+
+class EventOut(BaseModel):
+    id: str
+    title: str
+    start_at: str
+    end_at: str
+    description: Optional[str] = None
+    material_id: Optional[str] = None
+    material: Optional[dict] = None
+    created_by: str
+    created_at: str
+
+async def _attach_material(ev: dict) -> dict:
+    mid = ev.get("material_id")
+    if mid:
+        m = await db.materiales.find_one({"id": mid}, {"_id": 0})
+        if m:
+            ev["material"] = m
+    return ev
+
+@api_router.get("/events", response_model=List[EventOut])
+async def list_events(
+    user: dict = Depends(current_user),
+    from_: Optional[str] = Query(None, alias="from"),
+    to: Optional[str] = None,
+):
+    query: dict = {}
+    if from_ and to:
+        query["start_at"] = {"$gte": from_, "$lt": to}
+    events = await db.events.find(query, {"_id": 0}).to_list(500)
+    events.sort(key=lambda e: e.get("start_at", ""))
+    out = []
+    for e in events:
+        e = await _attach_material(e)
+        out.append(e)
+    return out
+
+@api_router.post("/events", response_model=EventOut)
+async def create_event(payload: EventCreate, admin: dict = Depends(current_admin)):
+    if payload.end_at <= payload.start_at:
+        raise HTTPException(400, "end_at debe ser posterior a start_at")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "title": payload.title.strip() or "Evento sin título",
+        "start_at": payload.start_at,
+        "end_at": payload.end_at,
+        "description": payload.description,
+        "material_id": payload.material_id,
+        "created_by": admin["email"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.events.insert_one(doc)
+    doc = await _attach_material(doc)
+    return doc
+
+@api_router.patch("/events/{eid}", response_model=EventOut)
+async def update_event(eid: str, payload: EventPatch, admin: dict = Depends(current_admin)):
+    upd = {k: v for k, v in payload.dict().items() if v is not None}
+    if not upd:
+        raise HTTPException(400, "Nada que actualizar")
+    res = await db.events.update_one({"id": eid}, {"$set": upd})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Evento no encontrado")
+    ev = await db.events.find_one({"id": eid}, {"_id": 0})
+    ev = await _attach_material(ev)
+    return ev
+
+@api_router.delete("/events/{eid}")
+async def delete_event(eid: str, admin: dict = Depends(current_admin)):
+    res = await db.events.delete_one({"id": eid})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Evento no encontrado")
     return {"ok": True}
 
 @api_router.get("/stamps", response_model=List[StampOut])

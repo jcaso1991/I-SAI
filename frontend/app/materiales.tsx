@@ -108,6 +108,9 @@ export default function Materiales() {
           )}
         </View>
         <View style={s.headerBtns}>
+          <TouchableOpacity testID="btn-calendario" style={s.iconBtn} onPress={() => router.push("/calendario")}>
+            <Ionicons name="calendar-outline" size={22} color={COLORS.navy} />
+          </TouchableOpacity>
           <TouchableOpacity testID="btn-planos" style={s.iconBtn} onPress={() => router.push("/planos")}>
             <Ionicons name="map-outline" size={22} color={COLORS.navy} />
           </TouchableOpacity>
