@@ -220,6 +220,21 @@ export default function Admin() {
         )}
 
         <View style={s.card}>
+          <Text style={s.cardTitle}>Usuarios</Text>
+          <Text style={s.cardSub}>
+            Gestiona administradores y técnicos: crear, editar roles, cambiar contraseñas.
+          </Text>
+          <TouchableOpacity
+            testID="btn-open-users"
+            style={[s.btnPrimary, { marginTop: 12 }]}
+            onPress={() => router.push("/users")}
+          >
+            <Ionicons name="people" size={20} color="#fff" />
+            <Text style={s.btnPrimaryText}>GESTIONAR USUARIOS</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={s.card}>
           <Text style={s.cardTitle}>Sesión</Text>
           <Text style={s.cardSub}>{user?.email} · {user?.role}</Text>
         </View>

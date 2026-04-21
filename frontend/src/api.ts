@@ -55,6 +55,15 @@ export const api = {
   onedriveDisconnect: () => request("/auth/onedrive/disconnect", { method: "POST" }),
   syncImport: () => request("/sync/import-from-onedrive", { method: "POST" }),
   syncPush: () => request("/sync/push-to-onedrive", { method: "POST" }),
+  // Users mgmt
+  listUsers: () => request("/users"),
+  createUser: (body: { email: string; password: string; name?: string; role: "admin" | "user" }) =>
+    request("/users", { method: "POST", body: JSON.stringify(body) }),
+  updateUser: (id: string, body: { name?: string; role?: "admin" | "user" }) =>
+    request(`/users/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  resetPassword: (id: string, password: string) =>
+    request(`/users/${id}/reset-password`, { method: "POST", body: JSON.stringify({ password }) }),
+  deleteUser: (id: string) => request(`/users/${id}`, { method: "DELETE" }),
 };
 
 export const COLORS = {

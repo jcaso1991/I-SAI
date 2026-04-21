@@ -10,10 +10,8 @@ import { api, setToken, COLORS } from "../src/api";
 
 export default function Login() {
   const router = useRouter();
-  const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("admin@materiales.com");
   const [password, setPassword] = useState("Admin1234");
-  const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
@@ -23,9 +21,7 @@ export default function Login() {
     }
     setLoading(true);
     try {
-      const res = mode === "login"
-        ? await api.login(email, password)
-        : await api.register(email, password, name || undefined);
+      const res = await api.login(email, password);
       await setToken(res.access_token);
       router.replace("/materiales");
     } catch (e: any) {
@@ -49,27 +45,12 @@ export default function Login() {
             <Text style={s.brand}>Materiales</Text>
           </View>
 
-          <Text style={s.title}>
-            {mode === "login" ? "Iniciar sesión" : "Crear cuenta"}
-          </Text>
+          <Text style={s.title}>Iniciar sesión</Text>
           <Text style={s.subtitle}>
             Gestiona entregas y recogidas sincronizadas con OneDrive
           </Text>
 
           <View style={s.form}>
-            {mode === "register" && (
-              <>
-                <Text style={s.label}>Nombre</Text>
-                <TextInput
-                  testID="input-name"
-                  style={s.input}
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="Tu nombre"
-                  placeholderTextColor={COLORS.textDisabled}
-                />
-              </>
-            )}
             <Text style={s.label}>Email</Text>
             <TextInput
               testID="input-email"
@@ -101,23 +82,13 @@ export default function Login() {
               {loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={s.btnPrimaryText}>
-                  {mode === "login" ? "ENTRAR" : "CREAR CUENTA"}
-                </Text>
+                <Text style={s.btnPrimaryText}>ENTRAR</Text>
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity
-              testID="btn-toggle-mode"
-              style={s.linkBtn}
-              onPress={() => setMode(mode === "login" ? "register" : "login")}
-            >
-              <Text style={s.linkText}>
-                {mode === "login"
-                  ? "¿No tienes cuenta? Crear una"
-                  : "¿Ya tienes cuenta? Iniciar sesión"}
-              </Text>
-            </TouchableOpacity>
+            <Text style={s.helperText}>
+              ¿No tienes cuenta? Pídele al administrador que te cree una.
+            </Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -152,6 +123,8 @@ const s = StyleSheet.create({
   },
   btnDisabled: { opacity: 0.7 },
   btnPrimaryText: { color: "#fff", fontSize: 17, fontWeight: "800", letterSpacing: 1 },
-  linkBtn: { alignItems: "center", paddingVertical: 16 },
-  linkText: { color: COLORS.primary, fontSize: 15, fontWeight: "600" },
+  helperText: {
+    textAlign: "center", color: COLORS.textSecondary,
+    fontSize: 13, marginTop: 20, lineHeight: 18,
+  },
 });

@@ -393,17 +393,16 @@ async def maybe_auto_import():
 # ---------------- Auth routes ----------------
 @api_router.post("/auth/register", response_model=TokenOut)
 async def register(payload: UserRegister):
-    existing = await db.users.find_one({"email": payload.email.lower()})
-    if existing:
-        raise HTTPException(400, "Email ya registrado")
     count = await db.users.count_documents({})
-    role = "admin" if count == 0 else "user"
+    # Only allow public register when DB is empty (bootstrap first admin).
+    if count > 0:
+        raise HTTPException(403, "Registro público deshabilitado. Pide a un administrador que cree tu cuenta.")
     user = {
         "id": str(uuid.uuid4()),
         "email": payload.email.lower(),
         "name": payload.name or payload.email.split("@")[0],
         "password": hash_password(payload.password),
-        "role": role,
+        "role": "admin",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.users.insert_one(user)
@@ -421,6 +420,94 @@ async def login(payload: UserLogin):
 @api_router.get("/auth/me", response_model=UserOut)
 async def me(user: dict = Depends(current_user)):
     return UserOut(id=user["id"], email=user["email"], name=user.get("name"), role=user.get("role", "user"))
+
+# ---------------- User management (admin only) ----------------
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str
+    name: Optional[str] = None
+    role: Literal["admin", "user"] = "user"
+
+class UserPatch(BaseModel):
+    name: Optional[str] = None
+    role: Optional[Literal["admin", "user"]] = None
+
+class PasswordReset(BaseModel):
+    password: str
+
+class UserListItem(BaseModel):
+    id: str
+    email: str
+    name: Optional[str] = None
+    role: str
+    created_at: Optional[str] = None
+
+@api_router.get("/users", response_model=List[UserListItem])
+async def list_users(admin: dict = Depends(current_admin)):
+    users = await db.users.find({}, {"_id": 0, "password": 0}).to_list(1000)
+    users.sort(key=lambda u: u.get("created_at", ""))
+    return users
+
+@api_router.post("/users", response_model=UserListItem)
+async def create_user(payload: UserCreate, admin: dict = Depends(current_admin)):
+    existing = await db.users.find_one({"email": payload.email.lower()})
+    if existing:
+        raise HTTPException(400, "Email ya registrado")
+    user = {
+        "id": str(uuid.uuid4()),
+        "email": payload.email.lower(),
+        "name": payload.name or payload.email.split("@")[0],
+        "password": hash_password(payload.password),
+        "role": payload.role,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.users.insert_one(user)
+    return UserListItem(
+        id=user["id"], email=user["email"], name=user["name"],
+        role=user["role"], created_at=user["created_at"],
+    )
+
+@api_router.patch("/users/{uid}", response_model=UserListItem)
+async def update_user(uid: str, payload: UserPatch, admin: dict = Depends(current_admin)):
+    target = await db.users.find_one({"id": uid})
+    if not target:
+        raise HTTPException(404, "Usuario no encontrado")
+    upd = {k: v for k, v in payload.dict().items() if v is not None}
+    if not upd:
+        raise HTTPException(400, "Nada que actualizar")
+    # Prevent removing last admin
+    if payload.role == "user" and target.get("role") == "admin":
+        remaining = await db.users.count_documents({"role": "admin", "id": {"$ne": uid}})
+        if remaining == 0:
+            raise HTTPException(400, "No puedes quitar el rol admin al último administrador")
+    await db.users.update_one({"id": uid}, {"$set": upd})
+    updated = await db.users.find_one({"id": uid}, {"_id": 0, "password": 0})
+    return updated
+
+@api_router.post("/users/{uid}/reset-password")
+async def reset_password(uid: str, payload: PasswordReset, admin: dict = Depends(current_admin)):
+    target = await db.users.find_one({"id": uid})
+    if not target:
+        raise HTTPException(404, "Usuario no encontrado")
+    if len(payload.password) < 4:
+        raise HTTPException(400, "Contraseña demasiado corta (mín. 4)")
+    await db.users.update_one({"id": uid}, {"$set": {"password": hash_password(payload.password)}})
+    return {"ok": True}
+
+@api_router.delete("/users/{uid}")
+async def delete_user(uid: str, admin: dict = Depends(current_admin)):
+    if uid == admin["id"]:
+        raise HTTPException(400, "No puedes eliminarte a ti mismo")
+    target = await db.users.find_one({"id": uid})
+    if not target:
+        raise HTTPException(404, "Usuario no encontrado")
+    # Prevent deleting last admin
+    if target.get("role") == "admin":
+        remaining = await db.users.count_documents({"role": "admin", "id": {"$ne": uid}})
+        if remaining == 0:
+            raise HTTPException(400, "No puedes eliminar al último administrador")
+    await db.users.delete_one({"id": uid})
+    return {"ok": True}
 
 # ---------------- OneDrive routes ----------------
 @api_router.get("/auth/onedrive/login")
