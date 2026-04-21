@@ -11,6 +11,8 @@ import { captureRef } from "react-native-view-shot";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import * as FileSystem from "expo-file-system/legacy";
+import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
 import { api, COLORS } from "../../src/api";
 import { BUILTIN_STAMPS } from "../../src/stamps";
 
@@ -38,6 +40,8 @@ export default function PlanEditor() {
   const [loading, setLoading] = useState(true);
   const [title, setTitle] = useState("");
   const [shapes, setShapes] = useState<Shape[]>([]);
+  const [background, setBackground] = useState<{ data_uri: string; width: number; height: number } | null>(null);
+  const [bgUploading, setBgUploading] = useState(false);
   const [tool, setTool] = useState<Tool>("pencil");
   const [currentStampId, setCurrentStampId] = useState<string | null>("builtin_door");
   const [size, setSize] = useState(80);
@@ -54,6 +58,7 @@ export default function PlanEditor() {
   const saveTimer = useRef<any>(null);
   const currentDrawingRef = useRef<Shape | null>(null);
   const lastDragRef = useRef<Pt | null>(null);
+  const pinchRef = useRef<{ startDist: number; baseShape: Shape } | null>(null);
 
   // Load plan + stamps + me
   useEffect(() => {
@@ -66,6 +71,7 @@ export default function PlanEditor() {
         ]);
         setTitle(plan.title);
         setShapes((plan.data?.shapes || []) as Shape[]);
+        if (plan.data?.background) setBackground(plan.data.background);
         setStamps(stampList);
         setMe(who);
       } catch (e: any) {
@@ -103,14 +109,38 @@ export default function PlanEditor() {
     onMoveShouldSetPanResponder: () => true,
     onPanResponderGrant: (evt) => {
       const { locationX: x, locationY: y } = evt.nativeEvent;
+      const touches = evt.nativeEvent.touches || [];
+      if (touches.length >= 2 && selectedId) {
+        // start pinch
+        const [t1, t2] = touches;
+        const d = Math.hypot((t1.pageX - t2.pageX), (t1.pageY - t2.pageY));
+        const sh = shapes.find((s) => s.id === selectedId);
+        if (sh) {
+          pinchRef.current = { startDist: d, baseShape: JSON.parse(JSON.stringify(sh)) };
+        }
+        return;
+      }
       handleStart(x, y);
     },
     onPanResponderMove: (evt) => {
+      const touches = evt.nativeEvent.touches || [];
+      if (touches.length >= 2 && pinchRef.current && selectedId) {
+        const [t1, t2] = touches;
+        const d = Math.hypot((t1.pageX - t2.pageX), (t1.pageY - t2.pageY));
+        const factor = d / pinchRef.current.startDist;
+        const base = pinchRef.current.baseShape;
+        setShapes((arr) => arr.map((sh) => {
+          if (sh.id !== selectedId) return sh;
+          return scaleShape(base, factor);
+        }));
+        markDirty();
+        return;
+      }
       const { locationX: x, locationY: y } = evt.nativeEvent;
       handleMove(x, y);
     },
-    onPanResponderRelease: () => { handleEnd(); },
-    onPanResponderTerminate: () => { handleEnd(); },
+    onPanResponderRelease: () => { pinchRef.current = null; handleEnd(); },
+    onPanResponderTerminate: () => { pinchRef.current = null; handleEnd(); },
   }), [tool, currentStampId, size, selectedId, shapes]);
 
   const handleStart = (x: number, y: number) => {
@@ -245,6 +275,71 @@ export default function PlanEditor() {
     ]);
   };
 
+  // ---------------- Background (JPG/PDF) ----------------
+  const pickBackground = async () => {
+    try {
+      setBgUploading(true);
+      let fileBase64 = "";
+      let mimeType = "";
+      if (Platform.OS === "web") {
+        // Use standard input[type=file] for broader web support
+        const file = await new Promise<File | null>((resolve) => {
+          const input = document.createElement("input");
+          input.type = "file";
+          input.accept = "image/jpeg,image/png,application/pdf";
+          input.onchange = (e: any) => resolve(e.target.files?.[0] || null);
+          input.oncancel = () => resolve(null);
+          input.click();
+        });
+        if (!file) { setBgUploading(false); return; }
+        mimeType = file.type;
+        fileBase64 = await new Promise<string>((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => {
+            const s = r.result as string;
+            resolve(s.split(",")[1]);
+          };
+          r.onerror = () => reject(r.error);
+          r.readAsDataURL(file);
+        });
+      } else {
+        const res = await DocumentPicker.getDocumentAsync({
+          type: ["image/jpeg", "image/png", "application/pdf"],
+          copyToCacheDirectory: true,
+        });
+        if (res.canceled || !res.assets?.[0]) { setBgUploading(false); return; }
+        const asset = res.assets[0];
+        mimeType = asset.mimeType || "application/octet-stream";
+        fileBase64 = await FileSystem.readAsStringAsync(asset.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+      }
+      const { background: bg } = await api.uploadBackground(id, {
+        file_base64: fileBase64, mime_type: mimeType,
+      });
+      setBackground(bg);
+    } catch (e: any) {
+      Alert.alert("Error al subir fondo", e.message);
+    } finally {
+      setBgUploading(false);
+    }
+  };
+
+  const removeBackground = () => {
+    Alert.alert("Quitar fondo", "¿Eliminar la imagen/PDF de fondo?", [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Quitar", style: "destructive",
+        onPress: async () => {
+          try {
+            await api.removeBackground(id);
+            setBackground(null);
+          } catch (e: any) { Alert.alert("Error", e.message); }
+        },
+      },
+    ]);
+  };
+
   // ---------------- Export ----------------
   const exportAs = async (format: "jpg" | "pdf") => {
     try {
@@ -322,6 +417,16 @@ export default function PlanEditor() {
         <ToolBtn icon="trash-outline" active={tool === "eraser"} onPress={() => { setTool("eraser"); setSelectedId(null); }} label="Borrar" />
         <ToolBtn icon="hand-left-outline" active={tool === "select"} onPress={() => { setTool("select"); }} label="Mover" />
         <View style={{ width: 1, height: 28, backgroundColor: COLORS.border, marginHorizontal: 4 }} />
+        <TouchableOpacity style={s.toolBtn} onPress={background ? removeBackground : pickBackground} disabled={bgUploading}>
+          {bgUploading ? (
+            <ActivityIndicator color={COLORS.primary} />
+          ) : (
+            <Ionicons name={background ? "close-circle" : "image"} size={20} color={background ? COLORS.errorText : COLORS.primary} />
+          )}
+          <Text style={[s.toolBtnLabel, { color: background ? COLORS.errorText : COLORS.primary }]}>
+            {background ? "Sin fondo" : "Fondo"}
+          </Text>
+        </TouchableOpacity>
         <TouchableOpacity style={s.toolBtn} onPress={clearAll}>
           <Ionicons name="refresh" size={20} color={COLORS.errorText} />
           <Text style={[s.toolBtnLabel, { color: COLORS.errorText }]}>Limpiar</Text>
@@ -361,6 +466,15 @@ export default function PlanEditor() {
       >
         <View style={s.canvasPaper} {...panResponder.panHandlers}>
           <Svg width="100%" height="100%" viewBox={`0 0 ${canvasSize.w} ${canvasSize.h}`} pointerEvents="none">
+            {background && (
+              <SvgImage
+                x={0} y={0}
+                width={canvasSize.w} height={canvasSize.h}
+                href={background.data_uri}
+                preserveAspectRatio="xMidYMid meet"
+                opacity={0.75}
+              />
+            )}
             {shapes.map((sh) => renderShape(sh, sh.id === selectedId))}
           </Svg>
         </View>
@@ -390,7 +504,7 @@ export default function PlanEditor() {
               : tool === "circle" ? "Arrastra para crear un círculo"
               : tool === "stamp" ? `Toca para colocar: ${currentStamp?.name || "pieza"}`
               : tool === "eraser" ? "Toca una pieza para borrarla"
-              : tool === "select" ? "Toca una pieza para seleccionarla, arrastra para mover"
+              : tool === "select" ? "Toca para seleccionar · arrastra para mover · pellizca con 2 dedos para cambiar tamaño"
               : ""}
           </Text>
         )}
@@ -660,7 +774,21 @@ function StampManager({
       };
       input.click();
     } else {
-      Alert.alert("Info", "En la versión móvil: selecciona una imagen desde tu galería cuando integremos expo-image-picker. Por ahora, usa la versión web para subir sellos.");
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert("Permiso denegado", "Necesitamos acceso a tu galería");
+        return;
+      }
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.9,
+        base64: true,
+      });
+      if (res.canceled || !res.assets?.[0]?.base64) return;
+      const asset = res.assets[0];
+      const mime = asset.mimeType || "image/jpeg";
+      setNewImageBase64(`data:${mime};base64,${asset.base64}`);
     }
   };
 

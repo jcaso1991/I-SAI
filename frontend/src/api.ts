@@ -72,6 +72,9 @@ export const api = {
   updatePlan: (id: string, body: { title?: string; data?: any }) =>
     request(`/plans/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deletePlan: (id: string) => request(`/plans/${id}`, { method: "DELETE" }),
+  uploadBackground: (id: string, body: { file_base64: string; mime_type: string }) =>
+    request(`/plans/${id}/background`, { method: "POST", body: JSON.stringify(body) }),
+  removeBackground: (id: string) => request(`/plans/${id}/background`, { method: "DELETE" }),
   // Stamps
   listStamps: () => request("/stamps"),
   createStamp: (body: { name: string; image_base64: string }) =>

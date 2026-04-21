@@ -18,6 +18,8 @@ import io
 import math
 import base64
 from openpyxl import load_workbook
+import pypdfium2 as pdfium
+from PIL import Image
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -625,6 +627,64 @@ async def delete_plan(pid: str, user: dict = Depends(current_user)):
     res = await db.plans.delete_one({"id": pid})
     if res.deleted_count == 0:
         raise HTTPException(404, "Plano no encontrado")
+    return {"ok": True}
+
+class BackgroundUpload(BaseModel):
+    file_base64: str  # raw base64 (no data URI prefix)
+    mime_type: str   # "image/jpeg" | "image/png" | "application/pdf"
+
+@api_router.post("/plans/{pid}/background")
+async def upload_background(pid: str, payload: BackgroundUpload, user: dict = Depends(current_user)):
+    plan = await db.plans.find_one({"id": pid})
+    if not plan:
+        raise HTTPException(404, "Plano no encontrado")
+    try:
+        raw = base64.b64decode(payload.file_base64)
+    except Exception:
+        raise HTTPException(400, "Base64 inválido")
+    mime = payload.mime_type.lower()
+    if mime == "application/pdf":
+        try:
+            pdf = pdfium.PdfDocument(raw)
+            page = pdf[0]
+            pil = page.render(scale=2).to_pil()
+        except Exception as e:
+            raise HTTPException(400, f"No se pudo leer el PDF: {e}")
+        buf = io.BytesIO()
+        pil.save(buf, format="PNG")
+        png_b64 = base64.b64encode(buf.getvalue()).decode()
+        bg = {"type": "image", "data_uri": f"data:image/png;base64,{png_b64}",
+              "width": pil.width, "height": pil.height}
+    elif mime in ("image/jpeg", "image/jpg", "image/png", "image/webp"):
+        try:
+            pil = Image.open(io.BytesIO(raw))
+            width, height = pil.size
+        except Exception as e:
+            raise HTTPException(400, f"Imagen inválida: {e}")
+        ext = "jpeg" if "jpeg" in mime or "jpg" in mime else "png" if "png" in mime else "webp"
+        data_uri = f"data:image/{ext};base64,{payload.file_base64}"
+        bg = {"type": "image", "data_uri": data_uri, "width": width, "height": height}
+    else:
+        raise HTTPException(400, "Tipo no soportado (usar JPG, PNG o PDF)")
+    # update plan.data.background
+    data = plan.get("data") or {"shapes": []}
+    data["background"] = bg
+    await db.plans.update_one({"id": pid}, {
+        "$set": {"data": data, "updated_at": datetime.now(timezone.utc).isoformat()}
+    })
+    return {"ok": True, "background": bg}
+
+@api_router.delete("/plans/{pid}/background")
+async def remove_background(pid: str, user: dict = Depends(current_user)):
+    plan = await db.plans.find_one({"id": pid})
+    if not plan:
+        raise HTTPException(404, "Plano no encontrado")
+    data = plan.get("data") or {"shapes": []}
+    if "background" in data:
+        del data["background"]
+    await db.plans.update_one({"id": pid}, {
+        "$set": {"data": data, "updated_at": datetime.now(timezone.utc).isoformat()}
+    })
     return {"ok": True}
 
 @api_router.get("/stamps", response_model=List[StampOut])
