@@ -85,7 +85,7 @@ export default function MaterialDetail() {
       });
       setM(updated);
       setDirty(false);
-      Alert.alert("Guardado", "Cambios guardados. Sincroniza con OneDrive desde el panel admin.");
+      Alert.alert("Guardado", "Cambios guardados. Se sincronizarán con OneDrive automáticamente.");
     } catch (e: any) {
       Alert.alert("Error", e.message);
     } finally {

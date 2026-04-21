@@ -199,33 +199,20 @@ export default function Admin() {
 
         {connected && isAdmin && (
           <View style={s.card}>
-            <Text style={s.cardTitle}>Sincronización</Text>
+            <Text style={s.cardTitle}>Sincronización automática</Text>
             <Text style={s.cardSub}>
-              Importa el Excel desde OneDrive o sube los cambios pendientes a OneDrive.
+              La app se sincroniza sola con OneDrive. Los cambios se suben automáticamente al guardar, y los cambios externos se traen cada 5 minutos.
             </Text>
             <TouchableOpacity
               testID="btn-import"
-              style={[s.btnPrimary, { marginTop: 12 }]}
+              style={[s.btnSecondary, { marginTop: 12 }]}
               onPress={importFromOD}
               disabled={busy === "import"}
             >
-              {busy === "import" ? <ActivityIndicator color="#fff" /> : (
+              {busy === "import" ? <ActivityIndicator color={COLORS.navy} /> : (
                 <>
-                  <Ionicons name="download" size={20} color="#fff" />
-                  <Text style={s.btnPrimaryText}>IMPORTAR DESDE ONEDRIVE</Text>
-                </>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              testID="btn-push"
-              style={[s.btnSecondary, { marginTop: 10 }]}
-              onPress={pushToOD}
-              disabled={busy === "push"}
-            >
-              {busy === "push" ? <ActivityIndicator color={COLORS.navy} /> : (
-                <>
-                  <Ionicons name="cloud-upload" size={20} color={COLORS.navy} />
-                  <Text style={s.btnSecondaryText}>SUBIR CAMBIOS A ONEDRIVE</Text>
+                  <Ionicons name="refresh" size={20} color={COLORS.navy} />
+                  <Text style={s.btnSecondaryText}>FORZAR SINCRONIZACIÓN AHORA</Text>
                 </>
               )}
             </TouchableOpacity>

@@ -42,6 +42,10 @@ MS_AUTHORITY = "https://login.microsoftonline.com/common"
 MS_SCOPES = ["Files.ReadWrite.All", "User.Read"]  # offline_access added automatically by MSAL
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
+# Auto-sync config
+AUTO_IMPORT_INTERVAL_SEC = 300  # re-import OneDrive file every 5 min on read
+AUTO_PUSH_DELAY_SEC = 6         # debounce pushes: wait 6s after last edit
+
 # ---------------- DB ----------------
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -281,6 +285,111 @@ async def _upload_excel_to_onedrive(xlsx_bytes: bytes) -> None:
     if r.status_code not in (200, 201):
         raise HTTPException(r.status_code, f"No se pudo subir Excel: {r.text}")
 
+# ---------------- Auto-sync internals ----------------
+import asyncio as _asyncio
+
+_sync_lock = _asyncio.Lock()
+_push_task: Optional[_asyncio.Task] = None
+_import_task: Optional[_asyncio.Task] = None
+
+async def _has_onedrive_link() -> bool:
+    return await db.onedrive_tokens.find_one({"_id": "admin"}) is not None
+
+async def _do_import() -> int:
+    """Internal import — no auth, used by background job."""
+    async with _sync_lock:
+        xlsx_bytes = await _download_excel_from_onedrive()
+        rows = parse_workbook(xlsx_bytes)
+        existing = {m["row_index"]: m for m in await db.materiales.find({}, {"_id": 0}).to_list(10000)}
+        docs = []
+        for r in rows:
+            old = existing.get(r["row_index"])
+            docs.append({
+                "id": old["id"] if old else str(uuid.uuid4()),
+                **r,
+                "sync_status": "synced",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_by": old.get("updated_by", "onedrive") if old else "onedrive",
+            })
+        await db.materiales.delete_many({})
+        if docs:
+            await db.materiales.insert_many(docs)
+        await db.sync_meta.update_one(
+            {"_id": "meta"},
+            {"$set": {"_id": "meta", "last_import_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+        return len(docs)
+
+async def _do_push() -> int:
+    """Internal push — merges pending edits into the OneDrive Excel."""
+    async with _sync_lock:
+        xlsx_bytes = await _download_excel_from_onedrive()
+        wb = load_workbook(io.BytesIO(xlsx_bytes))
+        ws = wb.active
+        materials = await db.materiales.find({}, {"_id": 0}).to_list(10000)
+        for m in materials:
+            row = m["row_index"]
+            for field, col in EDITABLE_COL_MAP.items():
+                val = m.get(field)
+                if val is not None:
+                    ws[f"{col}{row}"] = val
+        out = io.BytesIO()
+        wb.save(out)
+        await _upload_excel_to_onedrive(out.getvalue())
+        await db.materiales.update_many({}, {"$set": {"sync_status": "synced"}})
+        await db.sync_meta.update_one(
+            {"_id": "meta"},
+            {"$set": {"_id": "meta", "last_push_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+        return len(materials)
+
+async def _delayed_push():
+    try:
+        await _asyncio.sleep(AUTO_PUSH_DELAY_SEC)
+        if not await _has_onedrive_link():
+            return
+        logger = logging.getLogger(__name__)
+        try:
+            n = await _do_push()
+            logger.info(f"Auto-push: {n} filas sincronizadas con OneDrive")
+        except Exception as e:
+            logger.error(f"Auto-push falló: {e}")
+    except _asyncio.CancelledError:
+        pass
+
+def schedule_auto_push():
+    global _push_task
+    if _push_task and not _push_task.done():
+        _push_task.cancel()
+    _push_task = _asyncio.create_task(_delayed_push())
+
+async def maybe_auto_import():
+    """If OneDrive linked and last import older than AUTO_IMPORT_INTERVAL_SEC, import in background."""
+    global _import_task
+    if not await _has_onedrive_link():
+        return
+    meta = await db.sync_meta.find_one({"_id": "meta"})
+    last = meta.get("last_import_at") if meta else None
+    if last:
+        try:
+            last_dt = datetime.fromisoformat(last)
+            if (datetime.now(timezone.utc) - last_dt).total_seconds() < AUTO_IMPORT_INTERVAL_SEC:
+                return
+        except Exception:
+            pass
+    # Don't run two imports simultaneously
+    if _import_task and not _import_task.done():
+        return
+    async def _runner():
+        try:
+            n = await _do_import()
+            logging.getLogger(__name__).info(f"Auto-import: {n} filas traídas de OneDrive")
+        except Exception as e:
+            logging.getLogger(__name__).error(f"Auto-import falló: {e}")
+    _import_task = _asyncio.create_task(_runner())
+
 # ---------------- Auth routes ----------------
 @api_router.post("/auth/register", response_model=TokenOut)
 async def register(payload: UserRegister):
@@ -380,59 +489,22 @@ async def onedrive_disconnect(user: dict = Depends(current_admin)):
     await db.onedrive_tokens.delete_one({"_id": "admin"})
     return {"ok": True}
 
-# ---------------- Sync routes ----------------
+# ---------------- Sync routes (manual override — uses internal helpers) ----------------
 @api_router.post("/sync/import-from-onedrive")
 async def sync_import(user: dict = Depends(current_admin)):
-    xlsx_bytes = await _download_excel_from_onedrive()
-    rows = parse_workbook(xlsx_bytes)
-    # Replace all materials, preserving ids if row_index matches
-    existing = {m["row_index"]: m for m in await db.materiales.find({}, {"_id": 0}).to_list(10000)}
-    docs = []
-    for r in rows:
-        old = existing.get(r["row_index"])
-        docs.append({
-            "id": old["id"] if old else str(uuid.uuid4()),
-            **r,
-            "sync_status": "synced",
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            "updated_by": user["email"],
-        })
-    await db.materiales.delete_many({})
-    if docs:
-        await db.materiales.insert_many(docs)
-    await db.sync_meta.update_one(
-        {"_id": "meta"},
-        {"$set": {"_id": "meta", "last_import_at": datetime.now(timezone.utc).isoformat()}},
-        upsert=True,
-    )
-    return {"imported": len(docs)}
+    n = await _do_import()
+    return {"imported": n}
 
 @api_router.post("/sync/push-to-onedrive")
 async def sync_push(user: dict = Depends(current_admin)):
-    xlsx_bytes = await _download_excel_from_onedrive()
-    wb = load_workbook(io.BytesIO(xlsx_bytes))
-    ws = wb.active
-    materials = await db.materiales.find({}, {"_id": 0}).to_list(10000)
-    for m in materials:
-        row = m["row_index"]
-        for field, col in EDITABLE_COL_MAP.items():
-            val = m.get(field)
-            if val is not None:
-                ws[f"{col}{row}"] = val
-    out = io.BytesIO()
-    wb.save(out)
-    await _upload_excel_to_onedrive(out.getvalue())
-    await db.materiales.update_many({}, {"$set": {"sync_status": "synced"}})
-    await db.sync_meta.update_one(
-        {"_id": "meta"},
-        {"$set": {"_id": "meta", "last_push_at": datetime.now(timezone.utc).isoformat()}},
-        upsert=True,
-    )
-    return {"pushed": len(materials)}
+    n = await _do_push()
+    return {"pushed": n}
 
 # ---------------- Materials routes ----------------
 @api_router.get("/materiales", response_model=List[Material])
 async def list_materiales(user: dict = Depends(current_user), q: Optional[str] = None, pending_only: bool = False, limit: int = 2000):
+    # fire-and-forget auto-import if stale
+    await maybe_auto_import()
     query: dict = {}
     if pending_only:
         query["sync_status"] = "pending"
@@ -465,6 +537,9 @@ async def update_material(mid: str, payload: MaterialUpdate, user: dict = Depend
     if res.matched_count == 0:
         raise HTTPException(404, "Material no encontrado")
     doc = await db.materiales.find_one({"id": mid}, {"_id": 0})
+    # schedule automatic push to OneDrive (debounced)
+    if await _has_onedrive_link():
+        schedule_auto_push()
     return doc
 
 # ---------------- Stats ----------------
