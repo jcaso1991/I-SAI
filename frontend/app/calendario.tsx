@@ -20,6 +20,8 @@ const DAY_LABELS_MONTH = ["L", "M", "X", "J", "V", "S", "D"];
 const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
 type ViewMode = "day" | "week" | "month";
+type Technician = { id: string; name: string; email: string };
+type RecurrenceType = "none" | "daily" | "weekly" | "monthly";
 
 type EventT = {
   id: string;
@@ -29,6 +31,10 @@ type EventT = {
   description?: string;
   material_id?: string | null;
   material?: any;
+  assigned_user_ids?: string[];
+  assigned_users?: { id: string; name?: string; email: string }[];
+  recurrence?: { type: RecurrenceType; until?: string | null } | null;
+  base_event_id?: string | null;
   created_by: string;
 };
 
@@ -302,6 +308,7 @@ function WeekView({
   onMoveEvent: (ev: EventT, s: Date, e: Date) => Promise<void>;
 }) {
   const days = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(weekStart, i)), [weekStart]);
+  const [colW, setColW] = useState(0);
   const nowY = yFromDate(now);
   return (
     <>
@@ -318,7 +325,10 @@ function WeekView({
         })}
       </View>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
-        <View style={s.gridRow}>
+        <View
+          style={s.gridRow}
+          onLayout={(e) => setColW((e.nativeEvent.layout.width - TIME_COL_W) / 5)}
+        >
           <View style={{ width: TIME_COL_W }}>
             {Array.from({ length: HOURS + 1 }).map((_, i) => (
               <View key={i} style={{ height: HOUR_H }}>
@@ -334,10 +344,16 @@ function WeekView({
               isAdmin={isAdmin}
               onCreate={(s2, e2) => onCreate(d, s2, e2)}
               onTapEvent={onTapEvent}
-              onMoveEvent={onMoveEvent}
+              onMoveEvent={async (ev, s, e) => {
+                // In week mode we need to calculate cross-day drop via dx; handled inside DraggableEvent using colW
+                await onMoveEvent(ev, s, e);
+              }}
               isToday={sameDay(d, now)}
               nowY={nowY}
               compact
+              weekDays={days}
+              colW={colW}
+              dayIndex={i}
             />
           ))}
         </View>
@@ -392,12 +408,14 @@ function DayView({
 // ---------------- DayColumn (with draggable events) ----------------
 function DayColumn({
   day, events, isAdmin, onCreate, onTapEvent, onMoveEvent, isToday, nowY, compact,
+  weekDays, colW, dayIndex,
 }: {
   day: Date; events: EventT[]; isAdmin: boolean;
   onCreate: (startMin: number, endMin: number) => void;
   onTapEvent: (e: EventT) => void;
   onMoveEvent: (ev: EventT, s: Date, e: Date) => Promise<void>;
   isToday: boolean; nowY: number; compact: boolean;
+  weekDays?: Date[]; colW?: number; dayIndex?: number;
 }) {
   const [dragRange, setDragRange] = useState<{ s: number; e: number } | null>(null);
   const startRef = useRef<number>(0);
@@ -449,6 +467,9 @@ function DayColumn({
           compact={compact}
           onTap={() => onTapEvent(ev)}
           onMoveEvent={onMoveEvent}
+          weekDays={weekDays}
+          colW={colW}
+          dayIndex={dayIndex}
         />
       ))}
       {dragRange && (
@@ -468,10 +489,12 @@ function DayColumn({
 // ---------------- Draggable event (move + resize) ----------------
 function DraggableEvent({
   event, day, isAdmin, compact, onTap, onMoveEvent,
+  weekDays, colW, dayIndex,
 }: {
   event: EventT; day: Date; isAdmin: boolean; compact: boolean;
   onTap: () => void;
   onMoveEvent: (ev: EventT, s: Date, e: Date) => Promise<void>;
+  weekDays?: Date[]; colW?: number; dayIndex?: number;
 }) {
   const start = new Date(event.start_at);
   const end = new Date(event.end_at);
@@ -480,13 +503,16 @@ function DraggableEvent({
 
   const [top, setTop] = useState(initTop);
   const [height, setHeight] = useState(initHeight);
+  const [leftOffset, setLeftOffset] = useState(0); // horizontal shift when dragging in week view
   const [mode, setMode] = useState<"idle" | "move" | "resize">("idle");
   const baseRef = useRef<{ top: number; height: number }>({ top: initTop, height: initHeight });
 
-  useEffect(() => { setTop(initTop); setHeight(initHeight); baseRef.current = { top: initTop, height: initHeight }; }, [event.start_at, event.end_at]);
+  useEffect(() => { setTop(initTop); setHeight(initHeight); setLeftOffset(0); baseRef.current = { top: initTop, height: initHeight }; }, [event.start_at, event.end_at]);
 
   const tapTimeRef = useRef(0);
   const hasMovedRef = useRef(false);
+  const dayShiftRef = useRef(0);
+  const canCrossDays = !!(weekDays && weekDays.length > 0 && colW && colW > 0 && typeof dayIndex === "number");
 
   const panMove = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => isAdmin,
@@ -497,40 +523,50 @@ function DraggableEvent({
       tapTimeRef.current = Date.now();
       hasMovedRef.current = false;
       baseRef.current = { top, height };
+      dayShiftRef.current = 0;
       setMode("move");
     },
     onPanResponderMove: (_, g) => {
       if (Math.abs(g.dy) > 3 || Math.abs(g.dx) > 3) hasMovedRef.current = true;
-      const snapDy = Math.round(g.dy / (HOUR_H / 4)) * (HOUR_H / 4); // snap to 15min
+      const snapDy = Math.round(g.dy / (HOUR_H / 4)) * (HOUR_H / 4);
       const nt = Math.max(0, Math.min(HOURS * HOUR_H - baseRef.current.height, baseRef.current.top + snapDy));
       setTop(nt);
+      if (canCrossDays) {
+        const shift = Math.round(g.dx / colW!);
+        const newIdx = Math.max(0, Math.min(weekDays!.length - 1, dayIndex! + shift));
+        const effective = newIdx - dayIndex!;
+        dayShiftRef.current = effective;
+        setLeftOffset(effective * colW!);
+      }
     },
     onPanResponderRelease: async () => {
       if (!hasMovedRef.current) {
         onTap();
         setMode("idle");
         setTop(baseRef.current.top);
+        setLeftOffset(0);
         return;
       }
       const startMin = Math.round((top / HOUR_H) * 60 / 15) * 15;
       const durMin = Math.round((height / HOUR_H) * 60);
-      const newStart = dateAt(day, startMin);
+      const targetDay = canCrossDays && dayShiftRef.current !== 0
+        ? weekDays![dayIndex! + dayShiftRef.current]
+        : day;
+      const newStart = dateAt(targetDay, startMin);
       const newEnd = new Date(newStart.getTime() + durMin * 60000);
+      setLeftOffset(0);
       await onMoveEvent(event, newStart, newEnd);
       setMode("idle");
     },
-    onPanResponderTerminate: () => { setTop(baseRef.current.top); setMode("idle"); },
-  }), [isAdmin, top, height, event, day, onTap, onMoveEvent]);
+    onPanResponderTerminate: () => { setTop(baseRef.current.top); setLeftOffset(0); setMode("idle"); },
+  }), [isAdmin, top, height, event, day, onTap, onMoveEvent, canCrossDays, weekDays, colW, dayIndex]);
 
   const panResize = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => isAdmin,
     onStartShouldSetPanResponderCapture: () => isAdmin,
     onMoveShouldSetPanResponder: () => isAdmin,
     onMoveShouldSetPanResponderCapture: () => isAdmin,
-    onPanResponderGrant: () => {
-      baseRef.current = { top, height };
-      setMode("resize");
-    },
+    onPanResponderGrant: () => { baseRef.current = { top, height }; setMode("resize"); },
     onPanResponderMove: (_, g) => {
       const snap = Math.round(g.dy / (HOUR_H / 4)) * (HOUR_H / 4);
       const nh = Math.max(HOUR_H / 4, Math.min(HOURS * HOUR_H - baseRef.current.top, baseRef.current.height + snap));
@@ -548,20 +584,25 @@ function DraggableEvent({
   }), [isAdmin, top, height, event, day, onMoveEvent]);
 
   const hasMaterial = !!event.material_id;
+  const isRecurring = event.recurrence && event.recurrence.type !== "none";
   return (
     <View
       style={[s.eventBox, {
         top, height,
+        transform: [{ translateX: leftOffset }],
         backgroundColor: hasMaterial ? "#DBEAFE" : "#E0E7FF",
         borderLeftColor: hasMaterial ? COLORS.primary : "#6366F1",
-        opacity: mode === "move" ? 0.8 : 1,
+        opacity: mode === "move" ? 0.85 : 1,
         zIndex: mode === "idle" ? 2 : 10,
         elevation: mode === "idle" ? 2 : 10,
       }]}
       {...(isAdmin ? panMove.panHandlers : {})}
     >
       <TouchableOpacity onPress={onTap} activeOpacity={0.8} disabled={isAdmin}>
-        <Text style={s.eventTitle} numberOfLines={compact ? 2 : 3}>{event.title}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+          {isRecurring && <Ionicons name="repeat" size={10} color={COLORS.primary} />}
+          <Text style={s.eventTitle} numberOfLines={compact ? 2 : 3}>{event.title}</Text>
+        </View>
         <Text style={s.eventTime}>{fmtTime(new Date(event.start_at))} - {fmtTime(new Date(event.end_at))}</Text>
         {!compact && event.material && (
           <Text style={s.eventMeta} numberOfLines={1}>📍 {event.material.ubicacion || ""}</Text>
@@ -595,6 +636,10 @@ function CreateEventModal({
   const [q, setQ] = useState("");
   const [showMatList, setShowMatList] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [techs, setTechs] = useState<Technician[]>([]);
+  const [assignedIds, setAssignedIds] = useState<string[]>([]);
+  const [recurrence, setRecurrence] = useState<RecurrenceType>("none");
+  const [until, setUntil] = useState<string>("");
 
   const startDate = dateAt(range.day, range.startMin);
   const endDate = dateAt(range.day, range.endMin);
@@ -603,6 +648,10 @@ function CreateEventModal({
     if (visible) {
       setMode("texto"); setTitle(""); setDescription("");
       setMaterialId(null); setMaterialObj(null); setShowMatList(false);
+      setAssignedIds([]); setRecurrence("none"); setUntil("");
+      (async () => {
+        try { setTechs(await api.listTechnicians()); } catch {}
+      })();
     }
   }, [visible]);
 
@@ -621,6 +670,10 @@ function CreateEventModal({
     setShowMatList(false);
   };
 
+  const toggleAssign = (id: string) => {
+    setAssignedIds((arr) => arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]);
+  };
+
   const submit = async () => {
     if (mode === "texto" && !title.trim()) { Alert.alert("Error", "Introduce un título"); return; }
     if (mode === "proyecto" && !materialId) { Alert.alert("Error", "Selecciona un proyecto"); return; }
@@ -632,7 +685,9 @@ function CreateEventModal({
         end_at: endDate.toISOString(),
         description: description || undefined,
         material_id: materialId || undefined,
-      });
+        assigned_user_ids: assignedIds,
+        recurrence: recurrence !== "none" ? { type: recurrence, until: until || null } : undefined,
+      } as any);
       onDone();
     } catch (e: any) { Alert.alert("Error", e.message); }
     finally { setSaving(false); }
@@ -716,9 +771,6 @@ function CreateEventModal({
                         <Text style={s.matCode}>{materialObj.materiales || "—"}</Text>
                         <Text style={s.matCliente}>{materialObj.cliente || "Sin cliente"}</Text>
                         {materialObj.ubicacion && <Text style={s.matUbic}>📍 {materialObj.ubicacion}</Text>}
-                        {materialObj.horas_prev && <Text style={s.matMeta}>⏱️ {materialObj.horas_prev}h previstas</Text>}
-                        {materialObj.comercial && <Text style={s.matMeta}>👤 {materialObj.comercial}</Text>}
-                        {materialObj.gestor && <Text style={s.matMeta}>📋 {materialObj.gestor}</Text>}
                       </View>
                       <TouchableOpacity onPress={() => setShowMatList(true)}>
                         <Ionicons name="swap-horizontal" size={22} color={COLORS.primary} />
@@ -734,6 +786,60 @@ function CreateEventModal({
                   <TextInput style={[s.mInput, { height: 70, paddingTop: 12 }]} value={description} onChangeText={setDescription} placeholder="Instrucciones específicas..." multiline textAlignVertical="top" placeholderTextColor={COLORS.textDisabled} />
                 </>
               )}
+
+              <Text style={s.mLabel}>Técnicos asignados</Text>
+              <Text style={{ fontSize: 11, color: COLORS.textSecondary, marginBottom: 6 }}>
+                {assignedIds.length === 0 ? "Si no seleccionas nadie, solo lo verán los admins" : `${assignedIds.length} seleccionado${assignedIds.length !== 1 ? "s" : ""}`}
+              </Text>
+              <View style={{ gap: 6 }}>
+                {techs.map((t) => {
+                  const on = assignedIds.includes(t.id);
+                  return (
+                    <TouchableOpacity
+                      key={t.id}
+                      testID={`assign-${t.id}`}
+                      style={[s.techRow, on && { backgroundColor: "#DBEAFE", borderColor: COLORS.primary }]}
+                      onPress={() => toggleAssign(t.id)}
+                    >
+                      <View style={[s.checkBox, on && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}>
+                        {on && <Ionicons name="checkmark" size={16} color="#fff" />}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.techName}>{t.name}</Text>
+                        <Text style={s.techEmail}>{t.email}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text style={s.mLabel}>Repetir</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                {([["none", "Una vez"], ["daily", "Cada día"], ["weekly", "Cada semana"], ["monthly", "Cada mes"]] as [RecurrenceType, string][]).map(([v, l]) => (
+                  <TouchableOpacity
+                    key={v}
+                    testID={`rec-${v}`}
+                    style={[s.recChip, recurrence === v && s.recChipActive]}
+                    onPress={() => setRecurrence(v)}
+                  >
+                    <Text style={[s.recChipText, recurrence === v && { color: "#fff" }]}>{l}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {recurrence !== "none" && (
+                <>
+                  <Text style={s.mLabel}>Hasta (opcional, YYYY-MM-DD)</Text>
+                  <TextInput
+                    style={s.mInput}
+                    value={until}
+                    onChangeText={setUntil}
+                    placeholder="2026-12-31"
+                    placeholderTextColor={COLORS.textDisabled}
+                    autoCapitalize="none"
+                  />
+                </>
+              )}
+
               <TouchableOpacity testID="btn-create-event" style={[s.primary, saving && { opacity: 0.6 }]} onPress={submit} disabled={saving}>
                 {saving ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryText}>CREAR EVENTO</Text>}
               </TouchableOpacity>
@@ -793,6 +899,30 @@ function EventDetailsModal({
                   {m.comentarios && <Text style={s.matMeta}>💬 {m.comentarios}</Text>}
                 </View>
               </View>
+            )}
+            {event.assigned_users && event.assigned_users.length > 0 && (
+              <>
+                <Text style={s.mLabel}>Asignado a</Text>
+                <View style={{ gap: 4 }}>
+                  {event.assigned_users.map((u) => (
+                    <View key={u.id} style={s.assignedRow}>
+                      <Ionicons name="person-circle" size={20} color={COLORS.primary} />
+                      <Text style={s.descText}>{u.name || u.email}</Text>
+                    </View>
+                  ))}
+                </View>
+              </>
+            )}
+            {event.recurrence && event.recurrence.type !== "none" && (
+              <>
+                <Text style={s.mLabel}>Repetición</Text>
+                <Text style={s.descText}>
+                  {event.recurrence.type === "daily" ? "🔁 Cada día"
+                    : event.recurrence.type === "weekly" ? "🔁 Cada semana"
+                    : "🔁 Cada mes"}
+                  {event.recurrence.until ? ` · hasta ${event.recurrence.until}` : ""}
+                </Text>
+              </>
             )}
             {event.description && (
               <>
@@ -923,4 +1053,26 @@ const s = StyleSheet.create({
   matUbic: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
   matMeta: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
   descText: { fontSize: 14, color: COLORS.text, lineHeight: 20, marginTop: 4 },
+  techRow: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    padding: 10, borderRadius: 10, backgroundColor: COLORS.bg,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  checkBox: {
+    width: 22, height: 22, borderRadius: 6, borderWidth: 2,
+    borderColor: COLORS.borderInput, alignItems: "center", justifyContent: "center",
+  },
+  techName: { fontSize: 14, fontWeight: "700", color: COLORS.text },
+  techEmail: { fontSize: 11, color: COLORS.textSecondary },
+  recChip: {
+    paddingHorizontal: 14, height: 40, borderRadius: 8, backgroundColor: COLORS.bg,
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 2, borderColor: COLORS.borderInput,
+  },
+  recChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  recChipText: { fontSize: 13, fontWeight: "800", color: COLORS.navy },
+  assignedRow: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    padding: 8, backgroundColor: COLORS.bg, borderRadius: 8,
+  },
 });

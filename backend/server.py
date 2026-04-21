@@ -688,12 +688,18 @@ async def remove_background(pid: str, user: dict = Depends(current_user)):
     return {"ok": True}
 
 # ---------------- Calendar Events ----------------
+class RecurrenceRule(BaseModel):
+    type: Literal["none", "daily", "weekly", "monthly"] = "none"
+    until: Optional[str] = None  # ISO date (YYYY-MM-DD) inclusive
+
 class EventCreate(BaseModel):
     title: str
     start_at: str  # ISO
     end_at: str    # ISO
     description: Optional[str] = None
     material_id: Optional[str] = None
+    assigned_user_ids: List[str] = []
+    recurrence: Optional[RecurrenceRule] = None
 
 class EventPatch(BaseModel):
     title: Optional[str] = None
@@ -701,6 +707,8 @@ class EventPatch(BaseModel):
     end_at: Optional[str] = None
     description: Optional[str] = None
     material_id: Optional[str] = None
+    assigned_user_ids: Optional[List[str]] = None
+    recurrence: Optional[RecurrenceRule] = None
 
 class EventOut(BaseModel):
     id: str
@@ -710,6 +718,10 @@ class EventOut(BaseModel):
     description: Optional[str] = None
     material_id: Optional[str] = None
     material: Optional[dict] = None
+    assigned_user_ids: List[str] = []
+    assigned_users: List[dict] = []
+    recurrence: Optional[dict] = None
+    base_event_id: Optional[str] = None  # for expanded occurrences
     created_by: str
     created_at: str
 
@@ -721,6 +733,74 @@ async def _attach_material(ev: dict) -> dict:
             ev["material"] = m
     return ev
 
+async def _attach_users(ev: dict) -> dict:
+    ids = ev.get("assigned_user_ids") or []
+    if ids:
+        users = await db.users.find({"id": {"$in": ids}}, {"_id": 0, "password": 0}).to_list(200)
+        ev["assigned_users"] = [{"id": u["id"], "email": u["email"], "name": u.get("name")} for u in users]
+    else:
+        ev["assigned_users"] = []
+    return ev
+
+def _expand_recurrence(ev: dict, from_dt: datetime, to_dt: datetime) -> List[dict]:
+    """Return list of virtual occurrences inside [from_dt, to_dt)."""
+    rec = ev.get("recurrence") or {}
+    rtype = rec.get("type", "none")
+    if rtype == "none":
+        start = datetime.fromisoformat(ev["start_at"].replace("Z", "+00:00"))
+        if from_dt <= start < to_dt:
+            return [ev]
+        return []
+    # compute step
+    base_start = datetime.fromisoformat(ev["start_at"].replace("Z", "+00:00"))
+    base_end = datetime.fromisoformat(ev["end_at"].replace("Z", "+00:00"))
+    duration = base_end - base_start
+    until_str = rec.get("until")
+    until_dt = None
+    if until_str:
+        try:
+            until_dt = datetime.fromisoformat(until_str + "T23:59:59+00:00")
+        except Exception:
+            until_dt = None
+    results: List[dict] = []
+    cur = base_start
+    # Skip ahead if base_start far before from_dt
+    # Iterate up to max 500 occurrences to prevent runaway
+    for i in range(500):
+        if until_dt and cur > until_dt:
+            break
+        if cur >= to_dt:
+            break
+        if cur + duration > from_dt:  # occurrence overlaps window
+            occ = dict(ev)
+            occ["id"] = f"{ev['id']}:{cur.date().isoformat()}"
+            occ["base_event_id"] = ev["id"]
+            occ["start_at"] = cur.isoformat().replace("+00:00", "Z")
+            occ["end_at"] = (cur + duration).isoformat().replace("+00:00", "Z")
+            results.append(occ)
+        # next
+        if rtype == "daily":
+            cur = cur + timedelta(days=1)
+        elif rtype == "weekly":
+            cur = cur + timedelta(days=7)
+        elif rtype == "monthly":
+            # advance ~1 month keeping day of month
+            y = cur.year
+            m = cur.month + 1
+            if m > 12:
+                m -= 12
+                y += 1
+            try:
+                cur = cur.replace(year=y, month=m)
+            except ValueError:
+                # day out of range (e.g. 31 of feb) → last day of month
+                import calendar as _cal
+                last = _cal.monthrange(y, m)[1]
+                cur = cur.replace(year=y, month=m, day=last)
+        else:
+            break
+    return results
+
 @api_router.get("/events", response_model=List[EventOut])
 async def list_events(
     user: dict = Depends(current_user),
@@ -728,13 +808,22 @@ async def list_events(
     to: Optional[str] = None,
 ):
     query: dict = {}
-    if from_ and to:
-        query["start_at"] = {"$gte": from_, "$lt": to}
-    events = await db.events.find(query, {"_id": 0}).to_list(500)
-    events.sort(key=lambda e: e.get("start_at", ""))
-    out = []
+    # Filter by visibility: non-admin only sees events where they are assigned
+    is_admin = user.get("role") == "admin"
+    if not is_admin:
+        query["assigned_user_ids"] = user["id"]
+    events = await db.events.find(query, {"_id": 0}).to_list(2000)
+    # Expand recurrences
+    from_dt = datetime.fromisoformat(from_.replace("Z", "+00:00")) if from_ else datetime.min.replace(tzinfo=timezone.utc)
+    to_dt = datetime.fromisoformat(to.replace("Z", "+00:00")) if to else datetime.max.replace(tzinfo=timezone.utc)
+    expanded: List[dict] = []
     for e in events:
+        expanded.extend(_expand_recurrence(e, from_dt, to_dt))
+    expanded.sort(key=lambda e: e.get("start_at", ""))
+    out = []
+    for e in expanded:
         e = await _attach_material(e)
+        e = await _attach_users(e)
         out.append(e)
     return out
 
@@ -749,28 +838,41 @@ async def create_event(payload: EventCreate, admin: dict = Depends(current_admin
         "end_at": payload.end_at,
         "description": payload.description,
         "material_id": payload.material_id,
+        "assigned_user_ids": payload.assigned_user_ids or [],
+        "recurrence": payload.recurrence.dict() if payload.recurrence else None,
         "created_by": admin["email"],
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.events.insert_one(doc)
     doc = await _attach_material(doc)
+    doc = await _attach_users(doc)
     return doc
 
 @api_router.patch("/events/{eid}", response_model=EventOut)
 async def update_event(eid: str, payload: EventPatch, admin: dict = Depends(current_admin)):
-    upd = {k: v for k, v in payload.dict().items() if v is not None}
+    # Strip virtual-occurrence suffix if present
+    real_id = eid.split(":")[0]
+    upd: dict = {}
+    for k, v in payload.dict().items():
+        if v is None: continue
+        if k == "recurrence":
+            upd["recurrence"] = v  # dict from pydantic
+        else:
+            upd[k] = v
     if not upd:
         raise HTTPException(400, "Nada que actualizar")
-    res = await db.events.update_one({"id": eid}, {"$set": upd})
+    res = await db.events.update_one({"id": real_id}, {"$set": upd})
     if res.matched_count == 0:
         raise HTTPException(404, "Evento no encontrado")
-    ev = await db.events.find_one({"id": eid}, {"_id": 0})
+    ev = await db.events.find_one({"id": real_id}, {"_id": 0})
     ev = await _attach_material(ev)
+    ev = await _attach_users(ev)
     return ev
 
 @api_router.delete("/events/{eid}")
 async def delete_event(eid: str, admin: dict = Depends(current_admin)):
-    res = await db.events.delete_one({"id": eid})
+    real_id = eid.split(":")[0]
+    res = await db.events.delete_one({"id": real_id})
     if res.deleted_count == 0:
         raise HTTPException(404, "Evento no encontrado")
     return {"ok": True}
