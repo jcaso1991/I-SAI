@@ -308,11 +308,61 @@ test_plan:
 agent_communication:
     -agent: "main"
     -message: |
-      Reinicié backend y expo. Por favor testear los 4 tasks de backend del
-      módulo Calendario. Credenciales admin en /app/memory/test_credentials.md
-      (admin@materiales.com / Admin1234). Para los tests de visibilidad crea
-      usuarios nuevos vía POST /api/users con role='user' (admin token) y
-      login-eando con ellos. Limpia events creados al final si es posible.
+      Added new features (iteration 2):
+      - Event attachments (PDF/JPEG/PNG) stored in MongoDB as base64, max 15MB/file.
+      - New endpoints: POST/GET/DELETE /api/events/{eid}/attachments[/{aid}].
+      - Previously validated calendar endpoints unchanged.
+      Frontend changes (not retested yet): new /home screen with 3 circles, BottomNav
+      component (Ajustes, Proyectos, Inicio, Calendario, Planos), materiales.tsx
+      renamed title to "Proyectos", calendario EventDetailsModal now has date/time pickers
+      and attachments UI.
+
+backend_new_tasks:
+  - task: "Event attachments upload/get/delete"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: |
+          POST /api/events/{eid}/attachments with {filename, mime_type, base64} →
+          stores attachment in events.attachments array. GET /api/events/{eid}/attachments/{aid}
+          returns full base64 payload. DELETE removes it. Max 15MB, mime must be pdf/jpeg/png.
+          Admin OR assigned user can upload/download/delete. Virtual ids (base:date) supported
+          via split(":")[0].
+        -working: true
+        -agent: "testing"
+        -comment: |
+          PASS (30/30 assertions in /app/backend_test_attachments.py targeting
+          http://localhost:8001/api). Verified:
+          - POST small PDF (admin) → 200, response has {id, filename, mime_type,
+            size, uploaded_at, uploaded_by}, NO `base64` field.
+          - GET /api/events returns the event with `attachments` as metadata-only
+            (no base64 key). `_strip_attachments` works as expected.
+          - GET /api/events/{eid}/attachments/{aid} returns full payload including
+            base64 matching what was uploaded (byte-exact).
+          - Upload JPEG (image/jpeg) → 200; Upload PNG (image/png) → 200.
+          - Unsupported mime text/plain → 400 with detail "Tipo no soportado.
+            Solo PDF, JPEG o PNG".
+          - Oversized file: b64 of length 20,971,620 chars (~15.000095 MB raw) →
+            413 as expected.
+          - Virtual id `<base>:2026-05-04` accepted: upload succeeds and the new
+            attachment appears on the base event (verified via list).
+          - DELETE → 200 {ok: true}; subsequent GET of that aid → 404; list event
+            no longer contains the entry.
+          - Permissions: without token → 401 on POST/GET/DELETE; non-admin user
+            NOT in assigned_user_ids → 403 on POST/GET/DELETE; non-admin user IN
+            assigned_user_ids → 200 on POST/GET/DELETE.
+          - Non-existing event id → 404 on POST/GET/DELETE.
+          - Non-existing attachment id on valid event → 404 on GET/DELETE.
+          Sanity on existing calendar endpoints: weekly recurrence expansion
+          (4 occurrences in 22-day window), non-admin visibility filter, and
+          `attachments` field presence in list — all PASS.
+          Cleanup executed (all test events and test users deleted).
     -agent: "testing"
     -message: |
       Backend calendar tests COMPLETE. 24/24 assertions passed via
@@ -334,3 +384,26 @@ agent_communication:
         id `<base>:<date>` correctly resolves to base event.
       Cleanup executed (events + test users deleted). All 4 focus tasks marked
       working: true and needs_retesting: false.
+    -agent: "testing"
+    -message: |
+      Event Attachments backend tests COMPLETE. 30/30 assertions passed via
+      /app/backend_test_attachments.py (targeting http://localhost:8001/api).
+      All scenarios from the review request verified:
+      - POST/GET/DELETE attachments on /api/events/{eid}/attachments.
+      - List and POST/PATCH event responses include `attachments` as metadata
+        only (no base64). Only GET /{aid} returns the base64 payload, matches
+        byte-exact what was uploaded.
+      - 15MB limit enforced (413) with ~20.97M-char base64 (raw ~15.0000952MB).
+      - Mime whitelist: application/pdf, image/jpeg, image/png → 200;
+        text/plain → 400 with detail "Tipo no soportado. Solo PDF, JPEG o PNG".
+      - Virtual eid `<base>:YYYY-MM-DD` works on all 3 endpoints (stored on
+        base event; verified via list).
+      - Permissions: 401 without token on POST/GET/DELETE; 403 for non-admin
+        NOT in assigned_user_ids; 200 for admin and assigned non-admin users.
+      - 404 on bogus event id (POST/GET/DELETE) and bogus attachment id on
+        valid event (GET/DELETE).
+      Existing calendar endpoints sanity-checked: weekly recurrence expansion
+      (4 occurrences), non-admin visibility filter, attachments field present
+      on listed events. Cleanup executed (all test events and users deleted).
+      Task `Event attachments upload/get/delete` marked working: true,
+      needs_retesting: false.

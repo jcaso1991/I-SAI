@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, FlatList,
-  StyleSheet, ActivityIndicator, RefreshControl, Alert,
+  StyleSheet, ActivityIndicator, RefreshControl, Alert, Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, clearToken, COLORS } from "../src/api";
+import BottomNav from "../src/BottomNav";
 
 export default function Materiales() {
   const router = useRouter();
@@ -16,15 +17,18 @@ export default function Materiales() {
   const [refreshing, setRefreshing] = useState(false);
   const [pendingOnly, setPendingOnly] = useState(false);
   const [stats, setStats] = useState<{ total: number; pending: number; synced: number } | null>(null);
+  const [me, setMe] = useState<any>(null);
 
   const load = async () => {
     try {
-      const [list, st] = await Promise.all([
+      const [list, st, u] = await Promise.all([
         api.listMateriales(q || undefined, pendingOnly),
         api.stats(),
+        me ? Promise.resolve(me) : api.me(),
       ]);
       setItems(list);
       setStats(st);
+      if (!me) setMe(u);
     } catch (e: any) {
       if (/401|Invalid|expired/i.test(e.message)) {
         await clearToken();
@@ -51,6 +55,8 @@ export default function Materiales() {
     await clearToken();
     router.replace("/login");
   };
+
+  const isAdmin = me?.role === "admin";
 
   const renderItem = ({ item }: any) => {
     const pending = item.sync_status === "pending";
@@ -100,7 +106,7 @@ export default function Materiales() {
     <SafeAreaView style={s.root} edges={["top"]}>
       <View style={s.header}>
         <View>
-          <Text style={s.headerTitle}>Materiales</Text>
+          <Text style={s.headerTitle}>Proyectos</Text>
           {stats && (
             <Text style={s.headerSub} testID="stats-text">
               {stats.total} total · <Text style={{ color: stats.pending > 0 ? COLORS.pendingText : COLORS.syncedText, fontWeight: "700" }}>{stats.pending} pendiente{stats.pending !== 1 ? "s" : ""}</Text>
@@ -108,15 +114,6 @@ export default function Materiales() {
           )}
         </View>
         <View style={s.headerBtns}>
-          <TouchableOpacity testID="btn-calendario" style={s.iconBtn} onPress={() => router.push("/calendario")}>
-            <Ionicons name="calendar-outline" size={22} color={COLORS.navy} />
-          </TouchableOpacity>
-          <TouchableOpacity testID="btn-planos" style={s.iconBtn} onPress={() => router.push("/planos")}>
-            <Ionicons name="map-outline" size={22} color={COLORS.navy} />
-          </TouchableOpacity>
-          <TouchableOpacity testID="btn-admin" style={s.iconBtn} onPress={() => router.push("/admin")}>
-            <Ionicons name="cloud-outline" size={22} color={COLORS.navy} />
-          </TouchableOpacity>
           <TouchableOpacity testID="btn-logout" style={s.iconBtn} onPress={logout}>
             <Ionicons name="log-out-outline" size={22} color={COLORS.navy} />
           </TouchableOpacity>
@@ -131,7 +128,7 @@ export default function Materiales() {
             style={s.searchInput}
             value={q}
             onChangeText={setQ}
-            placeholder="Buscar cliente, material, ubicación..."
+            placeholder="Buscar cliente, proyecto, ubicación..."
             placeholderTextColor={COLORS.textDisabled}
           />
           {q.length > 0 && (
@@ -177,6 +174,8 @@ export default function Materiales() {
           removeClippedSubviews
         />
       )}
+
+      <BottomNav active="proyectos" isAdmin={isAdmin} />
     </SafeAreaView>
   );
 }
@@ -216,7 +215,7 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.border, gap: 8,
   },
   cardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  code: { fontFamily: Platform_ok("monospace"), fontSize: 13, fontWeight: "700", color: COLORS.navy, letterSpacing: 0.3 },
+  code: { fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }), fontSize: 13, fontWeight: "700", color: COLORS.navy, letterSpacing: 0.3 },
   cliente: { fontSize: 16, fontWeight: "700", color: COLORS.text },
   metaRow: { flexDirection: "row", alignItems: "center", gap: 12, flexWrap: "wrap" },
   metaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
@@ -233,5 +232,3 @@ const s = StyleSheet.create({
   pillOrange: { backgroundColor: "#FEF3C7" },
   pillText: { fontSize: 10, fontWeight: "800", color: COLORS.navy, letterSpacing: 0.5 },
 });
-
-function Platform_ok(m: string) { return m; }

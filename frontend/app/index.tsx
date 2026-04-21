@@ -9,7 +9,7 @@ export default function Index() {
   useEffect(() => {
     (async () => {
       const t = await getToken();
-      if (t) router.replace("/materiales");
+      if (t) router.replace("/home");
       else router.replace("/login");
     })();
   }, []);

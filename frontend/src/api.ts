@@ -90,6 +90,13 @@ export const api = {
   updateEvent: (id: string, body: any) =>
     request(`/events/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteEvent: (id: string) => request(`/events/${id}`, { method: "DELETE" }),
+  // Event attachments
+  uploadEventAttachment: (eid: string, body: { filename: string; mime_type: string; base64: string }) =>
+    request(`/events/${encodeURIComponent(eid)}/attachments`, { method: "POST", body: JSON.stringify(body) }),
+  getEventAttachment: (eid: string, aid: string) =>
+    request(`/events/${encodeURIComponent(eid)}/attachments/${aid}`),
+  deleteEventAttachment: (eid: string, aid: string) =>
+    request(`/events/${encodeURIComponent(eid)}/attachments/${aid}`, { method: "DELETE" }),
   // Stamps
   listStamps: () => request("/stamps"),
   createStamp: (body: { name: string; image_base64: string }) =>

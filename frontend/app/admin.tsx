@@ -7,6 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../src/api";
+import BottomNav from "../src/BottomNav";
 
 export default function Admin() {
   const router = useRouter();
@@ -107,10 +108,10 @@ export default function Admin() {
   return (
     <SafeAreaView style={s.root} edges={["top"]}>
       <View style={s.header}>
-        <TouchableOpacity style={s.iconBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={s.iconBtn} onPress={() => router.replace("/home")}>
           <Ionicons name="chevron-back" size={26} color={COLORS.navy} />
         </TouchableOpacity>
-        <Text style={s.headerTitle}>Panel OneDrive</Text>
+        <Text style={s.headerTitle}>Ajustes</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -239,6 +240,7 @@ export default function Admin() {
           <Text style={s.cardSub}>{user?.email} · {user?.role}</Text>
         </View>
       </ScrollView>
+      <BottomNav active="ajustes" isAdmin={isAdmin} />
     </SafeAreaView>
   );
 }

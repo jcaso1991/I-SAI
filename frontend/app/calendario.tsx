@@ -8,6 +8,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../src/api";
+import BottomNav from "../src/BottomNav";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 
 const HOUR_START = 7;
 const HOUR_END = 18;
@@ -34,6 +38,7 @@ type EventT = {
   assigned_user_ids?: string[];
   assigned_users?: { id: string; name?: string; email: string }[];
   recurrence?: { type: RecurrenceType; until?: string | null } | null;
+  attachments?: Array<{ id: string; filename: string; mime_type: string; size: number; uploaded_at?: string; uploaded_by?: string }>;
   base_event_id?: string | null;
   created_by: string;
 };
@@ -151,7 +156,7 @@ export default function CalendarScreen() {
   return (
     <SafeAreaView style={s.root} edges={["top"]}>
       <View style={s.header}>
-        <TouchableOpacity style={s.iconBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={s.iconBtn} onPress={() => router.replace("/home")}>
           <Ionicons name="chevron-back" size={26} color={COLORS.navy} />
         </TouchableOpacity>
         <View style={{ flex: 1, alignItems: "center" }}>
@@ -233,9 +238,10 @@ export default function CalendarScreen() {
           event={openEvent}
           isAdmin={isAdmin}
           onClose={() => setOpenEvent(null)}
-          onDeleted={() => { setOpenEvent(null); load(); }}
+          onChanged={() => { setOpenEvent(null); load(); }}
         />
       )}
+      <BottomNav active="calendario" isAdmin={isAdmin} />
     </SafeAreaView>
   );
 }
@@ -851,40 +857,233 @@ function CreateEventModal({
   );
 }
 
-// ---------------- Event details modal ----------------
+// ---------------- Event details modal (editable) ----------------
 function EventDetailsModal({
-  event, isAdmin, onClose, onDeleted,
-}: { event: EventT; isAdmin: boolean; onClose: () => void; onDeleted: () => void }) {
-  const start = new Date(event.start_at);
-  const end = new Date(event.end_at);
+  event, isAdmin, onClose, onChanged,
+}: { event: EventT; isAdmin: boolean; onClose: () => void; onChanged: () => void }) {
+  const [start, setStart] = useState<Date>(new Date(event.start_at));
+  const [end, setEnd] = useState<Date>(new Date(event.end_at));
+  const [title, setTitle] = useState(event.title);
+  const [description, setDescription] = useState(event.description || "");
+  const [showPicker, setShowPicker] = useState<null | { which: "date" | "startTime" | "endTime" }>(null);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [attachments, setAttachments] = useState<any[]>(event.attachments || []);
+  const [uploading, setUploading] = useState(false);
+
+  const m = event.material;
+
   const doDelete = () => {
     Alert.alert("Eliminar evento", "¿Seguro?", [
       { text: "Cancelar", style: "cancel" },
-      { text: "Eliminar", style: "destructive", onPress: async () => {
-        try { await api.deleteEvent(event.id); onDeleted(); }
-        catch (e: any) { Alert.alert("Error", e.message); }
-      }},
+      {
+        text: "Eliminar", style: "destructive", onPress: async () => {
+          try { await api.deleteEvent(event.id); onChanged(); }
+          catch (e: any) { Alert.alert("Error", e.message); }
+        },
+      },
     ]);
   };
-  const m = event.material;
+
+  const saveChanges = async () => {
+    if (!title.trim()) { Alert.alert("Error", "El título no puede estar vacío"); return; }
+    if (end <= start) { Alert.alert("Error", "La hora fin debe ser posterior a la hora inicio"); return; }
+    setSaving(true);
+    try {
+      await api.updateEvent(event.id, {
+        title: title.trim(),
+        description: description || undefined,
+        start_at: start.toISOString(),
+        end_at: end.toISOString(),
+      });
+      onChanged();
+    } catch (e: any) { Alert.alert("Error", e.message); }
+    finally { setSaving(false); }
+  };
+
+  const onPickerChange = (which: "date" | "startTime" | "endTime") => (event: any, picked?: Date) => {
+    if (Platform.OS !== "ios") setShowPicker(null);
+    if (event?.type === "dismissed" || !picked) return;
+    if (which === "date") {
+      // Update date part on both start and end, keep times
+      const newStart = new Date(start); newStart.setFullYear(picked.getFullYear(), picked.getMonth(), picked.getDate());
+      const newEnd = new Date(end); newEnd.setFullYear(picked.getFullYear(), picked.getMonth(), picked.getDate());
+      setStart(newStart); setEnd(newEnd);
+    } else if (which === "startTime") {
+      const newStart = new Date(start);
+      newStart.setHours(picked.getHours(), picked.getMinutes(), 0, 0);
+      setStart(newStart);
+      if (end <= newStart) {
+        const ne = new Date(newStart); ne.setMinutes(ne.getMinutes() + 60);
+        setEnd(ne);
+      }
+    } else if (which === "endTime") {
+      const newEnd = new Date(end);
+      newEnd.setHours(picked.getHours(), picked.getMinutes(), 0, 0);
+      setEnd(newEnd);
+    }
+  };
+
+  const pickAndUpload = async () => {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        type: ["application/pdf", "image/jpeg", "image/png", "image/jpg"],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (res.canceled || !res.assets || res.assets.length === 0) return;
+      const file = res.assets[0];
+      const mime = file.mimeType || (file.name?.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg");
+      setUploading(true);
+      let b64: string;
+      if (file.uri.startsWith("data:")) {
+        b64 = file.uri.split(",")[1];
+      } else {
+        b64 = await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.Base64 });
+      }
+      const sizeMB = (b64.length * 3) / 4 / (1024 * 1024);
+      if (sizeMB > 15) { Alert.alert("Error", "El archivo excede 15 MB"); return; }
+      const meta = await api.uploadEventAttachment(event.id, {
+        filename: file.name || "archivo",
+        mime_type: mime,
+        base64: b64,
+      });
+      setAttachments((arr) => [...arr, meta]);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "No se pudo subir el archivo");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const openAttachment = async (aid: string) => {
+    try {
+      const data = await api.getEventAttachment(event.id, aid);
+      if (Platform.OS === "web") {
+        // Open in new tab via data URL
+        const a = document.createElement("a");
+        a.href = `data:${data.mime_type};base64,${data.base64}`;
+        a.download = data.filename || "archivo";
+        a.target = "_blank";
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      } else {
+        // Save to cache and open
+        const ext = (data.filename || "").split(".").pop() || (data.mime_type.includes("pdf") ? "pdf" : "jpg");
+        const path = `${FileSystem.cacheDirectory}${aid}.${ext}`;
+        await FileSystem.writeAsStringAsync(path, data.base64, { encoding: FileSystem.EncodingType.Base64 });
+        // Use Linking or Sharing — simplest: try Linking
+        const Linking = require("react-native").Linking;
+        await Linking.openURL(path);
+      }
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "No se pudo abrir el archivo");
+    }
+  };
+
+  const deleteAttachment = (aid: string, name: string) => {
+    Alert.alert("Eliminar adjunto", `¿Eliminar "${name}"?`, [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Eliminar", style: "destructive", onPress: async () => {
+          try {
+            await api.deleteEventAttachment(event.id, aid);
+            setAttachments((arr) => arr.filter((a) => a.id !== aid));
+          } catch (e: any) { Alert.alert("Error", e.message); }
+        },
+      },
+    ]);
+  };
+
+  const fmtSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const iconForMime = (mt: string): any => {
+    if (!mt) return "document";
+    if (mt.includes("pdf")) return "document-text";
+    if (mt.startsWith("image/")) return "image";
+    return "document";
+  };
+
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <View style={s.modalRoot}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={s.modalRoot}>
         <View style={s.modalCard}>
           <View style={s.modalHeader}>
-            <Text style={s.modalTitle} numberOfLines={2}>{event.title}</Text>
+            {editing ? (
+              <TextInput
+                testID="input-event-title"
+                style={[s.mInput, { flex: 1, marginRight: 8, height: 44 }]}
+                value={title}
+                onChangeText={setTitle}
+                placeholder="Título del evento"
+                placeholderTextColor={COLORS.textDisabled}
+              />
+            ) : (
+              <Text style={s.modalTitle} numberOfLines={2}>{title}</Text>
+            )}
             <TouchableOpacity onPress={onClose}>
               <Ionicons name="close" size={26} color={COLORS.text} />
             </TouchableOpacity>
           </View>
-          <ScrollView>
-            <View style={s.timeBox}>
-              <Ionicons name="time-outline" size={18} color={COLORS.textSecondary} />
-              <Text style={s.timeText}>
-                {start.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}
-                {" · "}{fmtTime(start)} - {fmtTime(end)}
-              </Text>
+          <ScrollView keyboardShouldPersistTaps="handled">
+            {/* Date & Time row */}
+            <View style={s.dtRow}>
+              <Text style={s.mLabel}>FECHA</Text>
+              <TouchableOpacity
+                testID="btn-pick-date"
+                style={[s.dtBtn, !isAdmin && { opacity: 0.7 }]}
+                disabled={!isAdmin}
+                onPress={() => setShowPicker({ which: "date" })}
+              >
+                <Ionicons name="calendar" size={16} color={COLORS.primary} />
+                <Text style={s.dtBtnText}>
+                  {start.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+                </Text>
+              </TouchableOpacity>
             </View>
+            <View style={s.dtDouble}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.mLabel}>HORA INICIO</Text>
+                <TouchableOpacity
+                  testID="btn-pick-start"
+                  style={[s.dtBtn, !isAdmin && { opacity: 0.7 }]}
+                  disabled={!isAdmin}
+                  onPress={() => setShowPicker({ which: "startTime" })}
+                >
+                  <Ionicons name="time" size={16} color={COLORS.primary} />
+                  <Text style={s.dtBtnText}>{fmtTime(start)}</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.mLabel}>HORA FIN</Text>
+                <TouchableOpacity
+                  testID="btn-pick-end"
+                  style={[s.dtBtn, !isAdmin && { opacity: 0.7 }]}
+                  disabled={!isAdmin}
+                  onPress={() => setShowPicker({ which: "endTime" })}
+                >
+                  <Ionicons name="time" size={16} color={COLORS.primary} />
+                  <Text style={s.dtBtnText}>{fmtTime(end)}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {showPicker && (
+              <DateTimePicker
+                value={showPicker.which === "endTime" ? end : start}
+                mode={showPicker.which === "date" ? "date" : "time"}
+                is24Hour
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                onChange={onPickerChange(showPicker.which)}
+              />
+            )}
+
             {m && (
               <View style={s.matPreview}>
                 <View style={{ flex: 1 }}>
@@ -893,10 +1092,7 @@ function EventDetailsModal({
                   <Text style={s.matCliente}>{m.cliente || "Sin cliente"}</Text>
                   {m.ubicacion && <Text style={s.matUbic}>📍 {m.ubicacion}</Text>}
                   {m.horas_prev && <Text style={s.matMeta}>⏱️ {m.horas_prev}h previstas</Text>}
-                  {m.comercial && <Text style={s.matMeta}>👤 Comercial: {m.comercial}</Text>}
-                  {m.gestor && <Text style={s.matMeta}>📋 Gestor/a: {m.gestor}</Text>}
                   {m.tecnico && <Text style={s.matMeta}>🔧 Técnico: {m.tecnico}</Text>}
-                  {m.comentarios && <Text style={s.matMeta}>💬 {m.comentarios}</Text>}
                 </View>
               </View>
             )}
@@ -924,23 +1120,110 @@ function EventDetailsModal({
                 </Text>
               </>
             )}
-            {event.description && (
-              <>
-                <Text style={s.mLabel}>Notas</Text>
-                <Text style={s.descText}>{event.description}</Text>
-              </>
+
+            <Text style={s.mLabel}>Notas</Text>
+            {editing ? (
+              <TextInput
+                testID="input-event-description"
+                style={[s.mInput, { height: 80, paddingTop: 10 }]}
+                value={description}
+                onChangeText={setDescription}
+                placeholder="Notas adicionales..."
+                multiline
+                textAlignVertical="top"
+                placeholderTextColor={COLORS.textDisabled}
+              />
+            ) : (
+              description ? (
+                <Text style={s.descText}>{description}</Text>
+              ) : (
+                <Text style={[s.descText, { color: COLORS.textDisabled }]}>Sin notas</Text>
+              )
             )}
+
+            {/* Attachments */}
+            <Text style={s.mLabel}>Archivos adjuntos</Text>
+            {attachments.length === 0 ? (
+              <Text style={[s.descText, { color: COLORS.textDisabled }]}>Sin archivos</Text>
+            ) : (
+              <View style={{ gap: 6 }}>
+                {attachments.map((a) => (
+                  <TouchableOpacity
+                    key={a.id}
+                    testID={`attachment-${a.id}`}
+                    style={s.attRow}
+                    onPress={() => openAttachment(a.id)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name={iconForMime(a.mime_type)} size={22} color={COLORS.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.attName} numberOfLines={1}>{a.filename}</Text>
+                      <Text style={s.attMeta}>{fmtSize(a.size)} · {a.mime_type}</Text>
+                    </View>
+                    {isAdmin && (
+                      <TouchableOpacity hitSlop={10} onPress={() => deleteAttachment(a.id, a.filename)}>
+                        <Ionicons name="trash-outline" size={18} color={COLORS.errorText} />
+                      </TouchableOpacity>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            <TouchableOpacity
+              testID="btn-add-attachment"
+              style={[s.pickMatBtn, { marginTop: 8 }, uploading && { opacity: 0.6 }]}
+              onPress={pickAndUpload}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <ActivityIndicator color={COLORS.primary} />
+              ) : (
+                <>
+                  <Ionicons name="attach" size={20} color={COLORS.primary} />
+                  <Text style={{ color: COLORS.primary, fontWeight: "700" }}>Añadir PDF o imagen</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
             <Text style={[s.mLabel, { marginTop: 16 }]}>Creado por</Text>
             <Text style={s.descText}>{event.created_by}</Text>
+
             {isAdmin && (
-              <TouchableOpacity testID="btn-delete-event" style={[s.primary, { backgroundColor: COLORS.errorText }]} onPress={doDelete}>
-                <Ionicons name="trash" size={18} color="#fff" />
-                <Text style={s.primaryText}> ELIMINAR EVENTO</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: "row", gap: 8, marginTop: 20 }}>
+                {editing ? (
+                  <>
+                    <TouchableOpacity
+                      testID="btn-cancel-edit"
+                      style={[s.primary, { flex: 1, backgroundColor: COLORS.bg, borderWidth: 2, borderColor: COLORS.borderInput }]}
+                      onPress={() => {
+                        setEditing(false);
+                        setTitle(event.title); setDescription(event.description || "");
+                        setStart(new Date(event.start_at)); setEnd(new Date(event.end_at));
+                      }}
+                    >
+                      <Text style={[s.primaryText, { color: COLORS.navy }]}>CANCELAR</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity testID="btn-save-event" style={[s.primary, { flex: 1 }, saving && { opacity: 0.6 }]} onPress={saveChanges} disabled={saving}>
+                      {saving ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryText}>GUARDAR</Text>}
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <TouchableOpacity testID="btn-edit-event" style={[s.primary, { flex: 1 }]} onPress={() => setEditing(true)}>
+                      <Ionicons name="create-outline" size={18} color="#fff" />
+                      <Text style={s.primaryText}> EDITAR</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity testID="btn-delete-event" style={[s.primary, { flex: 1, backgroundColor: COLORS.errorText }]} onPress={doDelete}>
+                      <Ionicons name="trash" size={18} color="#fff" />
+                      <Text style={s.primaryText}> ELIMINAR</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
             )}
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -1075,4 +1358,18 @@ const s = StyleSheet.create({
     flexDirection: "row", alignItems: "center", gap: 8,
     padding: 8, backgroundColor: COLORS.bg, borderRadius: 8,
   },
+  dtRow: { marginTop: 8 },
+  dtDouble: { flexDirection: "row", gap: 8 },
+  dtBtn: {
+    flexDirection: "row", alignItems: "center", gap: 8, height: 46,
+    borderRadius: 10, backgroundColor: COLORS.bg, borderWidth: 2,
+    borderColor: COLORS.borderInput, paddingHorizontal: 12,
+  },
+  dtBtnText: { fontSize: 14, fontWeight: "700", color: COLORS.text },
+  attRow: {
+    flexDirection: "row", alignItems: "center", gap: 10, padding: 10,
+    borderRadius: 10, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
+  },
+  attName: { fontSize: 14, fontWeight: "700", color: COLORS.text },
+  attMeta: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
 });

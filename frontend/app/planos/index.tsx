@@ -8,6 +8,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../../src/api";
+import BottomNav from "../../src/BottomNav";
 
 type Plan = {
   id: string; title: string; created_at: string; updated_at: string;
@@ -21,11 +22,16 @@ export default function PlansList() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [me, setMe] = useState<any>(null);
 
   const load = async () => {
     try {
-      const list = await api.listPlans();
+      const [list, u] = await Promise.all([
+        api.listPlans(),
+        me ? Promise.resolve(me) : api.me().catch(() => null),
+      ]);
       setPlans(list);
+      if (!me && u) setMe(u);
     } catch (e: any) {
       Alert.alert("Error", e.message);
     } finally {
@@ -55,7 +61,7 @@ export default function PlansList() {
   return (
     <SafeAreaView style={s.root} edges={["top"]}>
       <View style={s.header}>
-        <TouchableOpacity style={s.iconBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={s.iconBtn} onPress={() => router.replace("/home")}>
           <Ionicons name="chevron-back" size={26} color={COLORS.navy} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>Planos</Text>
@@ -124,6 +130,7 @@ export default function PlansList() {
         onClose={() => setShowCreate(false)}
         onDone={(id) => { setShowCreate(false); router.push(`/planos/${id}`); }}
       />
+      <BottomNav active="planos" isAdmin={me?.role === "admin"} />
     </SafeAreaView>
   );
 }

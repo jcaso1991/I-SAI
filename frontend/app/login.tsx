@@ -22,7 +22,7 @@ export default function Login() {
     try {
       const res = await api.login(email, password);
       await setToken(res.access_token);
-      router.replace("/materiales");
+      router.replace("/home");
     } catch (e: any) {
       Alert.alert("Error", e.message || "Error de autenticación");
     } finally {

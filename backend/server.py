@@ -721,9 +721,33 @@ class EventOut(BaseModel):
     assigned_user_ids: List[str] = []
     assigned_users: List[dict] = []
     recurrence: Optional[dict] = None
+    attachments: List[dict] = []  # metadata only (no base64) for list views
     base_event_id: Optional[str] = None  # for expanded occurrences
     created_by: str
     created_at: str
+
+class AttachmentUpload(BaseModel):
+    filename: str
+    mime_type: str
+    base64: str  # data only, no data: prefix
+
+MAX_ATTACHMENT_MB = 15  # per file
+
+def _strip_attachments(ev: dict) -> dict:
+    """Return event with attachments metadata only (no base64)."""
+    atts = ev.get("attachments") or []
+    meta = []
+    for a in atts:
+        meta.append({
+            "id": a.get("id"),
+            "filename": a.get("filename"),
+            "mime_type": a.get("mime_type"),
+            "size": a.get("size"),
+            "uploaded_at": a.get("uploaded_at"),
+            "uploaded_by": a.get("uploaded_by"),
+        })
+    ev["attachments"] = meta
+    return ev
 
 async def _attach_material(ev: dict) -> dict:
     mid = ev.get("material_id")
@@ -824,6 +848,7 @@ async def list_events(
     for e in expanded:
         e = await _attach_material(e)
         e = await _attach_users(e)
+        e = _strip_attachments(e)
         out.append(e)
     return out
 
@@ -840,12 +865,14 @@ async def create_event(payload: EventCreate, admin: dict = Depends(current_admin
         "material_id": payload.material_id,
         "assigned_user_ids": payload.assigned_user_ids or [],
         "recurrence": payload.recurrence.dict() if payload.recurrence else None,
+        "attachments": [],
         "created_by": admin["email"],
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.events.insert_one(doc)
     doc = await _attach_material(doc)
     doc = await _attach_users(doc)
+    doc = _strip_attachments(doc)
     return doc
 
 @api_router.patch("/events/{eid}", response_model=EventOut)
@@ -867,6 +894,7 @@ async def update_event(eid: str, payload: EventPatch, admin: dict = Depends(curr
     ev = await db.events.find_one({"id": real_id}, {"_id": 0})
     ev = await _attach_material(ev)
     ev = await _attach_users(ev)
+    ev = _strip_attachments(ev)
     return ev
 
 @api_router.delete("/events/{eid}")
@@ -875,6 +903,90 @@ async def delete_event(eid: str, admin: dict = Depends(current_admin)):
     res = await db.events.delete_one({"id": real_id})
     if res.deleted_count == 0:
         raise HTTPException(404, "Evento no encontrado")
+    return {"ok": True}
+
+# ---------------- Event attachments ----------------
+@api_router.post("/events/{eid}/attachments")
+async def upload_event_attachment(eid: str, payload: AttachmentUpload, user: dict = Depends(current_user)):
+    real_id = eid.split(":")[0]
+    ev = await db.events.find_one({"id": real_id}, {"_id": 0})
+    if not ev:
+        raise HTTPException(404, "Evento no encontrado")
+    # Permission: admin OR assigned user
+    is_admin = user.get("role") == "admin"
+    if not is_admin and user["id"] not in (ev.get("assigned_user_ids") or []):
+        raise HTTPException(403, "No autorizado")
+    # Validate base64 size
+    b64 = (payload.base64 or "").split(",")[-1].strip()
+    if not b64:
+        raise HTTPException(400, "Archivo vacío")
+    try:
+        raw_size = (len(b64) * 3) // 4
+    except Exception:
+        raw_size = 0
+    if raw_size > MAX_ATTACHMENT_MB * 1024 * 1024:
+        raise HTTPException(413, f"El archivo excede {MAX_ATTACHMENT_MB}MB")
+    mime = payload.mime_type or ""
+    allowed = ("application/pdf", "image/jpeg", "image/jpg", "image/png")
+    if not any(mime.lower().startswith(a) for a in allowed):
+        raise HTTPException(400, "Tipo no soportado. Solo PDF, JPEG o PNG")
+    att = {
+        "id": str(uuid.uuid4()),
+        "filename": payload.filename[:160] or "archivo",
+        "mime_type": mime,
+        "size": raw_size,
+        "base64": b64,
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+        "uploaded_by": user["email"],
+    }
+    await db.events.update_one({"id": real_id}, {"$push": {"attachments": att}})
+    # Return metadata only
+    return {
+        "id": att["id"],
+        "filename": att["filename"],
+        "mime_type": att["mime_type"],
+        "size": att["size"],
+        "uploaded_at": att["uploaded_at"],
+        "uploaded_by": att["uploaded_by"],
+    }
+
+@api_router.get("/events/{eid}/attachments/{aid}")
+async def get_event_attachment(eid: str, aid: str, user: dict = Depends(current_user)):
+    real_id = eid.split(":")[0]
+    ev = await db.events.find_one({"id": real_id}, {"_id": 0})
+    if not ev:
+        raise HTTPException(404, "Evento no encontrado")
+    is_admin = user.get("role") == "admin"
+    if not is_admin and user["id"] not in (ev.get("assigned_user_ids") or []):
+        raise HTTPException(403, "No autorizado")
+    for a in (ev.get("attachments") or []):
+        if a.get("id") == aid:
+            return {
+                "id": a["id"],
+                "filename": a["filename"],
+                "mime_type": a["mime_type"],
+                "size": a["size"],
+                "base64": a["base64"],
+                "uploaded_at": a.get("uploaded_at"),
+                "uploaded_by": a.get("uploaded_by"),
+            }
+    raise HTTPException(404, "Adjunto no encontrado")
+
+@api_router.delete("/events/{eid}/attachments/{aid}")
+async def delete_event_attachment(eid: str, aid: str, user: dict = Depends(current_user)):
+    real_id = eid.split(":")[0]
+    ev = await db.events.find_one({"id": real_id}, {"_id": 0})
+    if not ev:
+        raise HTTPException(404, "Evento no encontrado")
+    is_admin = user.get("role") == "admin"
+    if not is_admin and user["id"] not in (ev.get("assigned_user_ids") or []):
+        raise HTTPException(403, "No autorizado")
+    res = await db.events.update_one(
+        {"id": real_id},
+        {"$pull": {"attachments": {"id": aid}}}
+    )
+    if res.modified_count == 0:
+        raise HTTPException(404, "Adjunto no encontrado")
     return {"ok": True}
 
 @api_router.get("/stamps", response_model=List[StampOut])
