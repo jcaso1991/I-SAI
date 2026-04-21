@@ -1,0 +1,129 @@
+{
+  "theme": "LIGHT",
+  "archetype": "Swiss & High-Contrast / Tactile Utility",
+  "domain": "Logistics & Field Service (Internal App)",
+  "design_philosophy": "Utilitarian, high legibility, and touch-optimized for outdoor field technicians (gloved hands, fast scanning). Strong visual hierarchy separating editable vs read-only fields. Minimum touch targets of 48px. High contrast.",
+  "typography": {
+    "fonts": {
+      "headings": {
+        "family": "Chivo",
+        "description": "Sturdy, authoritative sans-serif for clear structural headers."
+      },
+      "body": {
+        "family": "IBM Plex Sans",
+        "description": "Highly legible, excellent for numbers and dense data grids."
+      },
+      "monospace": {
+        "family": "IBM Plex Mono",
+        "description": "Used specifically for Material Codes to ensure 0 and O differentiation."
+      }
+    },
+    "scales": {
+      "h1": "text-3xl sm:text-4xl font-black tracking-tight",
+      "h2": "text-2xl sm:text-3xl font-bold tracking-tight",
+      "h3": "text-xl font-semibold",
+      "body": "text-base leading-relaxed text-slate-800",
+      "small": "text-sm text-slate-600",
+      "tiny_label": "text-xs font-bold uppercase tracking-[0.15em] text-slate-500",
+      "code": "font-mono text-sm font-medium tracking-tight bg-slate-100 px-2 py-1 rounded"
+    }
+  },
+  "colors": {
+    "background": {
+      "default": "#F8FAFC",
+      "surface": "#FFFFFF",
+      "readonly": "#F1F5F9",
+      "card": "#FFFFFF"
+    },
+    "text": {
+      "primary": "#0F172A",
+      "secondary": "#475569",
+      "disabled": "#94A3B8"
+    },
+    "primary": {
+      "base": "#EA580C",
+      "hover": "#C2410C",
+      "foreground": "#FFFFFF",
+      "description": "Safety Orange for maximum visibility outdoors and clear primary actions."
+    },
+    "status": {
+      "synced": {
+        "bg": "#DCFCE7",
+        "text": "#166534",
+        "border": "#86EFAC"
+      },
+      "pending": {
+        "bg": "#FEF3C7",
+        "text": "#92400E",
+        "border": "#FDE68A"
+      },
+      "error": {
+        "bg": "#FEE2E2",
+        "text": "#991B1B",
+        "border": "#FCA5A5"
+      }
+    },
+    "border": "#E2E8F0"
+  },
+  "layout": {
+    "spacing_system": {
+      "container_padding": "p-4 sm:p-6",
+      "section_gap": "gap-6",
+      "element_gap": "gap-4",
+      "touch_target_min_height": "h-14"
+    },
+    "components": {
+      "buttons": {
+        "primary": "h-14 w-full bg-orange-600 hover:bg-orange-700 text-white font-bold text-lg rounded-xl shadow-sm active:scale-[0.98] transition-transform",
+        "secondary": "h-14 w-full bg-white border-2 border-slate-200 text-slate-700 font-bold text-lg rounded-xl active:bg-slate-50 transition-colors"
+      },
+      "inputs": {
+        "editable": "h-14 w-full bg-white border-2 border-slate-300 rounded-xl px-4 text-lg text-slate-900 focus:border-orange-500 focus:ring-4 focus:ring-orange-500/20 transition-all",
+        "readonly": "h-14 w-full bg-slate-100 border border-slate-200 rounded-xl px-4 text-lg text-slate-500 cursor-not-allowed select-none",
+        "textarea": "min-h-[120px] w-full bg-white border-2 border-slate-300 rounded-xl p-4 text-lg text-slate-900 focus:border-orange-500 focus:ring-4 focus:ring-orange-500/20"
+      },
+      "cards": {
+        "list_item": "bg-white p-5 rounded-2xl border border-slate-200 shadow-sm active:bg-slate-50 transition-colors flex flex-col gap-3"
+      },
+      "badges": {
+        "base": "inline-flex items-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border"
+      }
+    },
+    "structure": {
+      "header": "sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 p-4 flex items-center justify-between",
+      "bottom_bar": "fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] pb-safe"
+    }
+  },
+  "motion": {
+    "interactions": {
+      "button_press": "scale-95 duration-100",
+      "list_enter": "fade-in slide-in-from-bottom-2 duration-300"
+    }
+  },
+  "media": {
+    "image_urls": [
+      {
+        "url": "https://images.pexels.com/photos/4487363/pexels-photo-4487363.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "category": "login_background",
+        "description": "Modern warehouse background, to be used with a heavy dark or white overlay for the login screen."
+      }
+    ],
+    "icons": {
+      "library": "@phosphor-icons/react",
+      "rationale": "Duotone weight for clear, bold industrial look."
+    }
+  },
+  "accessibility": {
+    "contrast": "Ensure all text meets 4.5:1 ratio over backgrounds. Safety Orange buttons must have white text.",
+    "touch_targets": "No interactive element should be smaller than 48x48px.",
+    "testing_attributes": "All buttons, inputs, list items, and status indicators must have a data-testid attribute."
+  },
+  "instructions_to_main_agent": [
+    "Implement an Expo/React Native style layout using web technologies if standard web, or standard Tailwind styling if PWA. Assume mobile-first viewport max-width (e.g. max-w-md mx-auto) if viewed on desktop.",
+    "All forms MUST have distinct visual differences between read-only fields (Código de Material, Cliente, Ubicación) and editable fields (Fecha, Entrega/Recogida, Total/Parcial, Comentarios). Read-only fields must use the 'readonly' input style.",
+    "The list view (~1000 items) requires virtualization (e.g., @tanstack/react-virtual or react-window) if performance drops, but start with standard optimized mapping. Include a sticky search bar.",
+    "Use Phosphor Icons for all UI icons (Sync, User, Warning, Check).",
+    "On the Detail/Edit screen, place the 'Guardar' (Save) button in a fixed bottom bar so technicians don't have to scroll to save.",
+    "Ensure the Sync status indicator is clearly visible on the list view header. It should toggle between 'Sincronizado' (Green) and 'Pendiente' (Amber)."
+  ]
+}
