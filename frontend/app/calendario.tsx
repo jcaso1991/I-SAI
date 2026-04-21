@@ -9,7 +9,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../src/api";
 import BottomNav from "../src/BottomNav";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import DateTimeField from "../src/DateTimeField";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 
@@ -222,6 +222,7 @@ export default function CalendarScreen() {
           onCreate={(day, startMin, endMin) => setCreateRange({ day, startMin, endMin })}
           onTapEvent={setOpenEvent}
           onMoveEvent={moveEvent}
+          onSelectDay={(d) => { setAnchor(d); setView("day"); }}
         />
       )}
 
@@ -306,12 +307,13 @@ function MonthView({
 
 // ---------------- Week view ----------------
 function WeekView({
-  weekStart, events, isAdmin, now, onCreate, onTapEvent, onMoveEvent,
+  weekStart, events, isAdmin, now, onCreate, onTapEvent, onMoveEvent, onSelectDay,
 }: {
   weekStart: Date; events: EventT[]; isAdmin: boolean; now: Date;
   onCreate: (day: Date, startMin: number, endMin: number) => void;
   onTapEvent: (e: EventT) => void;
   onMoveEvent: (ev: EventT, s: Date, e: Date) => Promise<void>;
+  onSelectDay?: (d: Date) => void;
 }) {
   const days = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(weekStart, i)), [weekStart]);
   const [colW, setColW] = useState(0);
@@ -323,10 +325,16 @@ function WeekView({
         {days.map((d, i) => {
           const isToday = sameDay(d, now);
           return (
-            <View key={i} style={[s.dayHeader, isToday && s.dayHeaderToday]}>
+            <TouchableOpacity
+              key={i}
+              testID={`week-day-${i}`}
+              style={[s.dayHeader, isToday && s.dayHeaderToday]}
+              activeOpacity={onSelectDay ? 0.6 : 1}
+              onPress={() => onSelectDay && onSelectDay(d)}
+            >
               <Text style={[s.dayLabel, isToday && { color: COLORS.primary }]}>{DAY_LABELS[i]}</Text>
               <Text style={[s.dayNum, isToday && { color: COLORS.primary, fontWeight: "900" }]}>{d.getDate()}</Text>
-            </View>
+            </TouchableOpacity>
           );
         })}
       </View>
@@ -865,7 +873,6 @@ function EventDetailsModal({
   const [end, setEnd] = useState<Date>(new Date(event.end_at));
   const [title, setTitle] = useState(event.title);
   const [description, setDescription] = useState(event.description || "");
-  const [showPicker, setShowPicker] = useState<null | { which: "date" | "startTime" | "endTime" }>(null);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
   const [attachments, setAttachments] = useState<any[]>(event.attachments || []);
@@ -901,27 +908,8 @@ function EventDetailsModal({
     finally { setSaving(false); }
   };
 
-  const onPickerChange = (which: "date" | "startTime" | "endTime") => (event: any, picked?: Date) => {
-    if (Platform.OS !== "ios") setShowPicker(null);
-    if (event?.type === "dismissed" || !picked) return;
-    if (which === "date") {
-      // Update date part on both start and end, keep times
-      const newStart = new Date(start); newStart.setFullYear(picked.getFullYear(), picked.getMonth(), picked.getDate());
-      const newEnd = new Date(end); newEnd.setFullYear(picked.getFullYear(), picked.getMonth(), picked.getDate());
-      setStart(newStart); setEnd(newEnd);
-    } else if (which === "startTime") {
-      const newStart = new Date(start);
-      newStart.setHours(picked.getHours(), picked.getMinutes(), 0, 0);
-      setStart(newStart);
-      if (end <= newStart) {
-        const ne = new Date(newStart); ne.setMinutes(ne.getMinutes() + 60);
-        setEnd(ne);
-      }
-    } else if (which === "endTime") {
-      const newEnd = new Date(end);
-      newEnd.setHours(picked.getHours(), picked.getMinutes(), 0, 0);
-      setEnd(newEnd);
-    }
+  const onPickerChange = (which: "date" | "startTime" | "endTime") => (_event: any, _picked?: Date) => {
+    // retained for backward compat — no longer used (replaced by DateTimeField)
   };
 
   const pickAndUpload = async () => {
@@ -1032,57 +1020,47 @@ function EventDetailsModal({
             </TouchableOpacity>
           </View>
           <ScrollView keyboardShouldPersistTaps="handled">
-            {/* Date & Time row */}
-            <View style={s.dtRow}>
-              <Text style={s.mLabel}>FECHA</Text>
-              <TouchableOpacity
-                testID="btn-pick-date"
-                style={[s.dtBtn, !isAdmin && { opacity: 0.7 }]}
-                disabled={!isAdmin}
-                onPress={() => setShowPicker({ which: "date" })}
-              >
-                <Ionicons name="calendar" size={16} color={COLORS.primary} />
-                <Text style={s.dtBtnText}>
-                  {start.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            {/* Date & Time row — cross-platform pickers */}
+            <DateTimeField
+              testID="picker-date"
+              label="FECHA"
+              mode="date"
+              value={start}
+              disabled={!isAdmin}
+              onChange={(picked) => {
+                const newStart = new Date(start); newStart.setFullYear(picked.getFullYear(), picked.getMonth(), picked.getDate());
+                const newEnd = new Date(end); newEnd.setFullYear(picked.getFullYear(), picked.getMonth(), picked.getDate());
+                setStart(newStart); setEnd(newEnd);
+              }}
+            />
             <View style={s.dtDouble}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.mLabel}>HORA INICIO</Text>
-                <TouchableOpacity
-                  testID="btn-pick-start"
-                  style={[s.dtBtn, !isAdmin && { opacity: 0.7 }]}
-                  disabled={!isAdmin}
-                  onPress={() => setShowPicker({ which: "startTime" })}
-                >
-                  <Ionicons name="time" size={16} color={COLORS.primary} />
-                  <Text style={s.dtBtnText}>{fmtTime(start)}</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.mLabel}>HORA FIN</Text>
-                <TouchableOpacity
-                  testID="btn-pick-end"
-                  style={[s.dtBtn, !isAdmin && { opacity: 0.7 }]}
-                  disabled={!isAdmin}
-                  onPress={() => setShowPicker({ which: "endTime" })}
-                >
-                  <Ionicons name="time" size={16} color={COLORS.primary} />
-                  <Text style={s.dtBtnText}>{fmtTime(end)}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {showPicker && (
-              <DateTimePicker
-                value={showPicker.which === "endTime" ? end : start}
-                mode={showPicker.which === "date" ? "date" : "time"}
-                is24Hour
-                display={Platform.OS === "ios" ? "spinner" : "default"}
-                onChange={onPickerChange(showPicker.which)}
+              <DateTimeField
+                testID="picker-start"
+                label="HORA INICIO"
+                mode="time"
+                value={start}
+                disabled={!isAdmin}
+                onChange={(picked) => {
+                  const ns = new Date(start); ns.setHours(picked.getHours(), picked.getMinutes(), 0, 0);
+                  setStart(ns);
+                  if (end <= ns) {
+                    const ne = new Date(ns); ne.setMinutes(ne.getMinutes() + 60);
+                    setEnd(ne);
+                  }
+                }}
               />
-            )}
+              <DateTimeField
+                testID="picker-end"
+                label="HORA FIN"
+                mode="time"
+                value={end}
+                disabled={!isAdmin}
+                onChange={(picked) => {
+                  const ne = new Date(end); ne.setHours(picked.getHours(), picked.getMinutes(), 0, 0);
+                  setEnd(ne);
+                }}
+              />
+            </View>
 
             {m && (
               <View style={s.matPreview}>
