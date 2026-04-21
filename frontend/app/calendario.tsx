@@ -10,11 +10,16 @@ import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../src/api";
 
 const HOUR_START = 7;
-const HOUR_END = 18; // 6pm shown as last mark
-const HOURS = HOUR_END - HOUR_START; // 11 hours
-const HOUR_H = 56; // px per hour
+const HOUR_END = 18;
+const HOURS = HOUR_END - HOUR_START;
+const HOUR_H = 56;
 const TIME_COL_W = 52;
 const DAY_LABELS = ["Lun", "Mar", "Mié", "Jue", "Vie"];
+const DAY_LABELS_FULL = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
+const DAY_LABELS_MONTH = ["L", "M", "X", "J", "V", "S", "D"];
+const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+
+type ViewMode = "day" | "week" | "month";
 
 type EventT = {
   id: string;
@@ -27,31 +32,26 @@ type EventT = {
   created_by: string;
 };
 
+// Date helpers
 function mondayOf(d: Date): Date {
   const x = new Date(d);
-  const day = x.getDay() === 0 ? 7 : x.getDay(); // 1..7, Mon=1
+  const day = x.getDay() === 0 ? 7 : x.getDay();
   x.setDate(x.getDate() - (day - 1));
   x.setHours(0, 0, 0, 0);
   return x;
 }
+function firstOfMonth(d: Date): Date { return new Date(d.getFullYear(), d.getMonth(), 1); }
 function addDays(d: Date, n: number): Date { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
-function sameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-}
-function fmtRange(start: Date, end: Date): string {
-  const m = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
-  if (start.getMonth() === end.getMonth()) {
-    return `${start.getDate()} – ${end.getDate()} ${m[start.getMonth()]} ${start.getFullYear()}`;
-  }
-  return `${start.getDate()} ${m[start.getMonth()]} – ${end.getDate()} ${m[end.getMonth()]} ${start.getFullYear()}`;
-}
+function addMonths(d: Date, n: number): Date { const x = new Date(d); x.setMonth(x.getMonth() + n); return x; }
+function sameDay(a: Date, b: Date): boolean { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
 function pad(n: number): string { return String(n).padStart(2, "0"); }
 function fmtTime(d: Date): string { return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
-
+function fmtRange(start: Date, end: Date): string {
+  if (start.getMonth() === end.getMonth()) return `${start.getDate()} – ${end.getDate()} ${MONTHS[start.getMonth()].slice(0, 3)} ${start.getFullYear()}`;
+  return `${start.getDate()} ${MONTHS[start.getMonth()].slice(0, 3)} – ${end.getDate()} ${MONTHS[end.getMonth()].slice(0, 3)} ${start.getFullYear()}`;
+}
 function minutesFromTop(y: number): number {
-  // snap to 15min
-  const totalMin = Math.max(0, Math.min(HOURS * 60, Math.round((y / HOUR_H) * 60 / 15) * 15));
-  return totalMin;
+  return Math.max(0, Math.min(HOURS * 60, Math.round((y / HOUR_H) * 60 / 15) * 15));
 }
 function dateAt(base: Date, minutesFrom7: number): Date {
   const d = new Date(base);
@@ -67,20 +67,34 @@ function yFromDate(d: Date): number {
 export default function CalendarScreen() {
   const router = useRouter();
   const [me, setMe] = useState<any>(null);
-  const [weekStart, setWeekStart] = useState<Date>(mondayOf(new Date()));
+  const [view, setView] = useState<ViewMode>("week");
+  const [anchor, setAnchor] = useState<Date>(new Date());
   const [events, setEvents] = useState<EventT[]>([]);
   const [loading, setLoading] = useState(true);
   const [createRange, setCreateRange] = useState<{ day: Date; startMin: number; endMin: number } | null>(null);
   const [openEvent, setOpenEvent] = useState<EventT | null>(null);
 
+  // Range to fetch
+  const { rangeFrom, rangeTo } = useMemo(() => {
+    if (view === "day") {
+      const s = new Date(anchor); s.setHours(0, 0, 0, 0);
+      const e = addDays(s, 1);
+      return { rangeFrom: s, rangeTo: e };
+    }
+    if (view === "week") {
+      const s = mondayOf(anchor);
+      return { rangeFrom: s, rangeTo: addDays(s, 7) };
+    }
+    const s = firstOfMonth(anchor);
+    const monday = mondayOf(s);
+    return { rangeFrom: monday, rangeTo: addDays(monday, 42) };
+  }, [view, anchor]);
+
   const load = async () => {
     setLoading(true);
     try {
       const [list, who] = await Promise.all([
-        api.listEvents(
-          weekStart.toISOString(),
-          addDays(weekStart, 7).toISOString(),
-        ),
+        api.listEvents(rangeFrom.toISOString(), rangeTo.toISOString()),
         api.me(),
       ]);
       setEvents(list);
@@ -92,12 +106,41 @@ export default function CalendarScreen() {
     }
   };
 
-  useFocusEffect(useCallback(() => { load(); }, [weekStart]));
+  useFocusEffect(useCallback(() => { load(); }, [rangeFrom.getTime(), rangeTo.getTime()]));
 
   const isAdmin = me?.role === "admin";
-  const days = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(weekStart, i)), [weekStart]);
   const now = new Date();
-  const nowY = yFromDate(now);
+
+  const stepBack = () => {
+    if (view === "day") setAnchor(addDays(anchor, -1));
+    else if (view === "week") setAnchor(addDays(anchor, -7));
+    else setAnchor(addMonths(anchor, -1));
+  };
+  const stepForward = () => {
+    if (view === "day") setAnchor(addDays(anchor, 1));
+    else if (view === "week") setAnchor(addDays(anchor, 7));
+    else setAnchor(addMonths(anchor, 1));
+  };
+
+  const headerSub = useMemo(() => {
+    if (view === "day") return anchor.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    if (view === "week") {
+      const s = mondayOf(anchor);
+      return fmtRange(s, addDays(s, 4));
+    }
+    return `${MONTHS[anchor.getMonth()]} ${anchor.getFullYear()}`;
+  }, [view, anchor]);
+
+  const moveEvent = async (ev: EventT, newStart: Date, newEnd: Date) => {
+    // Optimistic update
+    setEvents((arr) => arr.map((e) => e.id === ev.id ? { ...e, start_at: newStart.toISOString(), end_at: newEnd.toISOString() } : e));
+    try {
+      await api.updateEvent(ev.id, { start_at: newStart.toISOString(), end_at: newEnd.toISOString() });
+    } catch (e: any) {
+      Alert.alert("Error", e.message);
+      load();
+    }
+  };
 
   return (
     <SafeAreaView style={s.root} edges={["top"]}>
@@ -107,71 +150,70 @@ export default function CalendarScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1, alignItems: "center" }}>
           <Text style={s.headerTitle}>Calendario</Text>
-          <Text style={s.headerSub}>{fmtRange(days[0], days[4])}</Text>
+          <Text style={s.headerSub} numberOfLines={1}>{headerSub}</Text>
         </View>
-        <TouchableOpacity style={s.iconBtn} onPress={() => setWeekStart(mondayOf(new Date()))}>
+        <TouchableOpacity style={s.iconBtn} onPress={() => setAnchor(new Date())}>
           <Ionicons name="today-outline" size={22} color={COLORS.navy} />
         </TouchableOpacity>
       </View>
 
-      <View style={s.navRow}>
-        <TouchableOpacity style={s.navBtn} onPress={() => setWeekStart(addDays(weekStart, -7))}>
-          <Ionicons name="chevron-back" size={20} color={COLORS.navy} />
-          <Text style={s.navBtnText}>Semana anterior</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={s.navBtn} onPress={() => setWeekStart(addDays(weekStart, 7))}>
-          <Text style={s.navBtnText}>Semana siguiente</Text>
-          <Ionicons name="chevron-forward" size={20} color={COLORS.navy} />
-        </TouchableOpacity>
+      {/* View selector */}
+      <View style={s.viewSelector}>
+        {(["day", "week", "month"] as ViewMode[]).map((v) => (
+          <TouchableOpacity
+            key={v}
+            testID={`view-${v}`}
+            style={[s.viewChip, view === v && s.viewChipActive]}
+            onPress={() => setView(v)}
+          >
+            <Text style={[s.viewChipText, view === v && { color: "#fff" }]}>
+              {v === "day" ? "Día" : v === "week" ? "Semana" : "Mes"}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
-      {/* Day headers */}
-      <View style={s.dayHeaderRow}>
-        <View style={{ width: TIME_COL_W }} />
-        {days.map((d, i) => {
-          const today = sameDay(d, now);
-          return (
-            <View key={i} style={[s.dayHeader, today && s.dayHeaderToday]}>
-              <Text style={[s.dayLabel, today && { color: COLORS.primary }]}>{DAY_LABELS[i]}</Text>
-              <Text style={[s.dayNum, today && { color: COLORS.primary, fontWeight: "900" }]}>{d.getDate()}</Text>
-            </View>
-          );
-        })}
+      <View style={s.navRow}>
+        <TouchableOpacity style={s.navBtn} onPress={stepBack}>
+          <Ionicons name="chevron-back" size={20} color={COLORS.navy} />
+        </TouchableOpacity>
+        <TouchableOpacity style={s.navBtn} onPress={stepForward}>
+          <Ionicons name="chevron-forward" size={20} color={COLORS.navy} />
+        </TouchableOpacity>
       </View>
 
       {loading ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator color={COLORS.primary} size="large" />
         </View>
+      ) : view === "month" ? (
+        <MonthView
+          anchor={anchor}
+          events={events}
+          onSelectDay={(d) => { setAnchor(d); setView("day"); }}
+        />
+      ) : view === "day" ? (
+        <DayView
+          day={anchor}
+          events={events.filter((e) => sameDay(new Date(e.start_at), anchor))}
+          isAdmin={isAdmin}
+          isToday={sameDay(anchor, now)}
+          onCreate={(startMin, endMin) => setCreateRange({ day: anchor, startMin, endMin })}
+          onTapEvent={setOpenEvent}
+          onMoveEvent={moveEvent}
+        />
       ) : (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
-          <View style={s.gridRow}>
-            {/* Hours column */}
-            <View style={{ width: TIME_COL_W }}>
-              {Array.from({ length: HOURS + 1 }).map((_, i) => (
-                <View key={i} style={{ height: HOUR_H }}>
-                  <Text style={s.hourLabel}>{pad(HOUR_START + i)}:00</Text>
-                </View>
-              ))}
-            </View>
-            {/* Day columns */}
-            {days.map((d, i) => (
-              <DayColumn
-                key={i}
-                day={d}
-                events={events.filter((e) => sameDay(new Date(e.start_at), d))}
-                isAdmin={isAdmin}
-                onCreate={(startMin, endMin) => setCreateRange({ day: d, startMin, endMin })}
-                onTapEvent={(e) => setOpenEvent(e)}
-                isToday={sameDay(d, now)}
-                nowY={nowY}
-              />
-            ))}
-          </View>
-        </ScrollView>
+        <WeekView
+          weekStart={mondayOf(anchor)}
+          events={events}
+          isAdmin={isAdmin}
+          now={now}
+          onCreate={(day, startMin, endMin) => setCreateRange({ day, startMin, endMin })}
+          onTapEvent={setOpenEvent}
+          onMoveEvent={moveEvent}
+        />
       )}
 
-      {/* Create event modal */}
       {createRange && (
         <CreateEventModal
           visible={!!createRange}
@@ -180,8 +222,6 @@ export default function CalendarScreen() {
           onDone={() => { setCreateRange(null); load(); }}
         />
       )}
-
-      {/* Event details */}
       {openEvent && (
         <EventDetailsModal
           event={openEvent}
@@ -194,17 +234,174 @@ export default function CalendarScreen() {
   );
 }
 
-// ---------------- Day column ----------------
+// ---------------- Month view ----------------
+function MonthView({
+  anchor, events, onSelectDay,
+}: { anchor: Date; events: EventT[]; onSelectDay: (d: Date) => void }) {
+  const first = firstOfMonth(anchor);
+  const gridStart = mondayOf(first);
+  const weeks = 6;
+  const today = new Date();
+  return (
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }}>
+      <View style={s.monthHeader}>
+        {DAY_LABELS_MONTH.map((d, i) => (
+          <View key={i} style={s.monthHeaderCell}>
+            <Text style={s.monthHeaderText}>{d}</Text>
+          </View>
+        ))}
+      </View>
+      {Array.from({ length: weeks }).map((_, w) => (
+        <View key={w} style={s.monthRow}>
+          {Array.from({ length: 7 }).map((_, d) => {
+            const date = addDays(gridStart, w * 7 + d);
+            const inMonth = date.getMonth() === anchor.getMonth();
+            const isToday = sameDay(date, today);
+            const dayEvents = events.filter((e) => sameDay(new Date(e.start_at), date));
+            return (
+              <TouchableOpacity
+                key={d}
+                style={[
+                  s.monthCell,
+                  !inMonth && { backgroundColor: "transparent", opacity: 0.4 },
+                  isToday && s.monthCellToday,
+                ]}
+                onPress={() => onSelectDay(date)}
+                activeOpacity={0.7}
+              >
+                <Text style={[s.monthDayNum, isToday && { color: COLORS.primary, fontWeight: "900" }]}>
+                  {date.getDate()}
+                </Text>
+                <View style={s.monthDots}>
+                  {dayEvents.slice(0, 3).map((ev, i) => (
+                    <View
+                      key={ev.id}
+                      style={[s.monthDot, { backgroundColor: ev.material_id ? COLORS.primary : "#6366F1" }]}
+                    />
+                  ))}
+                  {dayEvents.length > 3 && (
+                    <Text style={s.monthMoreText}>+{dayEvents.length - 3}</Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+
+// ---------------- Week view ----------------
+function WeekView({
+  weekStart, events, isAdmin, now, onCreate, onTapEvent, onMoveEvent,
+}: {
+  weekStart: Date; events: EventT[]; isAdmin: boolean; now: Date;
+  onCreate: (day: Date, startMin: number, endMin: number) => void;
+  onTapEvent: (e: EventT) => void;
+  onMoveEvent: (ev: EventT, s: Date, e: Date) => Promise<void>;
+}) {
+  const days = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(weekStart, i)), [weekStart]);
+  const nowY = yFromDate(now);
+  return (
+    <>
+      <View style={s.dayHeaderRow}>
+        <View style={{ width: TIME_COL_W }} />
+        {days.map((d, i) => {
+          const isToday = sameDay(d, now);
+          return (
+            <View key={i} style={[s.dayHeader, isToday && s.dayHeaderToday]}>
+              <Text style={[s.dayLabel, isToday && { color: COLORS.primary }]}>{DAY_LABELS[i]}</Text>
+              <Text style={[s.dayNum, isToday && { color: COLORS.primary, fontWeight: "900" }]}>{d.getDate()}</Text>
+            </View>
+          );
+        })}
+      </View>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
+        <View style={s.gridRow}>
+          <View style={{ width: TIME_COL_W }}>
+            {Array.from({ length: HOURS + 1 }).map((_, i) => (
+              <View key={i} style={{ height: HOUR_H }}>
+                <Text style={s.hourLabel}>{pad(HOUR_START + i)}:00</Text>
+              </View>
+            ))}
+          </View>
+          {days.map((d, i) => (
+            <DayColumn
+              key={i}
+              day={d}
+              events={events.filter((e) => sameDay(new Date(e.start_at), d))}
+              isAdmin={isAdmin}
+              onCreate={(s2, e2) => onCreate(d, s2, e2)}
+              onTapEvent={onTapEvent}
+              onMoveEvent={onMoveEvent}
+              isToday={sameDay(d, now)}
+              nowY={nowY}
+              compact
+            />
+          ))}
+        </View>
+      </ScrollView>
+    </>
+  );
+}
+
+// ---------------- Day view ----------------
+function DayView({
+  day, events, isAdmin, isToday, onCreate, onTapEvent, onMoveEvent,
+}: {
+  day: Date; events: EventT[]; isAdmin: boolean; isToday: boolean;
+  onCreate: (startMin: number, endMin: number) => void;
+  onTapEvent: (e: EventT) => void;
+  onMoveEvent: (ev: EventT, s: Date, e: Date) => Promise<void>;
+}) {
+  const now = new Date();
+  const nowY = yFromDate(now);
+  const dayIdx = day.getDay() === 0 ? 6 : day.getDay() - 1;
+  const dayName = dayIdx < 5 ? DAY_LABELS_FULL[dayIdx] : ["Sábado", "Domingo"][dayIdx - 5];
+  return (
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
+      <View style={[s.dayFullHeader, isToday && s.dayHeaderToday]}>
+        <Text style={[s.dayLabel, isToday && { color: COLORS.primary }]}>{dayName}</Text>
+        <Text style={[s.dayNumBig, isToday && { color: COLORS.primary }]}>{day.getDate()}</Text>
+      </View>
+      <View style={s.gridRow}>
+        <View style={{ width: TIME_COL_W }}>
+          {Array.from({ length: HOURS + 1 }).map((_, i) => (
+            <View key={i} style={{ height: HOUR_H }}>
+              <Text style={s.hourLabel}>{pad(HOUR_START + i)}:00</Text>
+            </View>
+          ))}
+        </View>
+        <DayColumn
+          day={day}
+          events={events}
+          isAdmin={isAdmin}
+          onCreate={onCreate}
+          onTapEvent={onTapEvent}
+          onMoveEvent={onMoveEvent}
+          isToday={isToday}
+          nowY={nowY}
+          compact={false}
+        />
+      </View>
+    </ScrollView>
+  );
+}
+
+// ---------------- DayColumn (with draggable events) ----------------
 function DayColumn({
-  day, events, isAdmin, onCreate, onTapEvent, isToday, nowY,
+  day, events, isAdmin, onCreate, onTapEvent, onMoveEvent, isToday, nowY, compact,
 }: {
   day: Date; events: EventT[]; isAdmin: boolean;
   onCreate: (startMin: number, endMin: number) => void;
   onTapEvent: (e: EventT) => void;
-  isToday: boolean; nowY: number;
+  onMoveEvent: (ev: EventT, s: Date, e: Date) => Promise<void>;
+  isToday: boolean; nowY: number; compact: boolean;
 }) {
   const [dragRange, setDragRange] = useState<{ s: number; e: number } | null>(null);
   const startRef = useRef<number>(0);
+  const [dragEvent, setDragEvent] = useState<{ id: string; top: number; height: number } | null>(null);
 
   const pan = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => isAdmin,
@@ -223,53 +420,37 @@ function DayColumn({
       setDragRange({ s, e: Math.max(e, s + 15) });
     },
     onPanResponderRelease: () => {
-      if (dragRange) {
-        onCreate(dragRange.s, dragRange.e);
-      }
+      if (dragRange) onCreate(dragRange.s, dragRange.e);
       setDragRange(null);
     },
     onPanResponderTerminate: () => setDragRange(null),
   }), [isAdmin, dragRange, onCreate]);
 
   return (
-    <View style={{ flex: 1, height: HOURS * HOUR_H, position: "relative" }} {...pan.panHandlers}>
-      {/* Hour grid lines */}
+    <View style={{ flex: 1, height: HOURS * HOUR_H, position: "relative" }}>
+      <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} {...pan.panHandlers} />
       {Array.from({ length: HOURS + 1 }).map((_, i) => (
         <View key={i} style={[s.hourLine, { top: i * HOUR_H }]} />
       ))}
-      {/* Half-hour lines */}
       {Array.from({ length: HOURS }).map((_, i) => (
         <View key={`h${i}`} style={[s.halfHourLine, { top: i * HOUR_H + HOUR_H / 2 }]} />
       ))}
-      {/* Now line */}
       {isToday && nowY >= 0 && nowY <= HOURS * HOUR_H && (
-        <View style={[s.nowLine, { top: nowY }]}>
+        <View style={[s.nowLine, { top: nowY }]} pointerEvents="none">
           <View style={s.nowDot} />
         </View>
       )}
-      {/* Events */}
-      {events.map((ev) => {
-        const top = yFromDate(new Date(ev.start_at));
-        const bottom = yFromDate(new Date(ev.end_at));
-        const height = Math.max(24, bottom - top);
-        const hasMaterial = !!ev.material_id;
-        return (
-          <TouchableOpacity
-            key={ev.id}
-            style={[s.eventBox, {
-              top, height,
-              backgroundColor: hasMaterial ? "#DBEAFE" : "#E0E7FF",
-              borderLeftColor: hasMaterial ? COLORS.primary : "#6366F1",
-            }]}
-            onPress={() => onTapEvent(ev)}
-            activeOpacity={0.8}
-          >
-            <Text style={s.eventTitle} numberOfLines={2}>{ev.title}</Text>
-            <Text style={s.eventTime}>{fmtTime(new Date(ev.start_at))} - {fmtTime(new Date(ev.end_at))}</Text>
-          </TouchableOpacity>
-        );
-      })}
-      {/* Drag preview */}
+      {events.map((ev) => (
+        <DraggableEvent
+          key={ev.id}
+          event={ev}
+          day={day}
+          isAdmin={isAdmin}
+          compact={compact}
+          onTap={() => onTapEvent(ev)}
+          onMoveEvent={onMoveEvent}
+        />
+      ))}
       {dragRange && (
         <View style={[s.dragPreview, {
           top: (dragRange.s / 60) * HOUR_H,
@@ -278,6 +459,117 @@ function DayColumn({
           <Text style={s.dragPreviewText}>
             {pad(HOUR_START + Math.floor(dragRange.s / 60))}:{pad(dragRange.s % 60)} - {pad(HOUR_START + Math.floor(dragRange.e / 60))}:{pad(dragRange.e % 60)}
           </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ---------------- Draggable event (move + resize) ----------------
+function DraggableEvent({
+  event, day, isAdmin, compact, onTap, onMoveEvent,
+}: {
+  event: EventT; day: Date; isAdmin: boolean; compact: boolean;
+  onTap: () => void;
+  onMoveEvent: (ev: EventT, s: Date, e: Date) => Promise<void>;
+}) {
+  const start = new Date(event.start_at);
+  const end = new Date(event.end_at);
+  const initTop = yFromDate(start);
+  const initHeight = Math.max(24, yFromDate(end) - initTop);
+
+  const [top, setTop] = useState(initTop);
+  const [height, setHeight] = useState(initHeight);
+  const [mode, setMode] = useState<"idle" | "move" | "resize">("idle");
+  const baseRef = useRef<{ top: number; height: number }>({ top: initTop, height: initHeight });
+
+  useEffect(() => { setTop(initTop); setHeight(initHeight); baseRef.current = { top: initTop, height: initHeight }; }, [event.start_at, event.end_at]);
+
+  const tapTimeRef = useRef(0);
+  const hasMovedRef = useRef(false);
+
+  const panMove = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => isAdmin,
+    onStartShouldSetPanResponderCapture: () => isAdmin,
+    onMoveShouldSetPanResponder: (_, g) => isAdmin && (Math.abs(g.dy) > 4 || Math.abs(g.dx) > 4),
+    onMoveShouldSetPanResponderCapture: (_, g) => isAdmin && (Math.abs(g.dy) > 4 || Math.abs(g.dx) > 4),
+    onPanResponderGrant: () => {
+      tapTimeRef.current = Date.now();
+      hasMovedRef.current = false;
+      baseRef.current = { top, height };
+      setMode("move");
+    },
+    onPanResponderMove: (_, g) => {
+      if (Math.abs(g.dy) > 3 || Math.abs(g.dx) > 3) hasMovedRef.current = true;
+      const snapDy = Math.round(g.dy / (HOUR_H / 4)) * (HOUR_H / 4); // snap to 15min
+      const nt = Math.max(0, Math.min(HOURS * HOUR_H - baseRef.current.height, baseRef.current.top + snapDy));
+      setTop(nt);
+    },
+    onPanResponderRelease: async () => {
+      if (!hasMovedRef.current) {
+        onTap();
+        setMode("idle");
+        setTop(baseRef.current.top);
+        return;
+      }
+      const startMin = Math.round((top / HOUR_H) * 60 / 15) * 15;
+      const durMin = Math.round((height / HOUR_H) * 60);
+      const newStart = dateAt(day, startMin);
+      const newEnd = new Date(newStart.getTime() + durMin * 60000);
+      await onMoveEvent(event, newStart, newEnd);
+      setMode("idle");
+    },
+    onPanResponderTerminate: () => { setTop(baseRef.current.top); setMode("idle"); },
+  }), [isAdmin, top, height, event, day, onTap, onMoveEvent]);
+
+  const panResize = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => isAdmin,
+    onStartShouldSetPanResponderCapture: () => isAdmin,
+    onMoveShouldSetPanResponder: () => isAdmin,
+    onMoveShouldSetPanResponderCapture: () => isAdmin,
+    onPanResponderGrant: () => {
+      baseRef.current = { top, height };
+      setMode("resize");
+    },
+    onPanResponderMove: (_, g) => {
+      const snap = Math.round(g.dy / (HOUR_H / 4)) * (HOUR_H / 4);
+      const nh = Math.max(HOUR_H / 4, Math.min(HOURS * HOUR_H - baseRef.current.top, baseRef.current.height + snap));
+      setHeight(nh);
+    },
+    onPanResponderRelease: async () => {
+      const startMin = Math.round((top / HOUR_H) * 60 / 15) * 15;
+      const durMin = Math.max(15, Math.round((height / HOUR_H) * 60 / 15) * 15);
+      const newStart = dateAt(day, startMin);
+      const newEnd = new Date(newStart.getTime() + durMin * 60000);
+      await onMoveEvent(event, newStart, newEnd);
+      setMode("idle");
+    },
+    onPanResponderTerminate: () => { setHeight(baseRef.current.height); setMode("idle"); },
+  }), [isAdmin, top, height, event, day, onMoveEvent]);
+
+  const hasMaterial = !!event.material_id;
+  return (
+    <View
+      style={[s.eventBox, {
+        top, height,
+        backgroundColor: hasMaterial ? "#DBEAFE" : "#E0E7FF",
+        borderLeftColor: hasMaterial ? COLORS.primary : "#6366F1",
+        opacity: mode === "move" ? 0.8 : 1,
+        zIndex: mode === "idle" ? 2 : 10,
+        elevation: mode === "idle" ? 2 : 10,
+      }]}
+      {...(isAdmin ? panMove.panHandlers : {})}
+    >
+      <TouchableOpacity onPress={onTap} activeOpacity={0.8} disabled={isAdmin}>
+        <Text style={s.eventTitle} numberOfLines={compact ? 2 : 3}>{event.title}</Text>
+        <Text style={s.eventTime}>{fmtTime(new Date(event.start_at))} - {fmtTime(new Date(event.end_at))}</Text>
+        {!compact && event.material && (
+          <Text style={s.eventMeta} numberOfLines={1}>📍 {event.material.ubicacion || ""}</Text>
+        )}
+      </TouchableOpacity>
+      {isAdmin && (
+        <View style={s.resizeHandle} {...panResize.panHandlers}>
+          <View style={s.resizeBar} />
         </View>
       )}
     </View>
@@ -330,14 +622,8 @@ function CreateEventModal({
   };
 
   const submit = async () => {
-    if (mode === "texto" && !title.trim()) {
-      Alert.alert("Error", "Introduce un título");
-      return;
-    }
-    if (mode === "proyecto" && !materialId) {
-      Alert.alert("Error", "Selecciona un proyecto");
-      return;
-    }
+    if (mode === "texto" && !title.trim()) { Alert.alert("Error", "Introduce un título"); return; }
+    if (mode === "proyecto" && !materialId) { Alert.alert("Error", "Selecciona un proyecto"); return; }
     setSaving(true);
     try {
       await api.createEvent({
@@ -348,26 +634,17 @@ function CreateEventModal({
         material_id: materialId || undefined,
       });
       onDone();
-    } catch (e: any) {
-      Alert.alert("Error", e.message);
-    } finally {
-      setSaving(false);
-    }
+    } catch (e: any) { Alert.alert("Error", e.message); }
+    finally { setSaving(false); }
   };
 
   const filtered = q.trim()
-    ? materiales.filter((m) => {
-        const str = `${m.materiales || ""} ${m.cliente || ""} ${m.ubicacion || ""}`.toLowerCase();
-        return str.includes(q.toLowerCase());
-      })
+    ? materiales.filter((m) => `${m.materiales || ""} ${m.cliente || ""} ${m.ubicacion || ""}`.toLowerCase().includes(q.toLowerCase()))
     : materiales;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={s.modalRoot}
-      >
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={s.modalRoot}>
         <View style={[s.modalCard, showMatList && { maxHeight: "88%", minHeight: "70%" }]}>
           <View style={s.modalHeader}>
             <Text style={s.modalTitle}>Nuevo evento</Text>
@@ -375,7 +652,6 @@ function CreateEventModal({
               <Ionicons name="close" size={26} color={COLORS.text} />
             </TouchableOpacity>
           </View>
-
           {showMatList ? (
             <View style={{ flex: 1, minHeight: 300 }}>
               <TouchableOpacity style={s.backRow} onPress={() => setShowMatList(false)}>
@@ -384,22 +660,13 @@ function CreateEventModal({
               </TouchableOpacity>
               <View style={s.searchBox}>
                 <Ionicons name="search" size={18} color={COLORS.textSecondary} />
-                <TextInput
-                  style={s.searchInput}
-                  value={q}
-                  onChangeText={setQ}
-                  placeholder="Buscar proyecto..."
-                  placeholderTextColor={COLORS.textDisabled}
-                />
+                <TextInput style={s.searchInput} value={q} onChangeText={setQ} placeholder="Buscar proyecto..." placeholderTextColor={COLORS.textDisabled} />
               </View>
               {loadingMat ? (
                 <ActivityIndicator color={COLORS.primary} style={{ padding: 20 }} />
               ) : (
                 <FlatList
-                  data={filtered}
-                  keyExtractor={(m) => m.id}
-                  style={{ flex: 1 }}
-                  keyboardShouldPersistTaps="handled"
+                  data={filtered} keyExtractor={(m) => m.id} style={{ flex: 1 }} keyboardShouldPersistTaps="handled"
                   renderItem={({ item }) => (
                     <TouchableOpacity style={s.matRow} onPress={() => pickMaterial(item)}>
                       <View style={{ flex: 1 }}>
@@ -423,47 +690,22 @@ function CreateEventModal({
                   {" · "}{fmtTime(startDate)} - {fmtTime(endDate)}
                 </Text>
               </View>
-
               <View style={s.modeRow}>
-                <TouchableOpacity
-                  testID="mode-texto"
-                  style={[s.modeChip, mode === "texto" && s.modeChipActive]}
-                  onPress={() => setMode("texto")}
-                >
+                <TouchableOpacity testID="mode-texto" style={[s.modeChip, mode === "texto" && s.modeChipActive]} onPress={() => setMode("texto")}>
                   <Ionicons name="create-outline" size={18} color={mode === "texto" ? "#fff" : COLORS.navy} />
                   <Text style={[s.modeChipText, mode === "texto" && { color: "#fff" }]}>Texto libre</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  testID="mode-proyecto"
-                  style={[s.modeChip, mode === "proyecto" && s.modeChipActive]}
-                  onPress={() => { setMode("proyecto"); loadMateriales(); }}
-                >
+                <TouchableOpacity testID="mode-proyecto" style={[s.modeChip, mode === "proyecto" && s.modeChipActive]} onPress={() => { setMode("proyecto"); loadMateriales(); }}>
                   <Ionicons name="briefcase-outline" size={18} color={mode === "proyecto" ? "#fff" : COLORS.navy} />
                   <Text style={[s.modeChipText, mode === "proyecto" && { color: "#fff" }]}>Desde proyecto</Text>
                 </TouchableOpacity>
               </View>
-
               {mode === "texto" ? (
                 <>
                   <Text style={s.mLabel}>Título</Text>
-                  <TextInput
-                    style={s.mInput}
-                    value={title}
-                    onChangeText={setTitle}
-                    placeholder="Ej. Reunión equipo"
-                    placeholderTextColor={COLORS.textDisabled}
-                    autoFocus
-                  />
+                  <TextInput style={s.mInput} value={title} onChangeText={setTitle} placeholder="Ej. Reunión equipo" placeholderTextColor={COLORS.textDisabled} autoFocus />
                   <Text style={s.mLabel}>Descripción (opcional)</Text>
-                  <TextInput
-                    style={[s.mInput, { height: 90, paddingTop: 12 }]}
-                    value={description}
-                    onChangeText={setDescription}
-                    placeholder="Notas adicionales..."
-                    multiline
-                    textAlignVertical="top"
-                    placeholderTextColor={COLORS.textDisabled}
-                  />
+                  <TextInput style={[s.mInput, { height: 90, paddingTop: 12 }]} value={description} onChangeText={setDescription} placeholder="Notas adicionales..." multiline textAlignVertical="top" placeholderTextColor={COLORS.textDisabled} />
                 </>
               ) : (
                 <>
@@ -483,33 +725,16 @@ function CreateEventModal({
                       </TouchableOpacity>
                     </View>
                   ) : (
-                    <TouchableOpacity
-                      style={s.pickMatBtn}
-                      onPress={() => setShowMatList(true)}
-                    >
+                    <TouchableOpacity style={s.pickMatBtn} onPress={() => setShowMatList(true)}>
                       <Ionicons name="list" size={20} color={COLORS.primary} />
                       <Text style={{ color: COLORS.primary, fontWeight: "700" }}>Elegir proyecto...</Text>
                     </TouchableOpacity>
                   )}
                   <Text style={s.mLabel}>Nota adicional (opcional)</Text>
-                  <TextInput
-                    style={[s.mInput, { height: 70, paddingTop: 12 }]}
-                    value={description}
-                    onChangeText={setDescription}
-                    placeholder="Instrucciones específicas..."
-                    multiline
-                    textAlignVertical="top"
-                    placeholderTextColor={COLORS.textDisabled}
-                  />
+                  <TextInput style={[s.mInput, { height: 70, paddingTop: 12 }]} value={description} onChangeText={setDescription} placeholder="Instrucciones específicas..." multiline textAlignVertical="top" placeholderTextColor={COLORS.textDisabled} />
                 </>
               )}
-
-              <TouchableOpacity
-                testID="btn-create-event"
-                style={[s.primary, saving && { opacity: 0.6 }]}
-                onPress={submit}
-                disabled={saving}
-              >
+              <TouchableOpacity testID="btn-create-event" style={[s.primary, saving && { opacity: 0.6 }]} onPress={submit} disabled={saving}>
                 {saving ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryText}>CREAR EVENTO</Text>}
               </TouchableOpacity>
             </ScrollView>
@@ -529,18 +754,15 @@ function EventDetailsModal({
   const doDelete = () => {
     Alert.alert("Eliminar evento", "¿Seguro?", [
       { text: "Cancelar", style: "cancel" },
-      {
-        text: "Eliminar", style: "destructive",
-        onPress: async () => {
-          try { await api.deleteEvent(event.id); onDeleted(); }
-          catch (e: any) { Alert.alert("Error", e.message); }
-        },
-      },
+      { text: "Eliminar", style: "destructive", onPress: async () => {
+        try { await api.deleteEvent(event.id); onDeleted(); }
+        catch (e: any) { Alert.alert("Error", e.message); }
+      }},
     ]);
   };
   const m = event.material;
   return (
-    <Modal visible={true} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={s.modalRoot}>
         <View style={s.modalCard}>
           <View style={s.modalHeader}>
@@ -557,7 +779,6 @@ function EventDetailsModal({
                 {" · "}{fmtTime(start)} - {fmtTime(end)}
               </Text>
             </View>
-
             {m && (
               <View style={s.matPreview}>
                 <View style={{ flex: 1 }}>
@@ -573,23 +794,16 @@ function EventDetailsModal({
                 </View>
               </View>
             )}
-
             {event.description && (
               <>
                 <Text style={s.mLabel}>Notas</Text>
                 <Text style={s.descText}>{event.description}</Text>
               </>
             )}
-
             <Text style={[s.mLabel, { marginTop: 16 }]}>Creado por</Text>
             <Text style={s.descText}>{event.created_by}</Text>
-
             {isAdmin && (
-              <TouchableOpacity
-                testID="btn-delete-event"
-                style={[s.primary, { backgroundColor: COLORS.errorText }]}
-                onPress={doDelete}
-              >
+              <TouchableOpacity testID="btn-delete-event" style={[s.primary, { backgroundColor: COLORS.errorText }]} onPress={doDelete}>
                 <Ionicons name="trash" size={18} color="#fff" />
                 <Text style={s.primaryText}> ELIMINAR EVENTO</Text>
               </TouchableOpacity>
@@ -611,15 +825,23 @@ const s = StyleSheet.create({
   iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
   headerTitle: { fontSize: 18, fontWeight: "800", color: COLORS.text },
   headerSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2, textTransform: "capitalize" },
+  viewSelector: {
+    flexDirection: "row", gap: 6, padding: 8, backgroundColor: COLORS.surface,
+  },
+  viewChip: {
+    flex: 1, height: 36, borderRadius: 8, backgroundColor: COLORS.bg,
+    alignItems: "center", justifyContent: "center",
+  },
+  viewChipActive: { backgroundColor: COLORS.primary },
+  viewChipText: { fontSize: 13, fontWeight: "800", color: COLORS.navy, letterSpacing: 0.3 },
   navRow: {
-    flexDirection: "row", gap: 8, padding: 10, backgroundColor: COLORS.surface,
+    flexDirection: "row", gap: 8, paddingHorizontal: 8, paddingBottom: 8, backgroundColor: COLORS.surface,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
   navBtn: {
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
     backgroundColor: COLORS.bg, borderRadius: 8, paddingVertical: 8, gap: 4,
   },
-  navBtnText: { fontSize: 13, fontWeight: "700", color: COLORS.navy },
   dayHeaderRow: {
     flexDirection: "row", backgroundColor: COLORS.surface,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
@@ -631,100 +853,72 @@ const s = StyleSheet.create({
   dayHeaderToday: { backgroundColor: "#DBEAFE" },
   dayLabel: { fontSize: 11, color: COLORS.textSecondary, fontWeight: "800", letterSpacing: 1 },
   dayNum: { fontSize: 18, fontWeight: "700", color: COLORS.text, marginTop: 2 },
+  dayNumBig: { fontSize: 34, fontWeight: "900", color: COLORS.text, marginTop: 2 },
+  dayFullHeader: {
+    alignItems: "center", paddingVertical: 14, backgroundColor: COLORS.surface,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
   gridRow: { flexDirection: "row" },
   hourLabel: { fontSize: 11, color: COLORS.textSecondary, fontWeight: "600", paddingRight: 6, textAlign: "right", marginTop: -6, marginLeft: 4 },
-  hourLine: {
-    position: "absolute", left: 0, right: 0, height: 1, backgroundColor: COLORS.border,
-  },
-  halfHourLine: {
-    position: "absolute", left: 0, right: 0, height: 1,
-    backgroundColor: COLORS.border, opacity: 0.4,
-  },
-  nowLine: {
-    position: "absolute", left: 0, right: 0, height: 2, backgroundColor: "#EF4444",
-    zIndex: 5,
-  },
-  nowDot: {
-    position: "absolute", left: -4, top: -4, width: 10, height: 10,
-    borderRadius: 5, backgroundColor: "#EF4444",
-  },
+  hourLine: { position: "absolute", left: 0, right: 0, height: 1, backgroundColor: COLORS.border },
+  halfHourLine: { position: "absolute", left: 0, right: 0, height: 1, backgroundColor: COLORS.border, opacity: 0.4 },
+  nowLine: { position: "absolute", left: 0, right: 0, height: 2, backgroundColor: "#EF4444", zIndex: 5 },
+  nowDot: { position: "absolute", left: -4, top: -4, width: 10, height: 10, borderRadius: 5, backgroundColor: "#EF4444" },
   eventBox: {
     position: "absolute", left: 2, right: 2, borderRadius: 6,
     padding: 4, borderLeftWidth: 3, overflow: "hidden",
   },
   eventTitle: { fontSize: 11, fontWeight: "800", color: COLORS.navy },
   eventTime: { fontSize: 10, color: COLORS.textSecondary, marginTop: 1 },
+  eventMeta: { fontSize: 10, color: COLORS.textSecondary, marginTop: 1 },
+  resizeHandle: {
+    position: "absolute", bottom: 0, left: 0, right: 0, height: 14,
+    alignItems: "center", justifyContent: "center",
+  },
+  resizeBar: { width: 28, height: 4, borderRadius: 2, backgroundColor: COLORS.primary, opacity: 0.6 },
   dragPreview: {
-    position: "absolute", left: 2, right: 2,
-    backgroundColor: "rgba(30,136,229,0.3)",
-    borderWidth: 2, borderColor: COLORS.primary,
-    borderRadius: 6, alignItems: "center", justifyContent: "center",
+    position: "absolute", left: 2, right: 2, backgroundColor: "rgba(30,136,229,0.3)",
+    borderWidth: 2, borderColor: COLORS.primary, borderRadius: 6,
+    alignItems: "center", justifyContent: "center",
   },
   dragPreviewText: { fontSize: 11, fontWeight: "800", color: COLORS.primary },
+  // month
+  monthHeader: { flexDirection: "row", marginBottom: 4 },
+  monthHeaderCell: { flex: 1, alignItems: "center", paddingVertical: 6 },
+  monthHeaderText: { fontSize: 11, fontWeight: "800", color: COLORS.textSecondary, letterSpacing: 1 },
+  monthRow: { flexDirection: "row", marginBottom: 6 },
+  monthCell: {
+    flex: 1, minHeight: 70, margin: 2, padding: 6,
+    backgroundColor: COLORS.surface, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border,
+  },
+  monthCellToday: { borderColor: COLORS.primary, borderWidth: 2 },
+  monthDayNum: { fontSize: 14, fontWeight: "700", color: COLORS.text },
+  monthDots: { flexDirection: "row", flexWrap: "wrap", gap: 3, marginTop: 4, alignItems: "center" },
+  monthDot: { width: 7, height: 7, borderRadius: 3.5 },
+  monthMoreText: { fontSize: 9, color: COLORS.textSecondary, fontWeight: "700", marginLeft: 2 },
+  // modal
   modalRoot: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" },
-  modalCard: {
-    backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: 20, paddingBottom: 32, maxHeight: "85%",
-  },
-  modalHeader: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    marginBottom: 8,
-  },
+  modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32, maxHeight: "85%" },
+  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
   modalTitle: { fontSize: 20, fontWeight: "900", color: COLORS.text, flex: 1, marginRight: 12 },
-  timeBox: {
-    flexDirection: "row", alignItems: "center", gap: 8, padding: 12,
-    backgroundColor: COLORS.bg, borderRadius: 10, marginVertical: 8,
-  },
+  timeBox: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, backgroundColor: COLORS.bg, borderRadius: 10, marginVertical: 8 },
   timeText: { fontSize: 13, fontWeight: "700", color: COLORS.text, textTransform: "capitalize" },
   modeRow: { flexDirection: "row", gap: 8, marginTop: 8 },
-  modeChip: {
-    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 6, height: 48, borderRadius: 10, backgroundColor: COLORS.bg,
-    borderWidth: 2, borderColor: COLORS.borderInput,
-  },
+  modeChip: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 48, borderRadius: 10, backgroundColor: COLORS.bg, borderWidth: 2, borderColor: COLORS.borderInput },
   modeChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   modeChipText: { fontSize: 13, fontWeight: "800", color: COLORS.navy },
-  mLabel: {
-    fontSize: 11, fontWeight: "800", color: COLORS.textSecondary,
-    letterSpacing: 1.2, marginTop: 14, marginBottom: 6,
-  },
-  mInput: {
-    height: 50, backgroundColor: COLORS.bg, borderWidth: 2, borderColor: COLORS.borderInput,
-    borderRadius: 10, paddingHorizontal: 14, fontSize: 15, color: COLORS.text,
-  },
-  primary: {
-    flexDirection: "row",
-    height: 52, borderRadius: 12, backgroundColor: COLORS.primary,
-    alignItems: "center", justifyContent: "center", marginTop: 20,
-  },
+  mLabel: { fontSize: 11, fontWeight: "800", color: COLORS.textSecondary, letterSpacing: 1.2, marginTop: 14, marginBottom: 6 },
+  mInput: { height: 50, backgroundColor: COLORS.bg, borderWidth: 2, borderColor: COLORS.borderInput, borderRadius: 10, paddingHorizontal: 14, fontSize: 15, color: COLORS.text },
+  primary: { flexDirection: "row", height: 52, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: "center", justifyContent: "center", marginTop: 20 },
   primaryText: { color: "#fff", fontSize: 15, fontWeight: "800", letterSpacing: 1 },
-  pickMatBtn: {
-    flexDirection: "row", alignItems: "center", gap: 8, justifyContent: "center",
-    height: 52, borderRadius: 10, borderWidth: 2, borderColor: COLORS.primary,
-    borderStyle: "dashed", backgroundColor: COLORS.bg,
-  },
-  backRow: {
-    flexDirection: "row", alignItems: "center", gap: 4, padding: 6, marginBottom: 4,
-  },
+  pickMatBtn: { flexDirection: "row", alignItems: "center", gap: 8, justifyContent: "center", height: 52, borderRadius: 10, borderWidth: 2, borderColor: COLORS.primary, borderStyle: "dashed", backgroundColor: COLORS.bg },
+  backRow: { flexDirection: "row", alignItems: "center", gap: 4, padding: 6, marginBottom: 4 },
   backRowText: { color: COLORS.navy, fontWeight: "700", fontSize: 14 },
-  searchBox: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    backgroundColor: COLORS.bg, borderRadius: 10, paddingHorizontal: 12, height: 44, marginBottom: 6,
-  },
+  searchBox: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.bg, borderRadius: 10, paddingHorizontal: 12, height: 44, marginBottom: 6 },
   searchInput: { flex: 1, fontSize: 15, color: COLORS.text },
-  matRow: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    padding: 10, backgroundColor: COLORS.bg, borderRadius: 10, marginBottom: 6,
-  },
-  matPreview: {
-    flexDirection: "row", alignItems: "flex-start", gap: 10,
-    padding: 12, backgroundColor: COLORS.bg, borderRadius: 10,
-    borderWidth: 1, borderColor: COLORS.border, marginTop: 6,
-  },
-  matCode: {
-    fontSize: 12, fontWeight: "800", color: COLORS.primary, letterSpacing: 0.3,
-    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
-  },
+  matRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 10, backgroundColor: COLORS.bg, borderRadius: 10, marginBottom: 6 },
+  matPreview: { flexDirection: "row", alignItems: "flex-start", gap: 10, padding: 12, backgroundColor: COLORS.bg, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, marginTop: 6 },
+  matCode: { fontSize: 12, fontWeight: "800", color: COLORS.primary, letterSpacing: 0.3, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }) },
   matCliente: { fontSize: 14, fontWeight: "700", color: COLORS.text, marginTop: 2 },
   matUbic: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
   matMeta: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
