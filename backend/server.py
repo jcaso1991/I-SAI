@@ -417,6 +417,24 @@ async def login(payload: UserLogin):
     token = create_jwt(user)
     return TokenOut(access_token=token, user=UserOut(id=user["id"], email=user["email"], name=user.get("name"), role=user.get("role", "user")))
 
+class TechnicianOut(BaseModel):
+    id: str
+    name: str
+    email: str
+
+@api_router.get("/technicians", response_model=List[TechnicianOut])
+async def list_technicians(user: dict = Depends(current_user)):
+    """List all app users as potential technicians (any authenticated user can read)."""
+    users = await db.users.find({}, {"_id": 0, "password": 0}).to_list(1000)
+    users.sort(key=lambda u: (u.get("name") or u.get("email") or "").lower())
+    return [
+        TechnicianOut(
+            id=u["id"],
+            name=u.get("name") or u.get("email", ""),
+            email=u.get("email", ""),
+        ) for u in users
+    ]
+
 @api_router.get("/auth/me", response_model=UserOut)
 async def me(user: dict = Depends(current_user)):
     return UserOut(id=user["id"], email=user["email"], name=user.get("name"), role=user.get("role", "user"))

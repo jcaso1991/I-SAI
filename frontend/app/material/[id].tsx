@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, KeyboardAvoidingView, Platform, Alert,
+  ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -54,17 +54,23 @@ export default function MaterialDetail() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [techs, setTechs] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [showTechPicker, setShowTechPicker] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const data = await api.getMaterial(id);
+        const [data, tlist] = await Promise.all([
+          api.getMaterial(id),
+          api.listTechnicians().catch(() => []),
+        ]);
         setM(data);
         setFecha(data.fecha || "");
         setEntrega(data.entrega_recogida || "");
         setTp(data.total_parcial || "");
         setTecnico(data.tecnico || "");
         setComentarios(data.comentarios || "");
+        setTechs(tlist);
       } catch (e: any) {
         Alert.alert("Error", e.message);
       } finally {
@@ -168,14 +174,17 @@ export default function MaterialDetail() {
             />
 
             <Text style={s.fieldLabel}>Técnico</Text>
-            <TextInput
-              testID="input-tecnico"
-              style={s.input}
-              value={tecnico}
-              onChangeText={(v) => { setTecnico(v); setDirty(true); }}
-              placeholder="Nombre del técnico"
-              placeholderTextColor={COLORS.textDisabled}
-            />
+            <TouchableOpacity
+              testID="picker-tecnico"
+              style={s.picker}
+              onPress={() => setShowTechPicker(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={[s.pickerText, !tecnico && { color: COLORS.textDisabled }]}>
+                {tecnico || "Selecciona técnico..."}
+              </Text>
+              <Ionicons name="chevron-down" size={22} color={COLORS.textSecondary} />
+            </TouchableOpacity>
 
             <Text style={s.fieldLabel}>Comentarios</Text>
             <TextInput
@@ -208,6 +217,69 @@ export default function MaterialDetail() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={showTechPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowTechPicker(false)}
+      >
+        <View style={s.modalRoot}>
+          <View style={s.modalCard}>
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitle}>Selecciona técnico</Text>
+              <TouchableOpacity onPress={() => setShowTechPicker(false)}>
+                <Ionicons name="close" size={26} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 440 }}>
+              {tecnico !== "" && (
+                <TouchableOpacity
+                  testID="tech-clear"
+                  style={s.techRow}
+                  onPress={() => {
+                    setTecnico("");
+                    setDirty(true);
+                    setShowTechPicker(false);
+                  }}
+                >
+                  <Ionicons name="close-circle" size={20} color={COLORS.errorText} />
+                  <Text style={[s.techName, { color: COLORS.errorText }]}>Quitar técnico</Text>
+                </TouchableOpacity>
+              )}
+              {techs.length === 0 && (
+                <Text style={{ color: COLORS.textSecondary, padding: 20, textAlign: "center" }}>
+                  No hay usuarios disponibles
+                </Text>
+              )}
+              {techs.map((t) => {
+                const active = (tecnico || "").toLowerCase() === t.name.toLowerCase();
+                return (
+                  <TouchableOpacity
+                    key={t.id}
+                    testID={`tech-opt-${t.id}`}
+                    style={[s.techRow, active && s.techRowActive]}
+                    onPress={() => {
+                      setTecnico(t.name);
+                      setDirty(true);
+                      setShowTechPicker(false);
+                    }}
+                  >
+                    <View style={[s.techAvatar, active && { backgroundColor: COLORS.primary }]}>
+                      <Ionicons name="person" size={18} color={active ? "#fff" : COLORS.textSecondary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.techName}>{t.name}</Text>
+                      <Text style={s.techEmail}>{t.email}</Text>
+                    </View>
+                    {active && <Ionicons name="checkmark-circle" size={22} color={COLORS.primary} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -273,4 +345,34 @@ const s = StyleSheet.create({
   },
   btnDisabled: { opacity: 0.5 },
   btnPrimaryText: { color: "#fff", fontSize: 16, fontWeight: "800", letterSpacing: 1 },
+  picker: {
+    height: 52, backgroundColor: COLORS.bg,
+    borderWidth: 2, borderColor: COLORS.borderInput, borderRadius: 10,
+    paddingHorizontal: 14, flexDirection: "row", alignItems: "center",
+    justifyContent: "space-between",
+  },
+  pickerText: { fontSize: 16, color: COLORS.text, flex: 1 },
+  modalRoot: {
+    flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)",
+  },
+  modalCard: {
+    backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 16, paddingBottom: 28,
+  },
+  modalHeader: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    marginBottom: 12, paddingHorizontal: 4,
+  },
+  modalTitle: { fontSize: 20, fontWeight: "900", color: COLORS.text },
+  techRow: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    padding: 12, borderRadius: 10, marginBottom: 4,
+  },
+  techRowActive: { backgroundColor: COLORS.bg },
+  techAvatar: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.bg,
+    alignItems: "center", justifyContent: "center",
+  },
+  techName: { fontSize: 15, fontWeight: "700", color: COLORS.text },
+  techEmail: { fontSize: 12, color: COLORS.textSecondary, marginTop: 1 },
 });

@@ -64,6 +64,7 @@ export const api = {
   resetPassword: (id: string, password: string) =>
     request(`/users/${id}/reset-password`, { method: "POST", body: JSON.stringify({ password }) }),
   deleteUser: (id: string) => request(`/users/${id}`, { method: "DELETE" }),
+  listTechnicians: () => request("/technicians"),
 };
 
 export const COLORS = {
