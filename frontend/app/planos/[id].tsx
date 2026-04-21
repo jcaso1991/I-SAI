@@ -341,6 +341,14 @@ export default function PlanEditor() {
   };
 
   // ---------------- Export ----------------
+  const safeFilename = (name: string): string => {
+    return (name || "plano")
+      .replace(/[\\/:*?"<>|]/g, "")
+      .replace(/\s+/g, "_")
+      .replace(/_{2,}/g, "_")
+      .substring(0, 80) || "plano";
+  };
+
   const exportAs = async (format: "jpg" | "pdf") => {
     try {
       setSelectedId(null);
@@ -350,21 +358,39 @@ export default function PlanEditor() {
         quality: 0.95,
         result: "tmpfile",
       });
+      const baseName = safeFilename(title);
       if (format === "jpg") {
+        // Copy to a file with the plan's title as filename
+        const destUri = `${FileSystem.cacheDirectory}${baseName}.jpg`;
+        try {
+          await FileSystem.deleteAsync(destUri, { idempotent: true });
+        } catch {}
+        await FileSystem.copyAsync({ from: uri, to: destUri });
         if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(uri, { mimeType: "image/jpeg", dialogTitle: title });
+          await Sharing.shareAsync(destUri, {
+            mimeType: "image/jpeg",
+            dialogTitle: title,
+            UTI: "public.jpeg",
+          });
         } else {
-          Alert.alert("Guardado", `Archivo creado en ${uri}`);
+          Alert.alert("Guardado", `Archivo creado: ${baseName}.jpg\n${destUri}`);
         }
       } else {
-        // PDF: embed jpg as base64
         const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-        const html = `<html><body style="margin:0;padding:20px"><h2 style="font-family:sans-serif">${escapeHtml(title)}</h2><img src="data:image/jpeg;base64,${base64}" style="max-width:100%;border:1px solid #ccc"/></body></html>`;
+        const html = `<html><head><title>${escapeHtml(title)}</title></head><body style="margin:0;padding:20px"><h2 style="font-family:sans-serif">${escapeHtml(title)}</h2><img src="data:image/jpeg;base64,${base64}" style="max-width:100%;border:1px solid #ccc"/></body></html>`;
         const { uri: pdfUri } = await Print.printToFileAsync({ html, base64: false });
+        // rename the file to match title
+        const destUri = `${FileSystem.cacheDirectory}${baseName}.pdf`;
+        try { await FileSystem.deleteAsync(destUri, { idempotent: true }); } catch {}
+        await FileSystem.copyAsync({ from: pdfUri, to: destUri });
         if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(pdfUri, { mimeType: "application/pdf", dialogTitle: title });
+          await Sharing.shareAsync(destUri, {
+            mimeType: "application/pdf",
+            dialogTitle: title,
+            UTI: "com.adobe.pdf",
+          });
         } else {
-          Alert.alert("Guardado", `PDF creado en ${pdfUri}`);
+          Alert.alert("Guardado", `PDF creado: ${baseName}.pdf\n${destUri}`);
         }
       }
     } catch (e: any) {
@@ -780,7 +806,7 @@ function StampManager({
         return;
       }
       const res = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ["images"],
         allowsEditing: false,
         quality: 0.9,
         base64: true,

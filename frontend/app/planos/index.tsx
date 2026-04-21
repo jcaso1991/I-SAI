@@ -1,7 +1,8 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Alert, Modal, KeyboardAvoidingView, Platform,
+  FlatList,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -12,6 +13,8 @@ type Plan = {
   id: string; title: string; created_at: string; updated_at: string;
   created_by: string; shape_count: number;
 };
+
+type ModalStep = "choose" | "libre" | "proyecto";
 
 export default function PlansList() {
   const router = useRouter();
@@ -93,7 +96,7 @@ export default function PlansList() {
                 <Ionicons name="map" size={24} color={COLORS.primary} />
               </View>
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={s.planTitle} numberOfLines={1}>{p.title}</Text>
+                <Text style={s.planTitle} numberOfLines={2}>{p.title}</Text>
                 <Text style={s.planMeta}>
                   {p.shape_count} pieza{p.shape_count !== 1 ? "s" : ""} · {p.created_by.split("@")[0]}
                 </Text>
@@ -128,10 +131,34 @@ export default function PlansList() {
 function CreatePlanModal({
   visible, onClose, onDone,
 }: { visible: boolean; onClose: () => void; onDone: (id: string) => void }) {
+  const [step, setStep] = useState<ModalStep>("choose");
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
+  const [materiales, setMateriales] = useState<any[]>([]);
+  const [loadingMat, setLoadingMat] = useState(false);
+  const [q, setQ] = useState("");
 
-  const submit = async () => {
+  useEffect(() => {
+    if (!visible) {
+      // reset on close
+      setTimeout(() => { setStep("choose"); setTitle(""); setQ(""); }, 250);
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (step === "proyecto") {
+      (async () => {
+        setLoadingMat(true);
+        try {
+          const list = await api.listMateriales();
+          setMateriales(list);
+        } catch (e: any) { Alert.alert("Error", e.message); }
+        finally { setLoadingMat(false); }
+      })();
+    }
+  }, [step]);
+
+  const createLibre = async () => {
     if (!title.trim()) {
       Alert.alert("Error", "El título es obligatorio");
       return;
@@ -139,7 +166,6 @@ function CreatePlanModal({
     setSaving(true);
     try {
       const plan = await api.createPlan({ title: title.trim() });
-      setTitle("");
       onDone(plan.id);
     } catch (e: any) {
       Alert.alert("Error", e.message);
@@ -148,36 +174,168 @@ function CreatePlanModal({
     }
   };
 
+  const createDesdeProyecto = async (material: any) => {
+    const mCode = material.materiales || "";
+    const cliente = material.cliente || "Sin cliente";
+    const planTitle = `${mCode} — ${cliente}`.trim();
+    setSaving(true);
+    try {
+      const plan = await api.createPlan({ title: planTitle });
+      onDone(plan.id);
+    } catch (e: any) {
+      Alert.alert("Error", e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const filtered = q.trim()
+    ? materiales.filter((m) => {
+        const s = `${m.materiales || ""} ${m.cliente || ""} ${m.ubicacion || ""}`.toLowerCase();
+        return s.includes(q.toLowerCase());
+      })
+    : materiales;
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={s.modalRoot}
       >
-        <View style={s.modalCard}>
+        <View style={[s.modalCard, step === "proyecto" && { maxHeight: "88%", minHeight: "70%" }]}>
           <View style={s.modalHeader}>
-            <Text style={s.modalTitle}>Nuevo plano</Text>
+            <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 8 }}>
+              {step !== "choose" && (
+                <TouchableOpacity onPress={() => setStep("choose")} hitSlop={10}>
+                  <Ionicons name="chevron-back" size={24} color={COLORS.navy} />
+                </TouchableOpacity>
+              )}
+              <Text style={s.modalTitle}>
+                {step === "choose" ? "Nuevo plano"
+                  : step === "libre" ? "Plano libre"
+                  : "Desde proyecto"}
+              </Text>
+            </View>
             <TouchableOpacity onPress={onClose}>
               <Ionicons name="close" size={26} color={COLORS.text} />
             </TouchableOpacity>
           </View>
-          <Text style={s.mLabel}>Título</Text>
-          <TextInput
-            testID="input-plan-title"
-            style={s.mInput}
-            value={title}
-            onChangeText={setTitle}
-            placeholder="Ej. Oficina Cliente X"
-            placeholderTextColor={COLORS.textDisabled}
-          />
-          <TouchableOpacity
-            testID="btn-create-plan"
-            style={[s.primary, saving && { opacity: 0.6 }]}
-            onPress={submit}
-            disabled={saving}
-          >
-            {saving ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryText}>CREAR Y ABRIR</Text>}
-          </TouchableOpacity>
+
+          {step === "choose" && (
+            <View style={{ gap: 12, marginTop: 8 }}>
+              <Text style={s.chooseHint}>¿Cómo quieres crear el plano?</Text>
+              <TouchableOpacity
+                testID="option-libre"
+                style={s.optionCard}
+                onPress={() => setStep("libre")}
+              >
+                <View style={[s.optionIcon, { backgroundColor: "#DBEAFE" }]}>
+                  <Ionicons name="document-text-outline" size={28} color={COLORS.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.optionTitle}>Plano libre</Text>
+                  <Text style={s.optionDesc}>Introduce un título personalizado y empieza en blanco</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={22} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="option-proyecto"
+                style={s.optionCard}
+                onPress={() => setStep("proyecto")}
+              >
+                <View style={[s.optionIcon, { backgroundColor: "#FEF3C7" }]}>
+                  <Ionicons name="list-outline" size={28} color="#92400E" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.optionTitle}>Desde proyecto</Text>
+                  <Text style={s.optionDesc}>Elige un material/proyecto existente como base del plano</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={22} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {step === "libre" && (
+            <ScrollView keyboardShouldPersistTaps="handled">
+              <Text style={s.mLabel}>Título del plano</Text>
+              <TextInput
+                testID="input-plan-title"
+                style={s.mInput}
+                value={title}
+                onChangeText={setTitle}
+                placeholder="Ej. Oficina Cliente X"
+                placeholderTextColor={COLORS.textDisabled}
+                autoFocus
+              />
+              <Text style={s.hint}>
+                Este título será el nombre del archivo al exportar a JPG o PDF.
+              </Text>
+              <TouchableOpacity
+                testID="btn-create-plan"
+                style={[s.primary, saving && { opacity: 0.6 }]}
+                onPress={createLibre}
+                disabled={saving}
+              >
+                {saving ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryText}>CREAR Y ABRIR</Text>}
+              </TouchableOpacity>
+            </ScrollView>
+          )}
+
+          {step === "proyecto" && (
+            <View style={{ flex: 1, minHeight: 300 }}>
+              <View style={s.searchBox}>
+                <Ionicons name="search" size={18} color={COLORS.textSecondary} />
+                <TextInput
+                  testID="input-mat-search"
+                  style={s.searchInput}
+                  value={q}
+                  onChangeText={setQ}
+                  placeholder="Buscar proyecto, cliente, ubicación..."
+                  placeholderTextColor={COLORS.textDisabled}
+                />
+                {q.length > 0 && (
+                  <TouchableOpacity onPress={() => setQ("")}>
+                    <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+              {loadingMat ? (
+                <View style={{ padding: 40, alignItems: "center" }}>
+                  <ActivityIndicator color={COLORS.primary} />
+                </View>
+              ) : (
+                <Text style={s.resultsCount}>{filtered.length} resultado{filtered.length !== 1 ? "s" : ""}</Text>
+              )}
+              <FlatList
+                data={filtered}
+                keyExtractor={(m) => m.id}
+                style={{ flex: 1 }}
+                keyboardShouldPersistTaps="handled"
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    testID={`mat-opt-${item.id}`}
+                    style={s.matRow}
+                    onPress={() => createDesdeProyecto(item)}
+                    disabled={saving}
+                  >
+                    <View style={s.matIcon}>
+                      <Ionicons name="cube-outline" size={22} color={COLORS.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.matCode}>{item.materiales || "—"}</Text>
+                      <Text style={s.matCliente} numberOfLines={1}>{item.cliente || "Sin cliente"}</Text>
+                      {item.ubicacion && (
+                        <Text style={s.matUbic} numberOfLines={1}>📍 {item.ubicacion}</Text>
+                      )}
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
+                )}
+                initialNumToRender={15}
+                windowSize={8}
+              />
+            </View>
+          )}
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -217,13 +375,24 @@ const s = StyleSheet.create({
   modalRoot: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" },
   modalCard: {
     backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: 20, paddingBottom: 32,
+    padding: 20, paddingBottom: 32, maxHeight: "80%",
   },
   modalHeader: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     marginBottom: 8,
   },
   modalTitle: { fontSize: 20, fontWeight: "900", color: COLORS.text },
+  chooseHint: { color: COLORS.textSecondary, fontSize: 14, marginBottom: 4 },
+  optionCard: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    backgroundColor: COLORS.bg, padding: 14, borderRadius: 14,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  optionIcon: {
+    width: 52, height: 52, borderRadius: 12, alignItems: "center", justifyContent: "center",
+  },
+  optionTitle: { fontSize: 16, fontWeight: "800", color: COLORS.text },
+  optionDesc: { fontSize: 13, color: COLORS.textSecondary, marginTop: 2 },
   mLabel: {
     fontSize: 11, fontWeight: "800", color: COLORS.textSecondary,
     letterSpacing: 1.2, marginTop: 14, marginBottom: 6,
@@ -232,9 +401,31 @@ const s = StyleSheet.create({
     height: 52, backgroundColor: COLORS.bg, borderWidth: 2, borderColor: COLORS.borderInput,
     borderRadius: 10, paddingHorizontal: 14, fontSize: 16, color: COLORS.text,
   },
+  hint: { fontSize: 12, color: COLORS.textSecondary, marginTop: 10, lineHeight: 18 },
   primary: {
     height: 52, borderRadius: 12, backgroundColor: COLORS.primary,
     alignItems: "center", justifyContent: "center", marginTop: 20,
   },
   primaryText: { color: "#fff", fontSize: 15, fontWeight: "800", letterSpacing: 1 },
+  searchBox: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: COLORS.bg, borderRadius: 10, paddingHorizontal: 12, height: 44,
+    marginTop: 12, marginBottom: 6,
+  },
+  searchInput: { flex: 1, fontSize: 15, color: COLORS.text },
+  resultsCount: { fontSize: 12, color: COLORS.textSecondary, marginBottom: 6, fontWeight: "600" },
+  matRow: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    padding: 10, backgroundColor: COLORS.bg, borderRadius: 10, marginBottom: 6,
+  },
+  matIcon: {
+    width: 40, height: 40, borderRadius: 10, backgroundColor: COLORS.surface,
+    alignItems: "center", justifyContent: "center",
+  },
+  matCode: {
+    fontSize: 12, fontWeight: "800", color: COLORS.primary, letterSpacing: 0.3,
+    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+  },
+  matCliente: { fontSize: 14, fontWeight: "700", color: COLORS.text, marginTop: 1 },
+  matUbic: { fontSize: 11, color: COLORS.textSecondary, marginTop: 1 },
 });
