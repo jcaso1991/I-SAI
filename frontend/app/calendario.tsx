@@ -9,6 +9,8 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../src/api";
 import BottomNav from "../src/BottomNav";
+import ResponsiveLayout from "../src/ResponsiveLayout";
+import { useBreakpoint } from "../src/useBreakpoint";
 import DateTimeField from "../src/DateTimeField";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
@@ -77,6 +79,7 @@ function yFromDate(d: Date): number {
 
 export default function CalendarScreen() {
   const router = useRouter();
+  const { isWide } = useBreakpoint();
   const [me, setMe] = useState<any>(null);
   const [view, setView] = useState<ViewMode>("week");
   const [anchor, setAnchor] = useState<Date>(new Date());
@@ -133,6 +136,24 @@ export default function CalendarScreen() {
     else setAnchor(addMonths(anchor, 1));
   };
 
+  // Keyboard shortcuts on web (arrow keys + D/S/M + T for today)
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const handler = (e: any) => {
+      const tag = (e.target?.tagName || "").toUpperCase();
+      if (tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable) return;
+      if (e.key === "ArrowLeft") { e.preventDefault(); stepBack(); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); stepForward(); }
+      else if (e.key === "d" || e.key === "D") setView("day");
+      else if (e.key === "s" || e.key === "S") setView("week");
+      else if (e.key === "m" || e.key === "M") setView("month");
+      else if (e.key === "t" || e.key === "T") setAnchor(new Date());
+    };
+    // @ts-ignore window exists on web
+    window.addEventListener("keydown", handler);
+    return () => { /* @ts-ignore */ window.removeEventListener("keydown", handler); };
+  }, [view, anchor]);
+
   const headerSub = useMemo(() => {
     if (view === "day") return anchor.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
     if (view === "week") {
@@ -154,11 +175,16 @@ export default function CalendarScreen() {
   };
 
   return (
-    <SafeAreaView style={s.root} edges={["top"]}>
+    <ResponsiveLayout active="calendario" isAdmin={isAdmin} userName={me?.name}
+      onLogout={async () => { const { clearToken } = await import("../src/api"); await clearToken(); router.replace("/login"); }}
+    >
+      <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
       <View style={s.header}>
-        <TouchableOpacity style={s.iconBtn} onPress={() => router.replace("/home")}>
-          <Ionicons name="chevron-back" size={26} color={COLORS.navy} />
-        </TouchableOpacity>
+        {!isWide && (
+          <TouchableOpacity style={s.iconBtn} onPress={() => router.replace("/home")}>
+            <Ionicons name="chevron-back" size={26} color={COLORS.navy} />
+          </TouchableOpacity>
+        )}
         <View style={{ flex: 1, alignItems: "center" }}>
           <Text style={s.headerTitle}>Calendario</Text>
           <Text style={s.headerSub} numberOfLines={1}>{headerSub}</Text>
@@ -247,8 +273,8 @@ export default function CalendarScreen() {
           onChanged={() => { setOpenEvent(null); load(); }}
         />
       )}
-      <BottomNav active="calendario" isAdmin={isAdmin} />
-    </SafeAreaView>
+      </SafeAreaView>
+    </ResponsiveLayout>
   );
 }
 
@@ -580,6 +606,68 @@ function DraggableEvent({
     onPanResponderTerminate: () => { setTop(baseRef.current.top); setLeftOffset(0); setMode("idle"); },
   }), [isAdmin, top, height, event, day, onTap, onMoveEvent, canCrossDays, weekDays, colW, dayIndex]);
 
+  // -------- Web-only drag using document-level mouse events (reliable on Chrome) --------
+  const webStateRef = useRef<{ startX: number; startY: number; baseTop: number; baseHeight: number; moved: boolean } | null>(null);
+  const onWebMouseDown = (e: any) => {
+    if (Platform.OS !== "web" || !isAdmin) return;
+    e.stopPropagation?.();
+    e.preventDefault?.();
+    webStateRef.current = {
+      startX: e.clientX, startY: e.clientY,
+      baseTop: top, baseHeight: height, moved: false,
+    };
+    tapTimeRef.current = Date.now();
+    hasMovedRef.current = false;
+    baseRef.current = { top, height };
+    dayShiftRef.current = 0;
+    setMode("move");
+    const moveHandler = (ev: any) => {
+      const st = webStateRef.current; if (!st) return;
+      const dx = ev.clientX - st.startX;
+      const dy = ev.clientY - st.startY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) { st.moved = true; hasMovedRef.current = true; }
+      const snapDy = Math.round(dy / (HOUR_H / 4)) * (HOUR_H / 4);
+      const nt = Math.max(0, Math.min(HOURS * HOUR_H - st.baseHeight, st.baseTop + snapDy));
+      setTop(nt);
+      if (canCrossDays) {
+        const shift = Math.round(dx / colW!);
+        const newIdx = Math.max(0, Math.min(weekDays!.length - 1, dayIndex! + shift));
+        const effective = newIdx - dayIndex!;
+        dayShiftRef.current = effective;
+        setLeftOffset(effective * colW!);
+      }
+    };
+    const upHandler = async () => {
+      // @ts-ignore web
+      document.removeEventListener("mousemove", moveHandler);
+      // @ts-ignore web
+      document.removeEventListener("mouseup", upHandler);
+      const st = webStateRef.current; webStateRef.current = null;
+      if (!st) return;
+      if (!st.moved) {
+        setMode("idle");
+        setTop(baseRef.current.top);
+        setLeftOffset(0);
+        onTap();
+        return;
+      }
+      const startMin = Math.round((top / HOUR_H) * 60 / 15) * 15;
+      const durMin = Math.round((height / HOUR_H) * 60);
+      const targetDay = canCrossDays && dayShiftRef.current !== 0
+        ? weekDays![dayIndex! + dayShiftRef.current]
+        : day;
+      const newStart = dateAt(targetDay, startMin);
+      const newEnd = new Date(newStart.getTime() + durMin * 60000);
+      setLeftOffset(0);
+      await onMoveEvent(event, newStart, newEnd);
+      setMode("idle");
+    };
+    // @ts-ignore web
+    document.addEventListener("mousemove", moveHandler);
+    // @ts-ignore web
+    document.addEventListener("mouseup", upHandler);
+  };
+
   const panResize = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => isAdmin,
     onStartShouldSetPanResponderCapture: () => isAdmin,
@@ -624,7 +712,8 @@ function DraggableEvent({
         // @ts-ignore web-only cursor hint
         cursor: isAdmin ? (mode === "idle" ? "grab" : "grabbing") : "pointer",
       }]}
-      {...(isAdmin ? panMove.panHandlers : {})}
+      {...(isAdmin && Platform.OS !== "web" ? panMove.panHandlers : {})}
+      {...(isAdmin && Platform.OS === "web" ? { onMouseDown: onWebMouseDown } as any : {})}
     >
       {isAdmin ? (
         <View pointerEvents="none" style={{ padding: 2 }}>

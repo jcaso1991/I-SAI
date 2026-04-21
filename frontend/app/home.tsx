@@ -6,10 +6,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { api, clearToken, COLORS } from "../src/api";
-import BottomNav from "../src/BottomNav";
+import ResponsiveLayout from "../src/ResponsiveLayout";
+import { useBreakpoint } from "../src/useBreakpoint";
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { isWide } = useBreakpoint();
   const [me, setMe] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<{ total: number; pending: number; synced: number } | null>(null);
@@ -35,9 +37,10 @@ export default function HomeScreen() {
   }, []));
 
   const isAdmin = me?.role === "admin";
+  const logout = async () => { await clearToken(); router.replace("/login"); };
 
   const Circle = ({
-    testID, icon, iconFamily = "ion", label, color, onPress, badge,
+    testID, icon, iconFamily = "ion", label, color, onPress, badge, big,
   }: {
     testID: string;
     icon: string;
@@ -46,13 +49,14 @@ export default function HomeScreen() {
     color: string;
     onPress: () => void;
     badge?: string;
+    big?: boolean;
   }) => (
     <TouchableOpacity testID={testID} style={s.circleWrap} onPress={onPress} activeOpacity={0.8}>
-      <View style={[s.circle, { backgroundColor: color }]}>
+      <View style={[s.circle, big && s.circleBig, { backgroundColor: color }]}>
         {iconFamily === "ion" ? (
-          <Ionicons name={icon as any} size={52} color="#fff" />
+          <Ionicons name={icon as any} size={big ? 72 : 52} color="#fff" />
         ) : (
-          <MaterialCommunityIcons name={icon as any} size={56} color="#fff" />
+          <MaterialCommunityIcons name={icon as any} size={big ? 80 : 56} color="#fff" />
         )}
         {badge ? (
           <View style={s.circleBadge}>
@@ -60,80 +64,95 @@ export default function HomeScreen() {
           </View>
         ) : null}
       </View>
-      <Text style={s.circleLabel}>{label}</Text>
+      <Text style={[s.circleLabel, big && { fontSize: 18 }]}>{label}</Text>
     </TouchableOpacity>
   );
 
-  return (
-    <SafeAreaView style={s.root} edges={["top"]}>
-      <View style={s.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={s.hello}>Hola{me?.name ? `, ${me.name.split(" ")[0]}` : ""}</Text>
-          <Text style={s.sub}>{isAdmin ? "Administrador" : "Técnico"}</Text>
+  const content = (
+    <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
+      {!isWide && (
+        <View style={s.header}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.hello}>Hola{me?.name ? `, ${me.name.split(" ")[0]}` : ""}</Text>
+            <Text style={s.sub}>{isAdmin ? "Administrador" : "Técnico"}</Text>
+          </View>
+          <TouchableOpacity
+            testID="btn-logout"
+            style={s.logoutBtn}
+            onPress={logout}
+          >
+            <Ionicons name="log-out-outline" size={22} color={COLORS.navy} />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity
-          testID="btn-logout"
-          style={s.logoutBtn}
-          onPress={async () => { await clearToken(); router.replace("/login"); }}
-        >
-          <Ionicons name="log-out-outline" size={22} color={COLORS.navy} />
-        </TouchableOpacity>
-      </View>
+      )}
 
       {loading ? (
         <View style={s.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>
       ) : (
-        <ScrollView contentContainerStyle={s.scroll}>
-          <Text style={s.title}>Panel principal</Text>
-          <Text style={s.subtitle}>Selecciona una sección</Text>
+        <ScrollView contentContainerStyle={[s.scroll, isWide && s.scrollWide]}>
+          <View style={isWide && { maxWidth: 1100, width: "100%", alignSelf: "center" }}>
+            <Text style={[s.title, isWide && { fontSize: 36 }]}>
+              {isWide ? `Hola${me?.name ? `, ${me.name.split(" ")[0]}` : ""}` : "Panel principal"}
+            </Text>
+            <Text style={s.subtitle}>
+              {isWide ? "Selecciona un módulo para empezar" : "Selecciona una sección"}
+            </Text>
 
-          <View style={s.circlesRow}>
-            <Circle
-              testID="circle-proyectos"
-              iconFamily="mat"
-              icon="set-square"
-              label="Proyectos"
-              color={COLORS.primary}
-              onPress={() => router.push("/materiales")}
-              badge={stats && stats.pending > 0 ? String(stats.pending) : undefined}
-            />
-            <Circle
-              testID="circle-calendario"
-              icon="calendar"
-              label="Calendario"
-              color="#10B981"
-              onPress={() => router.push("/calendario")}
-            />
-            <Circle
-              testID="circle-planos"
-              icon="map"
-              label="Planos"
-              color="#F59E0B"
-              onPress={() => router.push("/planos")}
-            />
-          </View>
-
-          {stats && (
-            <View style={s.statsCard}>
-              <View style={s.statCol}>
-                <Text style={s.statNum}>{stats.total}</Text>
-                <Text style={s.statLbl}>Total proyectos</Text>
-              </View>
-              <View style={s.statCol}>
-                <Text style={[s.statNum, { color: COLORS.pendingText }]}>{stats.pending}</Text>
-                <Text style={s.statLbl}>Pendientes</Text>
-              </View>
-              <View style={s.statCol}>
-                <Text style={[s.statNum, { color: COLORS.syncedText }]}>{stats.synced}</Text>
-                <Text style={s.statLbl}>Sincronizados</Text>
-              </View>
+            <View style={[s.circlesRow, isWide && s.circlesRowWide]}>
+              <Circle
+                testID="circle-proyectos"
+                iconFamily="mat"
+                icon="set-square"
+                label="Proyectos"
+                color={COLORS.primary}
+                onPress={() => router.push("/materiales")}
+                badge={stats && stats.pending > 0 ? String(stats.pending) : undefined}
+                big={isWide}
+              />
+              <Circle
+                testID="circle-calendario"
+                icon="calendar"
+                label="Calendario"
+                color="#10B981"
+                onPress={() => router.push("/calendario")}
+                big={isWide}
+              />
+              <Circle
+                testID="circle-planos"
+                icon="map"
+                label="Planos"
+                color="#F59E0B"
+                onPress={() => router.push("/planos")}
+                big={isWide}
+              />
             </View>
-          )}
+
+            {stats && (
+              <View style={[s.statsCard, isWide && { marginTop: 36 }]}>
+                <View style={s.statCol}>
+                  <Text style={s.statNum}>{stats.total}</Text>
+                  <Text style={s.statLbl}>Total proyectos</Text>
+                </View>
+                <View style={s.statCol}>
+                  <Text style={[s.statNum, { color: COLORS.pendingText }]}>{stats.pending}</Text>
+                  <Text style={s.statLbl}>Pendientes</Text>
+                </View>
+                <View style={s.statCol}>
+                  <Text style={[s.statNum, { color: COLORS.syncedText }]}>{stats.synced}</Text>
+                  <Text style={s.statLbl}>Sincronizados</Text>
+                </View>
+              </View>
+            )}
+          </View>
         </ScrollView>
       )}
-
-      <BottomNav active="home" isAdmin={isAdmin} />
     </SafeAreaView>
+  );
+
+  return (
+    <ResponsiveLayout active="home" isAdmin={isAdmin} onLogout={logout} userName={me?.name}>
+      {content}
+    </ResponsiveLayout>
   );
 }
 
@@ -148,18 +167,21 @@ const s = StyleSheet.create({
   logoutBtn: { width: 40, height: 40, borderRadius: 10, backgroundColor: COLORS.bg, alignItems: "center", justifyContent: "center" },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   scroll: { padding: 20, paddingBottom: 40, gap: 12 },
+  scrollWide: { padding: 40 },
   title: { fontSize: 26, fontWeight: "900", color: COLORS.text, marginTop: 8 },
   subtitle: { fontSize: 14, color: COLORS.textSecondary, marginBottom: 16 },
   circlesRow: {
     flexDirection: "row", justifyContent: "space-around", alignItems: "flex-start",
     paddingVertical: 12, flexWrap: "wrap", gap: 8,
   },
+  circlesRowWide: { justifyContent: "center", gap: 60, paddingVertical: 40 },
   circleWrap: { alignItems: "center", gap: 8, flexBasis: "30%", minWidth: 100 },
   circle: {
     width: 110, height: 110, borderRadius: 55, alignItems: "center", justifyContent: "center",
     shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4,
     position: "relative",
   },
+  circleBig: { width: 170, height: 170, borderRadius: 85 },
   circleBadge: {
     position: "absolute", top: -4, right: -4, minWidth: 26, height: 26, borderRadius: 13,
     backgroundColor: "#EF4444", paddingHorizontal: 8, alignItems: "center", justifyContent: "center",

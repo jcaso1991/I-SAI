@@ -61,6 +61,8 @@ export default function Login() {
               autoCapitalize="none"
               keyboardType="email-address"
               placeholderTextColor={COLORS.textDisabled}
+              returnKeyType="next"
+              onSubmitEditing={submit}
             />
             <Text style={s.label}>Contraseña</Text>
             <TextInput
@@ -71,6 +73,8 @@ export default function Login() {
               placeholder="••••••••"
               secureTextEntry
               placeholderTextColor={COLORS.textDisabled}
+              returnKeyType="go"
+              onSubmitEditing={submit}
             />
 
             <TouchableOpacity

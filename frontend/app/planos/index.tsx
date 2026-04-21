@@ -9,6 +9,8 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../../src/api";
 import BottomNav from "../../src/BottomNav";
+import ResponsiveLayout from "../../src/ResponsiveLayout";
+import { useBreakpoint } from "../../src/useBreakpoint";
 
 type Plan = {
   id: string; title: string; created_at: string; updated_at: string;
@@ -59,7 +61,8 @@ export default function PlansList() {
   };
 
   return (
-    <SafeAreaView style={s.root} edges={["top"]}>
+    <ResponsiveLayout active="planos" isAdmin={me?.role === "admin"} userName={me?.name}>
+      <SafeAreaView style={s.root} edges={["top"]}>
       <View style={s.header}>
         <TouchableOpacity style={s.iconBtn} onPress={() => router.replace("/home")}>
           <Ionicons name="chevron-back" size={26} color={COLORS.navy} />
@@ -131,7 +134,8 @@ export default function PlansList() {
         onDone={(id) => { setShowCreate(false); router.push(`/planos/${id}`); }}
       />
       <BottomNav active="planos" isAdmin={me?.role === "admin"} />
-    </SafeAreaView>
+      </SafeAreaView>
+    </ResponsiveLayout>
   );
 }
 

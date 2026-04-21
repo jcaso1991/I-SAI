@@ -7,10 +7,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, clearToken, COLORS } from "../src/api";
-import BottomNav from "../src/BottomNav";
+import ResponsiveLayout from "../src/ResponsiveLayout";
+import { useBreakpoint } from "../src/useBreakpoint";
 
 export default function Materiales() {
   const router = useRouter();
+  const { isWide, isDesktop } = useBreakpoint();
   const [items, setItems] = useState<any[]>([]);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
@@ -63,7 +65,7 @@ export default function Materiales() {
     return (
       <TouchableOpacity
         testID={`material-item-${item.id}`}
-        style={s.card}
+        style={[s.card, isWide && { flex: 1 }]}
         onPress={() => router.push(`/material/${item.id}`)}
         activeOpacity={0.7}
       >
@@ -103,7 +105,8 @@ export default function Materiales() {
   };
 
   return (
-    <SafeAreaView style={s.root} edges={["top"]}>
+    <ResponsiveLayout active="proyectos" isAdmin={isAdmin} onLogout={logout} userName={me?.name}>
+      <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
       <View style={s.header}>
         <View>
           <Text style={s.headerTitle}>Proyectos</Text>
@@ -113,11 +116,13 @@ export default function Materiales() {
             </Text>
           )}
         </View>
-        <View style={s.headerBtns}>
-          <TouchableOpacity testID="btn-logout" style={s.iconBtn} onPress={logout}>
-            <Ionicons name="log-out-outline" size={22} color={COLORS.navy} />
-          </TouchableOpacity>
-        </View>
+        {!isWide && (
+          <View style={s.headerBtns}>
+            <TouchableOpacity testID="btn-logout" style={s.iconBtn} onPress={logout}>
+              <Ionicons name="log-out-outline" size={22} color={COLORS.navy} />
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       <View style={s.searchRow}>
@@ -161,7 +166,10 @@ export default function Materiales() {
           data={items}
           renderItem={renderItem}
           keyExtractor={(it) => it.id}
-          contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 40 }}
+          numColumns={isDesktop ? 3 : isWide ? 2 : 1}
+          key={`cols-${isDesktop ? 3 : isWide ? 2 : 1}`}
+          columnWrapperStyle={isWide ? { gap: 12, paddingHorizontal: 16 } : undefined}
+          contentContainerStyle={{ padding: isWide ? 0 : 16, paddingTop: isWide ? 16 : 16, gap: 12, paddingBottom: 40 }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -175,8 +183,8 @@ export default function Materiales() {
         />
       )}
 
-      <BottomNav active="proyectos" isAdmin={isAdmin} />
-    </SafeAreaView>
+      </SafeAreaView>
+    </ResponsiveLayout>
   );
 }
 

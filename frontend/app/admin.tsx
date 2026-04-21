@@ -8,6 +8,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../src/api";
 import BottomNav from "../src/BottomNav";
+import ResponsiveLayout from "../src/ResponsiveLayout";
 
 export default function Admin() {
   const router = useRouter();
@@ -106,6 +107,7 @@ export default function Admin() {
   const connected = status?.connected;
 
   return (
+    <ResponsiveLayout active="ajustes" isAdmin={isAdmin} userName={user?.name}>
     <SafeAreaView style={s.root} edges={["top"]}>
       <View style={s.header}>
         <TouchableOpacity style={s.iconBtn} onPress={() => router.replace("/home")}>
@@ -242,6 +244,7 @@ export default function Admin() {
       </ScrollView>
       <BottomNav active="ajustes" isAdmin={isAdmin} />
     </SafeAreaView>
+    </ResponsiveLayout>
   );
 }
 
