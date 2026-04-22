@@ -1091,6 +1091,26 @@ async def delete_event(eid: str, admin: dict = Depends(current_admin)):
         raise HTTPException(404, "Evento no encontrado")
     return {"ok": True}
 
+@api_router.get("/events/{eid}", response_model=EventOut)
+async def get_event(eid: str, user: dict = Depends(current_user)):
+    """Fetch a single event by id. Used by the notifications bell to open an
+    event that may not be inside the currently-visible calendar range."""
+    real_id = eid.split(":")[0]
+    ev = await db.events.find_one({"id": real_id}, {"_id": 0})
+    if not ev:
+        raise HTTPException(404, "Evento no encontrado")
+    # Permission: admin OR assigned user OR manager of the event
+    is_admin = user.get("role") == "admin"
+    allowed_ids = set((ev.get("assigned_user_ids") or []))
+    if ev.get("manager_id"):
+        allowed_ids.add(ev.get("manager_id"))
+    if not is_admin and user["id"] not in allowed_ids:
+        raise HTTPException(403, "No autorizado")
+    ev = await _attach_material(ev)
+    ev = await _attach_users(ev)
+    ev = _strip_attachments(ev)
+    return ev
+
 # ---------------- Notifications ----------------
 @api_router.get("/notifications")
 async def list_notifications(user: dict = Depends(current_user), unread_only: bool = False):
@@ -1124,6 +1144,19 @@ async def delete_notification(nid: str, user: dict = Depends(current_user)):
     if res.deleted_count == 0:
         raise HTTPException(404, "Notificación no encontrada")
     return {"ok": True}
+
+@api_router.delete("/notifications")
+async def delete_all_notifications(
+    user: dict = Depends(current_user),
+    only_read: bool = False,
+):
+    """Bulk-delete notifications for the current user.
+    If only_read=true, only read notifications are deleted; otherwise all."""
+    q: dict = {"user_id": user["id"]}
+    if only_read:
+        q["read"] = True
+    res = await db.notifications.delete_many(q)
+    return {"ok": True, "deleted": res.deleted_count}
 
 # ---------------- Event attachments ----------------
 @api_router.post("/events/{eid}/attachments")

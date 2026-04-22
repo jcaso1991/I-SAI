@@ -88,6 +88,7 @@ export const api = {
     title: string; start_at: string; end_at: string;
     description?: string; material_id?: string;
   }) => request("/events", { method: "POST", body: JSON.stringify(body) }),
+  getEvent: (id: string) => request(`/events/${encodeURIComponent(id)}`),
   updateEvent: (id: string, body: any) =>
     request(`/events/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteEvent: (id: string) => request(`/events/${id}`, { method: "DELETE" }),
@@ -109,6 +110,8 @@ export const api = {
     request("/notifications/read-all", { method: "POST" }),
   deleteNotification: (id: string) =>
     request(`/notifications/${id}`, { method: "DELETE" }),
+  deleteAllNotifications: (onlyRead = false) =>
+    request(`/notifications${onlyRead ? "?only_read=true" : ""}`, { method: "DELETE" }),
 
   // Budgets (presupuestos)
   listBudgets: () => request("/budgets"),

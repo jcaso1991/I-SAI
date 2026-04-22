@@ -231,16 +231,59 @@ export default function CalendarScreen() {
     else setAnchor(addMonths(anchor, 1));
   };
 
-  // If we arrived with ?openEvent=..., open that event's modal automatically
+  // If we arrived with ?openEvent=..., open that event's modal automatically.
+  // We first try to find it inside the currently-loaded events. If it is not
+  // there (typical when the event lives in another week/month), we fetch it
+  // directly via the API and ALSO move the anchor so the user lands on that
+  // event's week after closing the modal.
   useEffect(() => {
-    if (!params.openEvent || events.length === 0) return;
-    // Find the base event (strip any :date suffix)
-    const targetId = String(params.openEvent).split(":")[0];
-    const match = events.find((e) => (e.id.split(":")[0] === targetId));
-    if (match) setOpenEvent(match);
-    // Clean the param after using it
-    // @ts-ignore: setParams may not exist in older versions
-    router.setParams?.({ openEvent: undefined });
+    if (!params.openEvent) return;
+    const raw = String(params.openEvent);
+    const targetId = raw.split(":")[0];
+    const match = events.find((e) => e.id.split(":")[0] === targetId);
+    if (match) {
+      setOpenEvent(match);
+      // @ts-ignore: setParams may not exist in older versions
+      router.setParams?.({ openEvent: undefined });
+      return;
+    }
+    // Not in the currently-loaded range → fetch it directly.
+    let cancelled = false;
+    (async () => {
+      try {
+        const ev = await api.getEvent(targetId);
+        if (cancelled || !ev) return;
+        setOpenEvent(ev);
+        // Jump the visible range to the event's date so it is shown in
+        // context when the user closes the modal.
+        try {
+          const d = new Date(ev.start_at);
+          if (!isNaN(d.getTime())) setAnchor(d);
+        } catch {}
+      } catch (err: any) {
+        if (cancelled) return;
+        const msg = String(err?.message || "");
+        // Event was deleted → friendly feedback instead of silent no-op.
+        if (/404|no encontrado|not found/i.test(msg)) {
+          if (Platform.OS === "web") {
+            // @ts-ignore window exists on web
+            if (typeof window !== "undefined") window.alert("Este evento ya no existe. La notificación se eliminará.");
+          } else {
+            Alert.alert("Evento no encontrado", "Este evento ya no existe. La notificación se eliminará.");
+          }
+          // Clean up all stale notifications referencing this deleted event.
+          try {
+            const res = await api.listNotifications();
+            const stale = (res.items || []).filter((n: any) => (n.event_id || "").split(":")[0] === targetId);
+            await Promise.all(stale.map((n: any) => api.deleteNotification(n.id).catch(() => {})));
+          } catch {}
+        }
+      } finally {
+        // @ts-ignore: setParams may not exist in older versions
+        router.setParams?.({ openEvent: undefined });
+      }
+    })();
+    return () => { cancelled = true; };
   }, [params.openEvent, events]);
 
   // Keyboard shortcuts on web (arrow keys + D/S/M + T for today)

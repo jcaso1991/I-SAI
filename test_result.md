@@ -296,9 +296,7 @@ metadata:
   run_ui: false
 
 test_plan:
-  current_focus:
-    - "PDF template filling via existing AcroForm widgets (visual + editable)"
-    - "Event column layout (side-by-side for overlapping events)"
+  current_focus: []
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -1143,3 +1141,163 @@ agent_communication_round_14:
       restrictions, pending_completion with seguimiento, mark-read flow,
       cross-user isolation, non-assigned tech 403, admin regression).
       No issues found. Cleanup executed (event + test tech users deleted).
+
+
+  - task: "Notifications: GET /api/events/{id} + bulk delete DELETE /api/notifications"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: |
+          Added two endpoints (iteration 14):
+          1) GET /api/events/{eid} — fetch a single event by id. Allowed for
+             admin, any assigned user, or the event's manager. Returns the
+             same shape as list/patch (with material + users attached).
+          2) DELETE /api/notifications?only_read=[false|true] — bulk-delete
+             caller's notifications. With only_read=true, only already-read
+             notifications are removed; otherwise all are wiped.
+          Frontend NotificationsBell now offers Seleccionar/Eliminar (N)
+          selection mode, per-item × delete, and "Eliminar todas". Calendar
+          screen now opens events even when they live outside the visible
+          week, by calling api.getEvent(id) and jumping the anchor.
+        -working: true
+        -agent: "testing"
+        -comment: |
+          PASS (46/46 assertions) via /app/backend_test.py against
+          https://excel-form-sync-1.preview.emergentagent.com/api.
+
+          GET /api/events/{eid}:
+          - Admin can fetch any event → 200 with full shape: id, assigned_users
+            list (enriched from techT), manager attached with correct id/email/
+            name/role, attachments stripped to metadata only (no base64).
+          - Virtual id with :YYYY-MM-DD suffix → 200 and response id equals
+            the base id (suffix stripped as expected via eid.split(":")[0]).
+          - Assigned non-admin user (techT) → 200.
+          - Non-admin manager (userA with role=user and manager_id=self) → 200
+            (permission is based on manager_id, not role).
+          - Admin who is also manager → 200.
+          - Unrelated non-admin users (Otto and userB) → 403 "No autorizado".
+          - Non-existent id → 404 "Evento no encontrado" (both plain and with
+            :date suffix).
+          - No token → 401.
+
+          DELETE /api/notifications:
+          - Seeded 3 notifications for userA by setting manager_id=userA.id on
+            3 events and having techT PATCH status (completed/pending_completion/
+            completed with seguimiento). GET /notifications returned items=3,
+            unread=3.
+          - Marked 1 notification as read → unread=2.
+          - DELETE /api/notifications?only_read=true → 200 {ok:true, deleted:1};
+            follow-up GET returns exactly 2 items, all unread, unread=2.
+          - DELETE /api/notifications (no query) → 200 {ok:true, deleted:2};
+            follow-up GET returns items=[] and unread=0.
+          - Cross-user isolation: seeded 1 notification for userB, then userA
+            called DELETE /api/notifications. Re-login as userB and GET
+            /notifications still returned that exact same notification id with
+            unread=1. Also verified that DELETE?only_read=true on userA's side
+            does not remove userB's read notification. Unrelated user (other)
+            GET /notifications returns items=[] throughout the test.
+          - No token → 401.
+
+          Cleanup executed: 9 test events deleted, 4 test users deleted, any
+          leftover notifications cleaned per-user before deletion.
+
+          NOTE (unrelated pre-existing issue, observed in backend.err.log during
+          test run from the frontend): GET /api/events?from=...&to=... is
+          returning 500 for some requests coming from the frontend with
+          "TypeError: can't compare offset-naive and offset-aware datetimes"
+          in server.py:906 (_expand_recurrence). This is NOT triggered by the
+          two iteration-14 endpoints and NOT introduced in this iteration, but
+          main agent should fix it as a follow-up since it affects the calendar
+          list view. The fix is trivial: ensure the `start` datetime parsed on
+          line 905 is tz-aware when compared to tz-aware from_dt/to_dt.
+
+frontend:
+  - task: "Home screen notifications bell visible + clickable routes to event"
+    implemented: true
+    working: true
+    file: "/app/frontend/app/home.tsx, /app/frontend/src/NotificationsBell.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: |
+          Verified via screenshot on both desktop (1400x900) and mobile
+          (390x844). Bell appears top-right of Home content area. Clicking
+          a notification navigates to /calendario?openEvent=<id> and
+          auto-opens the event details modal; if the event is in another
+          week, the calendar anchor jumps to that week. Stale notifications
+          (event deleted) now show a friendly "Este evento ya no existe"
+          prompt and auto-clean the stale row.
+
+
+agent_communication_round_15:
+    -agent: "main"
+    -message: |
+      Iteration 14: Added two new backend endpoints to support the
+      Notifications-from-Home UX:
+      1) GET /api/events/{eid}
+         - Fetches a single event by id (base id; strips ":date" suffixes).
+         - Attaches material + users, strips attachment bodies.
+         - Auth: admin OR assigned user OR event.manager_id. 403 otherwise.
+         - 404 when the event does not exist.
+      2) DELETE /api/notifications
+         - Bulk-deletes notifications for the current user.
+         - Query: only_read=true deletes only already-read ones, otherwise
+           wipes all of the caller's notifications.
+      Please test:
+        A) GET /events/{id} happy path (admin, assigned user, manager) and
+           403 for unrelated non-admin; 404 for non-existing id.
+        B) DELETE /notifications → returns {ok:true, deleted:N} and the
+           subsequent GET /notifications returns items=[], unread=0.
+        C) DELETE /notifications?only_read=true → deletes only read ones;
+           verify unread survives.
+        D) Cross-user isolation: user A cannot affect user B's notifications.
+
+agent_communication_round_16:
+    -agent: "testing"
+    -message: |
+      Iteration 14 backend tests COMPLETE. 46/46 assertions passed via
+      /app/backend_test.py against
+      https://excel-form-sync-1.preview.emergentagent.com/api.
+
+      1) GET /api/events/{eid} — all 6 scenarios verified:
+         - Admin fetch: 200 with id/assigned_users/manager/attachments (metadata).
+         - ":date" virtual-id suffix resolves to base event id.
+         - Assigned non-admin (techT): 200.
+         - Non-admin manager (userA with manager_id=self): 200.
+         - Unrelated non-admin (Otto, userB): 403 "No autorizado".
+         - Non-existent id (with and without :date): 404.
+         - No token: 401.
+
+      2) DELETE /api/notifications — all 4 scenarios verified:
+         - Seeded 3 notifications for userA (2 unread + 1 read).
+         - DELETE ?only_read=true → {ok:true, deleted:1}; GET shows 2 unread,
+           unread=2.
+         - DELETE (no query) → {ok:true, deleted:2}; GET shows items=[],
+           unread=0.
+         - Cross-user isolation: userA bulk delete did NOT touch userB's
+           notifications (verified after re-login as userB). Also verified
+           that DELETE?only_read=true from userA did not delete userB's
+           read notifications.
+         - No token: 401.
+
+      Cleanup executed: 9 test events + 4 test users deleted.
+
+      IMPORTANT pre-existing bug observed (NOT introduced by iteration 14,
+      NOT blocking these tests): GET /api/events?from=...&to=... is returning
+      500 Internal Server Error in the calendar list view with
+      "TypeError: can't compare offset-naive and offset-aware datetimes" at
+      server.py:906. The `start` datetime parsed from event data on line 905
+      may be tz-naive while from_dt/to_dt (defaults from datetime.min/max in
+      list_events) are tz-aware. Main agent: please add a trivial timezone
+      normalization on line 905 (e.g. `if start.tzinfo is None: start =
+      start.replace(tzinfo=timezone.utc)`). Affects calendar list view but
+      does not affect the two new endpoints tested here.
