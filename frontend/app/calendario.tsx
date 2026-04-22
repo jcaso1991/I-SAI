@@ -59,6 +59,22 @@ function addMonths(d: Date, n: number): Date { const x = new Date(d); x.setMonth
 function sameDay(a: Date, b: Date): boolean { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
 function pad(n: number): string { return String(n).padStart(2, "0"); }
 function fmtTime(d: Date): string { return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+
+// Read a Blob/File as raw base64 (without the "data:*;base64," prefix).
+// Used for web file uploads where FileSystem.readAsStringAsync is not available.
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    // @ts-ignore FileReader is a browser API available on web
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const idx = result.indexOf(",");
+      resolve(idx >= 0 ? result.substring(idx + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error || new Error("FileReader error"));
+    reader.readAsDataURL(blob);
+  });
+}
 function fmtRange(start: Date, end: Date): string {
   if (start.getMonth() === end.getMonth()) return `${start.getDate()} – ${end.getDate()} ${MONTHS[start.getMonth()].slice(0, 3)} ${start.getFullYear()}`;
   return `${start.getDate()} ${MONTHS[start.getMonth()].slice(0, 3)} – ${end.getDate()} ${MONTHS[end.getMonth()].slice(0, 3)} ${start.getFullYear()}`;
@@ -1124,12 +1140,32 @@ function EventDetailsModal({
       const file = res.assets[0];
       const mime = file.mimeType || (file.name?.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg");
       setUploading(true);
-      let b64: string;
-      if (file.uri.startsWith("data:")) {
-        b64 = file.uri.split(",")[1];
+      let b64: string = "";
+
+      // Cross-platform base64 read
+      if (Platform.OS === "web") {
+        // Expo-document-picker on web returns a File object
+        const fileObj: Blob | undefined = (file as any).file;
+        if (fileObj) {
+          b64 = await blobToBase64(fileObj);
+        } else if (file.uri?.startsWith("data:")) {
+          b64 = file.uri.split(",")[1];
+        } else if (file.uri?.startsWith("blob:")) {
+          // Fetch the blob URL
+          const resp = await fetch(file.uri);
+          const blob = await resp.blob();
+          b64 = await blobToBase64(blob);
+        } else {
+          throw new Error("No se pudo leer el archivo en web");
+        }
       } else {
-        b64 = await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.Base64 });
+        if (file.uri.startsWith("data:")) {
+          b64 = file.uri.split(",")[1];
+        } else {
+          b64 = await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.Base64 });
+        }
       }
+
       const sizeMB = (b64.length * 3) / 4 / (1024 * 1024);
       if (sizeMB > 15) { Alert.alert("Error", "El archivo excede 15 MB"); return; }
       const meta = await api.uploadEventAttachment(event.id, {
