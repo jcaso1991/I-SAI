@@ -13,6 +13,7 @@ import { useBreakpoint } from "../src/useBreakpoint";
 import DateTimeField from "../src/DateTimeField";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const HOUR_START = 7;
 const HOUR_END = 18;
@@ -105,6 +106,55 @@ export default function CalendarScreen() {
   const [loading, setLoading] = useState(true);
   const [createRange, setCreateRange] = useState<{ day: Date; startMin: number; endMin: number } | null>(null);
   const [openEvent, setOpenEvent] = useState<EventT | null>(null);
+
+  // User filter: list of all users + set of disabled user IDs (excluded)
+  const [allUsers, setAllUsers] = useState<{ id: string; name: string; email: string; color?: string }[]>([]);
+  const [disabledUserIds, setDisabledUserIds] = useState<Set<string>>(new Set());
+  const [filterOpen, setFilterOpen] = useState(false);
+
+  // Load user list (admins only — others see only their own events anyway).
+  useEffect(() => {
+    if (me?.role !== "admin") return;
+    (async () => {
+      try {
+        const list = await api.listTechnicians();
+        setAllUsers(list || []);
+        // Hydrate persisted selection
+        try {
+          const raw = await AsyncStorage.getItem("cal_user_filter_v1");
+          if (raw) setDisabledUserIds(new Set(JSON.parse(raw)));
+        } catch {}
+      } catch {}
+    })();
+  }, [me?.role]);
+
+  const persistFilter = useCallback((s: Set<string>) => {
+    AsyncStorage.setItem("cal_user_filter_v1", JSON.stringify(Array.from(s))).catch(() => {});
+  }, []);
+
+  const toggleUser = (uid: string) => {
+    setDisabledUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid); else next.add(uid);
+      persistFilter(next);
+      return next;
+    });
+  };
+  const selectAll = () => { const n = new Set<string>(); setDisabledUserIds(n); persistFilter(n); };
+  const selectNone = () => { const n = new Set<string>(allUsers.map((u) => u.id)); setDisabledUserIds(n); persistFilter(n); };
+
+  // Apply user filter. We include events that have NO assigned users
+  // (so admins don't lose sight of unassigned events) OR at least one assignee
+  // NOT in disabled set.
+  const filteredEvents = useMemo(() => {
+    const adminRole = me?.role === "admin";
+    if (!adminRole || disabledUserIds.size === 0) return events;
+    return events.filter((ev) => {
+      const ids = ev.assigned_user_ids || [];
+      if (ids.length === 0) return true; // keep unassigned
+      return ids.some((id) => !disabledUserIds.has(id));
+    });
+  }, [events, disabledUserIds, me?.role]);
 
   // Range to fetch
   const { rangeFrom, rangeTo } = useMemo(() => {
@@ -252,6 +302,57 @@ export default function CalendarScreen() {
         <TouchableOpacity style={s.navBtn} onPress={stepForward}>
           <Ionicons name="chevron-forward" size={20} color={COLORS.navy} />
         </TouchableOpacity>
+        {isAdmin && (
+          <View style={{ marginLeft: 8, position: "relative", zIndex: 100 }}>
+            <TouchableOpacity
+              testID="btn-user-filter"
+              style={[
+                s.navBtn,
+                { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12 },
+                disabledUserIds.size > 0 && { backgroundColor: "#DBEAFE", borderColor: COLORS.primary },
+              ]}
+              onPress={() => setFilterOpen((v) => !v)}
+            >
+              <Ionicons name="people" size={18} color={COLORS.primary} />
+              <Text style={{ fontSize: 13, fontWeight: "700", color: COLORS.navy }}>
+                Usuarios
+                {disabledUserIds.size > 0 ? ` (${allUsers.length - disabledUserIds.size}/${allUsers.length})` : ""}
+              </Text>
+              <Ionicons name={filterOpen ? "chevron-up" : "chevron-down"} size={16} color={COLORS.primary} />
+            </TouchableOpacity>
+            {filterOpen && (
+              <View style={s.userFilterDropdown}>
+                <View style={{ flexDirection: "row", gap: 6, marginBottom: 6 }}>
+                  <TouchableOpacity style={s.filterMiniBtn} onPress={selectAll}>
+                    <Text style={s.filterMiniBtnTxt}>Todos</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={s.filterMiniBtn} onPress={selectNone}>
+                    <Text style={s.filterMiniBtnTxt}>Ninguno</Text>
+                  </TouchableOpacity>
+                </View>
+                <ScrollView style={{ maxHeight: 320 }} nestedScrollEnabled>
+                  {allUsers.map((u) => {
+                    const on = !disabledUserIds.has(u.id);
+                    return (
+                      <TouchableOpacity
+                        key={u.id}
+                        testID={`filter-user-${u.id}`}
+                        style={s.userFilterRow}
+                        onPress={() => toggleUser(u.id)}
+                      >
+                        <View style={[s.checkSmall, on && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}>
+                          {on && <Ionicons name="checkmark" size={12} color="#fff" />}
+                        </View>
+                        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: u.color || COLORS.primary }} />
+                        <Text style={{ flex: 1, fontSize: 13, color: COLORS.text }} numberOfLines={1}>{u.name || u.email}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+          </View>
+        )}
       </View>
 
       {loading ? (
@@ -261,13 +362,13 @@ export default function CalendarScreen() {
       ) : view === "month" ? (
         <MonthView
           anchor={anchor}
-          events={events}
+          events={filteredEvents}
           onSelectDay={(d) => { setAnchor(d); setView("day"); }}
         />
       ) : view === "day" ? (
         <DayView
           day={anchor}
-          events={events.filter((e) => sameDay(new Date(e.start_at), anchor))}
+          events={filteredEvents.filter((e) => sameDay(new Date(e.start_at), anchor))}
           isAdmin={isAdmin}
           isToday={sameDay(anchor, now)}
           onCreate={(startMin, endMin) => setCreateRange({ day: anchor, startMin, endMin })}
@@ -277,7 +378,7 @@ export default function CalendarScreen() {
       ) : (
         <WeekView
           weekStart={mondayOf(anchor)}
-          events={events}
+          events={filteredEvents}
           isAdmin={isAdmin}
           now={now}
           onCreate={(day, startMin, endMin) => setCreateRange({ day, startMin, endMin })}
@@ -482,15 +583,17 @@ function DayView({
 
 
 /**
- * Column layout for overlapping events: returns eventId -> { col, total }.
- * Events that overlap in time form a "cluster" and are assigned distinct
- * columns so they can be rendered side-by-side instead of on top of each
- * other. Simple greedy algorithm (classic calendar layout).
+ * Column layout for overlapping events: returns eventId -> { col, total, span }.
+ * - `col`: 0-based column index within the cluster.
+ * - `total`: number of columns needed for the cluster.
+ * - `span`: how many columns the event can occupy (col..col+span-1) without
+ *           overlapping any other event. This lets each event expand to fill
+ *           empty space on its right instead of staying stuck at 1/total.
  */
 function layoutEventColumns(
   events: EventT[]
-): Map<string, { col: number; total: number }> {
-  const result = new Map<string, { col: number; total: number }>();
+): Map<string, { col: number; total: number; span: number }> {
+  const result = new Map<string, { col: number; total: number; span: number }>();
   if (!events.length) return result;
   const sorted = [...events].sort((a, b) => {
     const sa = new Date(a.start_at).getTime();
@@ -502,6 +605,7 @@ function layoutEventColumns(
   let clusterEnd = -Infinity;
   const flush = () => {
     if (!cluster.length) return;
+    // 1) Assign columns (greedy)
     const colEnds: number[] = [];
     const colOf = new Map<string, number>();
     for (const e of cluster) {
@@ -516,8 +620,30 @@ function layoutEventColumns(
       colOf.set(e.id, col);
     }
     const total = Math.max(1, colEnds.length);
+    // 2) Compute span: how many columns can this event expand into?
+    //    Build a map col -> list of events in that column for quick lookup.
+    const byCol = new Map<number, EventT[]>();
     for (const e of cluster) {
-      result.set(e.id, { col: colOf.get(e.id) ?? 0, total });
+      const c = colOf.get(e.id) ?? 0;
+      if (!byCol.has(c)) byCol.set(c, []);
+      byCol.get(c)!.push(e);
+    }
+    const overlaps = (a: EventT, b: EventT) => {
+      const as = new Date(a.start_at).getTime();
+      const ae = new Date(a.end_at).getTime();
+      const bs = new Date(b.start_at).getTime();
+      const be = new Date(b.end_at).getTime();
+      return as < be && bs < ae;
+    };
+    for (const e of cluster) {
+      const c = colOf.get(e.id) ?? 0;
+      let span = 1;
+      for (let nc = c + 1; nc < total; nc++) {
+        const others = byCol.get(nc) || [];
+        if (others.some((o) => overlaps(e, o))) break;
+        span++;
+      }
+      result.set(e.id, { col: c, total, span });
     }
     cluster = [];
   };
@@ -606,7 +732,7 @@ function DayColumn({
           weekDays={weekDays}
           colW={colW}
           dayIndex={dayIndex}
-          layout={columnLayout.get(ev.id) || { col: 0, total: 1 }}
+          layout={columnLayout.get(ev.id) || { col: 0, total: 1, span: 1 }}
         />
       ))}
       {dragRange && (
@@ -632,7 +758,7 @@ function DraggableEvent({
   onTap: () => void;
   onMoveEvent: (ev: EventT, s: Date, e: Date) => Promise<void>;
   weekDays?: Date[]; colW?: number; dayIndex?: number;
-  layout?: { col: number; total: number };
+  layout?: { col: number; total: number; span: number };
 }) {
   const start = new Date(event.start_at);
   const end = new Date(event.end_at);
@@ -1752,7 +1878,49 @@ const s = StyleSheet.create({
   navBtn: {
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
     backgroundColor: COLORS.bg, borderRadius: 8, paddingVertical: 8, gap: 4,
+    borderWidth: 1, borderColor: COLORS.border,
   },
+  userFilterDropdown: {
+    position: "absolute",
+    top: 44,
+    right: 0,
+    minWidth: 260,
+    backgroundColor: COLORS.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 8,
+    zIndex: 100,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  userFilterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+  },
+  checkSmall: {
+    width: 18, height: 18, borderRadius: 4,
+    borderWidth: 2, borderColor: COLORS.borderInput,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: COLORS.surface,
+  },
+  filterMiniBtn: {
+    flex: 1,
+    paddingVertical: 6,
+    backgroundColor: COLORS.bg,
+    borderRadius: 6,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  filterMiniBtnTxt: { fontSize: 12, fontWeight: "700", color: COLORS.primary },
   dayHeaderRow: {
     flexDirection: "row", backgroundColor: COLORS.surface,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
