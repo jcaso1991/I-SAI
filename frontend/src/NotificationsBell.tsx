@@ -172,8 +172,25 @@ export default function NotificationsBell({
         animationType="slide"
         onRequestClose={() => setOpen(false)}
       >
+        {/* Backdrop — tapping it closes the sheet. Using Pressable ensures
+            the press event is consumed before bubbling into child views. */}
         <View style={s.sheetRoot}>
+          <TouchableOpacity
+            testID="notif-backdrop"
+            activeOpacity={1}
+            style={StyleSheet.absoluteFill}
+            onPress={() => setOpen(false)}
+          />
           <View style={s.sheet}>
+            {/* Grab handle (visual + tappable) */}
+            <TouchableOpacity
+              testID="btn-close-notif-handle"
+              onPress={() => setOpen(false)}
+              activeOpacity={0.6}
+              style={s.handleWrap}
+            >
+              <View style={s.handle} />
+            </TouchableOpacity>
             {/* Header */}
             <View style={s.hdr}>
               <View style={{ flex: 1 }}>
@@ -184,8 +201,13 @@ export default function NotificationsBell({
                   {selectMode ? "Toca para seleccionar" : `${unread} sin leer · ${items.length} total`}
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => setOpen(false)}>
-                <Ionicons name="close" size={26} color={COLORS.text} />
+              <TouchableOpacity
+                testID="btn-close-notif"
+                onPress={() => setOpen(false)}
+                hitSlop={14}
+                style={s.closeBtn}
+              >
+                <Ionicons name="close" size={22} color={COLORS.text} />
               </TouchableOpacity>
             </View>
 
@@ -374,6 +396,19 @@ const s = StyleSheet.create({
       web: { boxShadow: "0 -8px 32px rgba(15,23,42,0.18)" },
       default: { shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 16, shadowOffset: { width: 0, height: -8 } },
     }),
+  },
+  handleWrap: {
+    alignItems: "center", paddingTop: 10, paddingBottom: 4,
+  },
+  handle: {
+    width: 44, height: 5, borderRadius: 3,
+    backgroundColor: COLORS.border,
+  },
+  closeBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: COLORS.bg,
+    borderWidth: 1, borderColor: COLORS.border,
   },
   hdr: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
