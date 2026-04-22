@@ -622,10 +622,44 @@ class StampOut(BaseModel):
     icon_key: Optional[str] = None      # key for builtin SVG on frontend
 
 BUILTIN_STAMPS = [
+    # Aberturas
     {"id": "builtin_door", "name": "Puerta", "is_builtin": True, "icon_key": "door"},
+    {"id": "builtin_door_double", "name": "Puerta doble", "is_builtin": True, "icon_key": "door_double"},
+    {"id": "builtin_door_sliding", "name": "Puerta corredera", "is_builtin": True, "icon_key": "door_sliding"},
+    {"id": "builtin_window", "name": "Ventana", "is_builtin": True, "icon_key": "window"},
+    {"id": "builtin_stairs", "name": "Escalera", "is_builtin": True, "icon_key": "stairs"},
     {"id": "builtin_door_handle", "name": "Manilla puerta", "is_builtin": True, "icon_key": "door_handle"},
+    # Sanitarios
+    {"id": "builtin_toilet", "name": "Inodoro", "is_builtin": True, "icon_key": "toilet"},
+    {"id": "builtin_sink", "name": "Lavabo", "is_builtin": True, "icon_key": "sink"},
+    {"id": "builtin_shower", "name": "Ducha", "is_builtin": True, "icon_key": "shower"},
+    {"id": "builtin_bathtub", "name": "Bañera", "is_builtin": True, "icon_key": "bathtub"},
+    # Cocina
+    {"id": "builtin_kitchen_sink", "name": "Fregadero", "is_builtin": True, "icon_key": "kitchen_sink"},
+    {"id": "builtin_stove", "name": "Cocina", "is_builtin": True, "icon_key": "stove"},
+    {"id": "builtin_fridge", "name": "Nevera", "is_builtin": True, "icon_key": "fridge"},
+    # Mobiliario
+    {"id": "builtin_bed_single", "name": "Cama individual", "is_builtin": True, "icon_key": "bed_single"},
+    {"id": "builtin_bed_double", "name": "Cama doble", "is_builtin": True, "icon_key": "bed_double"},
+    {"id": "builtin_table", "name": "Mesa", "is_builtin": True, "icon_key": "table"},
+    {"id": "builtin_chair", "name": "Silla", "is_builtin": True, "icon_key": "chair"},
+    {"id": "builtin_sofa", "name": "Sofá", "is_builtin": True, "icon_key": "sofa"},
+    {"id": "builtin_wardrobe", "name": "Armario", "is_builtin": True, "icon_key": "wardrobe"},
+    # Electricidad
+    {"id": "builtin_outlet", "name": "Enchufe", "is_builtin": True, "icon_key": "outlet"},
+    {"id": "builtin_switch", "name": "Interruptor", "is_builtin": True, "icon_key": "switch"},
+    {"id": "builtin_light", "name": "Luminaria", "is_builtin": True, "icon_key": "light"},
+    {"id": "builtin_light_wall", "name": "Luz pared", "is_builtin": True, "icon_key": "light_wall"},
+    # Seguridad
     {"id": "builtin_camera", "name": "Cámara", "is_builtin": True, "icon_key": "camera"},
+    {"id": "builtin_motion_sensor", "name": "Sensor mov.", "is_builtin": True, "icon_key": "motion_sensor"},
+    {"id": "builtin_smoke_detector", "name": "Detector humo", "is_builtin": True, "icon_key": "smoke_detector"},
     {"id": "builtin_barrier", "name": "Barrera vehículo", "is_builtin": True, "icon_key": "barrier"},
+    # Referencia
+    {"id": "builtin_north_arrow", "name": "Norte", "is_builtin": True, "icon_key": "north_arrow"},
+    {"id": "builtin_column", "name": "Columna", "is_builtin": True, "icon_key": "column"},
+    {"id": "builtin_column_round", "name": "Columna redonda", "is_builtin": True, "icon_key": "column_round"},
+    {"id": "builtin_dimension", "name": "Cota", "is_builtin": True, "icon_key": "dimension"},
 ]
 
 @api_router.get("/plans", response_model=List[PlanListItem])

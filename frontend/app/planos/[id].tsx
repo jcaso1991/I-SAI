@@ -11,7 +11,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { api, COLORS } from "../../src/api";
-import { BUILTIN_STAMPS } from "../../src/stamps";
+import { BUILTIN_STAMPS, STAMP_STROKE, CATEGORY_ORDER } from "../../src/stamps";
 import { captureCanvasJpegBase64, shareOrDownloadBase64 } from "../../src/canvasCapture";
 
 type Pt = { x: number; y: number };
@@ -21,11 +21,42 @@ type CircleShape = { id: string; type: "circle"; cx: number; cy: number; r: numb
 type StampShape = {
   id: string; type: "stamp"; x: number; y: number; w: number; h: number;
   stampId: string; icon_key?: string; image_base64?: string; rotation?: number;
+  color?: string;
 };
 type Shape = LineShape | RectShape | CircleShape | StampShape;
 
 type Tool = "pencil" | "rect" | "circle" | "stamp" | "eraser" | "select";
 type StampItem = { id: string; name: string; is_builtin: boolean; image_base64?: string | null; icon_key?: string | null };
+
+// Color palette for drawing tools (stroke color)
+const PALETTE: { name: string; value: string }[] = [
+  { name: "Negro", value: "#0F172A" },
+  { name: "Rojo", value: "#EF4444" },
+  { name: "Naranja", value: "#F59E0B" },
+  { name: "Amarillo", value: "#EAB308" },
+  { name: "Verde", value: "#22C55E" },
+  { name: "Turquesa", value: "#14B8A6" },
+  { name: "Azul", value: "#1E88E5" },
+  { name: "Morado", value: "#A855F7" },
+  { name: "Rosa", value: "#EC4899" },
+  { name: "Blanco", value: "#FFFFFF" },
+];
+
+const STROKE_WIDTHS: { label: string; value: number }[] = [
+  { label: "Fino", value: 2 },
+  { label: "Medio", value: 4 },
+  { label: "Grueso", value: 6 },
+];
+
+// Convert hex color to rgba with alpha for rect/circle fills
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace("#", "");
+  if (h.length !== 6) return `rgba(30,136,229,${alpha})`;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 const TOOLBAR_H = 64;
@@ -43,6 +74,8 @@ export default function PlanEditor() {
   const [tool, setTool] = useState<Tool>("pencil");
   const [currentStampId, setCurrentStampId] = useState<string | null>("builtin_door");
   const [size, setSize] = useState(80);
+  const [strokeColor, setStrokeColor] = useState<string>(PALETTE[0].value);
+  const [strokeW, setStrokeW] = useState<number>(STROKE_WIDTHS[0].value);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [stamps, setStamps] = useState<StampItem[]>([]);
   const [showStampPicker, setShowStampPicker] = useState(false);
@@ -155,7 +188,7 @@ export default function PlanEditor() {
       const line: LineShape = {
         id: uid(), type: "line",
         points: [{ x, y }],
-        stroke: COLORS.navy, strokeWidth: 3,
+        stroke: strokeColor, strokeWidth: strokeW,
       };
       currentDrawingRef.current = line;
       setShapes((s) => [...s, line]);
@@ -163,7 +196,7 @@ export default function PlanEditor() {
       const rect: RectShape = {
         id: uid(), type: "rect",
         x, y, w: 0, h: 0,
-        stroke: COLORS.navy, strokeWidth: 2, fill: "rgba(30,136,229,0.1)",
+        stroke: strokeColor, strokeWidth: strokeW, fill: hexToRgba(strokeColor, 0.1),
       };
       currentDrawingRef.current = rect;
       setShapes((s) => [...s, rect]);
@@ -171,7 +204,7 @@ export default function PlanEditor() {
       const circ: CircleShape = {
         id: uid(), type: "circle",
         cx: x, cy: y, r: 0,
-        stroke: COLORS.navy, strokeWidth: 2, fill: "rgba(30,136,229,0.1)",
+        stroke: strokeColor, strokeWidth: strokeW, fill: hexToRgba(strokeColor, 0.1),
       };
       currentDrawingRef.current = circ;
       setShapes((s) => [...s, circ]);
@@ -185,6 +218,7 @@ export default function PlanEditor() {
         stampId: st.id,
         icon_key: st.icon_key || undefined,
         image_base64: st.image_base64 || undefined,
+        color: strokeColor,
       };
       setShapes((s) => [...s, newShape]);
       markDirty();
@@ -269,6 +303,19 @@ export default function PlanEditor() {
     if (!selectedId) return;
     setShapes((s) => s.filter((sh) => sh.id !== selectedId));
     setSelectedId(null);
+    markDirty();
+  };
+
+  const recolorSelected = (color: string) => {
+    if (!selectedId) return;
+    setShapes((arr) => arr.map((sh) => {
+      if (sh.id !== selectedId) return sh;
+      if (sh.type === "line") return { ...sh, stroke: color };
+      if (sh.type === "rect") return { ...sh, stroke: color, fill: hexToRgba(color, 0.1) };
+      if (sh.type === "circle") return { ...sh, stroke: color, fill: hexToRgba(color, 0.1) };
+      if (sh.type === "stamp") return { ...sh, color };
+      return sh;
+    }));
     markDirty();
   };
 
@@ -530,6 +577,53 @@ export default function PlanEditor() {
         )}
       </ScrollView>
 
+      {/* Color + stroke-width row: applies to pencil/rect/circle/stamp.
+          If a shape is selected, tapping a color recolors it; otherwise it becomes the default for new drawings. */}
+      <View style={s.palette}>
+        <Text style={s.paletteLabel}>
+          {selectedShape ? "Color selección" : "Color"}
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, alignItems: "center" }}>
+          {PALETTE.map((c) => {
+            const active = (selectedShape
+              ? (selectedShape.type === "stamp" ? selectedShape.color : (selectedShape as any).stroke) === c.value
+              : strokeColor === c.value);
+            return (
+              <TouchableOpacity
+                key={c.value}
+                testID={`color-${c.value}`}
+                onPress={() => {
+                  if (selectedShape) {
+                    recolorSelected(c.value);
+                    setStrokeColor(c.value);
+                  } else {
+                    setStrokeColor(c.value);
+                  }
+                }}
+                style={[
+                  s.colorDot,
+                  { backgroundColor: c.value },
+                  c.value === "#FFFFFF" && { borderWidth: 2, borderColor: COLORS.border },
+                  active && s.colorDotActive,
+                ]}
+              />
+            );
+          })}
+        </ScrollView>
+        <View style={s.widthGroup}>
+          {STROKE_WIDTHS.map((w) => (
+            <TouchableOpacity
+              key={w.value}
+              testID={`width-${w.value}`}
+              style={[s.widthChip, strokeW === w.value && s.widthChipActive]}
+              onPress={() => setStrokeW(w.value)}
+            >
+              <View style={[s.widthDot, { height: w.value + 1 }, strokeW === w.value && { backgroundColor: "#fff" }]} />
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
       {/* Size control for stamp tool */}
       {tool === "stamp" && (
         <View style={s.sizeRow}>
@@ -646,6 +740,18 @@ function renderShape(sh: Shape, selected: boolean) {
 }
 
 function StampView({ shape, highlight }: { shape: StampShape; highlight?: string }) {
+  // Resolve effective stroke/fill for a stamp path or circle:
+  //  - If the user set a color on this stamp, override any path whose stroke matches STAMP_STROKE.
+  //  - If fill equals STAMP_STROKE (solid accent fills), replace it too, so "solid" parts follow the chosen color.
+  //  - White / transparent / explicit fills are preserved to keep contrast readable.
+  const override = shape.color && shape.color !== STAMP_STROKE ? shape.color : undefined;
+  const resolveStroke = (orig?: string) => highlight || (override && (!orig || orig === STAMP_STROKE) ? override : undefined) || orig || COLORS.navy;
+  const resolveFill = (orig?: string) => {
+    if (!orig || orig === "none") return orig || "none";
+    if (override && orig === STAMP_STROKE) return override;
+    return orig;
+  };
+
   if (shape.icon_key) {
     const builtin = BUILTIN_STAMPS[shape.icon_key];
     if (!builtin) return null;
@@ -657,17 +763,17 @@ function StampView({ shape, highlight }: { shape: StampShape; highlight?: string
         {info.paths.map((p, i) => (
           <Path key={i}
             d={p.d}
-            stroke={highlight || p.stroke || COLORS.navy}
+            stroke={resolveStroke(p.stroke)}
             strokeWidth={p.strokeWidth || 2}
-            fill={p.fill || "none"}
+            fill={resolveFill(p.fill)}
           />
         ))}
         {(info.circles || []).map((c, i) => (
           <Circle key={`c${i}`}
             cx={c.cx} cy={c.cy} r={c.r}
-            stroke={highlight || c.stroke || COLORS.navy}
+            stroke={resolveStroke(c.stroke)}
             strokeWidth={c.strokeWidth || 2}
-            fill={c.fill || "none"}
+            fill={resolveFill(c.fill)}
           />
         ))}
       </G>
@@ -776,6 +882,22 @@ function ToolBtn({ icon, active, onPress, label }: { icon: any; active: boolean;
 function StampPicker({
   visible, stamps, currentId, onSelect, onClose,
 }: { visible: boolean; stamps: StampItem[]; currentId: string | null; onSelect: (s: StampItem) => void; onClose: () => void }) {
+  // Group stamps by category. Built-in stamps use the category defined in stamps.ts; user-uploaded stamps go to "Personalizadas".
+  const groups: Record<string, StampItem[]> = {};
+  for (const st of stamps) {
+    let cat = "Personalizadas";
+    if (st.icon_key) {
+      const b = BUILTIN_STAMPS[st.icon_key];
+      if (b) cat = b.category;
+    }
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(st);
+  }
+  const orderedCats = [
+    ...CATEGORY_ORDER.filter((c) => groups[c] && groups[c].length),
+    ...(groups["Personalizadas"] ? ["Personalizadas"] : []),
+  ];
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={s.modalRoot}>
@@ -786,23 +908,30 @@ function StampPicker({
               <Ionicons name="close" size={26} color={COLORS.text} />
             </TouchableOpacity>
           </View>
-          <ScrollView contentContainerStyle={s.stampGrid}>
-            {stamps.map((st) => {
-              const active = st.id === currentId;
-              return (
-                <TouchableOpacity
-                  key={st.id}
-                  testID={`stamp-opt-${st.id}`}
-                  style={[s.stampCell, active && s.stampCellActive]}
-                  onPress={() => onSelect(st)}
-                >
-                  <View style={s.stampPreview}>
-                    <StampPreview stamp={st} size={60} />
-                  </View>
-                  <Text style={s.stampName} numberOfLines={1}>{st.name}</Text>
-                </TouchableOpacity>
-              );
-            })}
+          <ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
+            {orderedCats.map((cat) => (
+              <View key={cat} style={{ marginBottom: 12 }}>
+                <Text style={s.catTitle}>{cat}</Text>
+                <View style={s.stampGrid}>
+                  {groups[cat].map((st) => {
+                    const active = st.id === currentId;
+                    return (
+                      <TouchableOpacity
+                        key={st.id}
+                        testID={`stamp-opt-${st.id}`}
+                        style={[s.stampCell, active && s.stampCellActive]}
+                        onPress={() => onSelect(st)}
+                      >
+                        <View style={s.stampPreview}>
+                          <StampPreview stamp={st} size={60} />
+                        </View>
+                        <Text style={s.stampName} numberOfLines={1}>{st.name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            ))}
           </ScrollView>
         </View>
       </View>
@@ -1005,6 +1134,34 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.surface, paddingHorizontal: 12, paddingVertical: 6,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
+  palette: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    backgroundColor: COLORS.surface, paddingHorizontal: 12, paddingVertical: 8,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  paletteLabel: {
+    fontSize: 11, fontWeight: "800", color: COLORS.textSecondary,
+    letterSpacing: 0.5, width: 110,
+  },
+  colorDot: {
+    width: 28, height: 28, borderRadius: 14,
+  },
+  colorDotActive: {
+    borderWidth: 3, borderColor: COLORS.primary,
+    transform: [{ scale: 1.08 }],
+  },
+  widthGroup: {
+    flexDirection: "row", gap: 4, marginLeft: 8,
+    paddingLeft: 10, borderLeftWidth: 1, borderLeftColor: COLORS.border,
+  },
+  widthChip: {
+    width: 36, height: 28, borderRadius: 8, backgroundColor: COLORS.bg,
+    alignItems: "center", justifyContent: "center",
+  },
+  widthChipActive: { backgroundColor: COLORS.primary },
+  widthDot: {
+    width: 22, backgroundColor: COLORS.navy, borderRadius: 3,
+  },
   sizeLabel: { fontSize: 12, fontWeight: "700", color: COLORS.textSecondary },
   sizeBtns: { flexDirection: "row", gap: 6, flex: 1, justifyContent: "flex-end" },
   sizeChip: {
@@ -1043,6 +1200,11 @@ const s = StyleSheet.create({
   },
   modalTitle: { fontSize: 20, fontWeight: "900", color: COLORS.text },
   stampGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, padding: 4 },
+  catTitle: {
+    fontSize: 12, fontWeight: "900", color: COLORS.textSecondary,
+    letterSpacing: 1.5, marginTop: 8, marginBottom: 4, marginLeft: 4,
+    textTransform: "uppercase",
+  },
   stampCell: {
     width: "30%", minWidth: 90, alignItems: "center", padding: 10, gap: 4,
     backgroundColor: COLORS.bg, borderRadius: 12, borderWidth: 2, borderColor: "transparent",

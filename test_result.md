@@ -601,3 +601,31 @@ backend_new_tasks:
       on listed events. Cleanup executed (all test events and users deleted).
       Task `Event attachments upload/get/delete` marked working: true,
       needs_retesting: false.
+
+
+agent_communication_round_4:
+    -agent: "main"
+    -message: |
+      ITERATION 4 (planos palette expansion):
+      Frontend-only change (no retest required for backend):
+      - Expanded `/app/frontend/src/stamps.ts` from 4 built-in stamps to 28
+        architectural symbols, grouped by category
+        (Aberturas / Sanitarios / Cocina / Mobiliario / Electricidad /
+         Seguridad / Referencia).
+      - Backend `/app/backend/server.py` BUILTIN_STAMPS list updated with
+        matching icon_key entries so /api/stamps returns them. Pure static
+        data change — no schema, no behaviour change. Existing /api/stamps
+        tests should continue to pass.
+      - Planos editor (`/app/frontend/app/planos/[id].tsx`):
+          · Added color palette (10 colors) + stroke-width selector (3)
+            that applies to pencil / rect / circle / stamp.
+          · When a shape is selected via the "Mover" tool, tapping a color
+            recolors the selected shape (lines/rects/circles change stroke,
+            stamps receive a `color` field that overrides STAMP_STROKE).
+          · `StampView` now supports `shape.color` override (re-skinning the
+            default built-in path strokes/fills).
+          · `StampPicker` modal now shows sectioned categories with an
+            uppercase header per group + "Personalizadas" section at the
+            bottom for user-uploaded stamps.
+      Verified via screenshot tool: picker modal renders all new symbols,
+      palette row is visible, admin login works.
