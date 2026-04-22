@@ -309,7 +309,7 @@ export default function CalendarScreen() {
               style={[
                 s.navBtn,
                 { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12 },
-                disabledUserIds.size > 0 && { backgroundColor: "#DBEAFE", borderColor: COLORS.primary },
+                disabledUserIds.size > 0 && { backgroundColor: COLORS.highlightBg, borderColor: COLORS.primary },
               ]}
               onPress={() => setFilterOpen((v) => !v)}
             >
@@ -1273,7 +1273,7 @@ function CreateEventModal({
                     <TouchableOpacity
                       key={t.id}
                       testID={`assign-${t.id}`}
-                      style={[s.techRow, on && { backgroundColor: "#DBEAFE", borderColor: COLORS.primary }]}
+                      style={[s.techRow, on && { backgroundColor: COLORS.highlightBg, borderColor: COLORS.primary }]}
                       onPress={() => toggleAssign(t.id)}
                     >
                       <View style={[s.checkBox, on && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}>
@@ -1324,7 +1324,7 @@ function CreateEventModal({
                       <TouchableOpacity
                         key={m.id}
                         testID={`manager-${m.id}`}
-                        style={[s.techRow, { borderRadius: 0, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: COLORS.border }, on && { backgroundColor: "#DBEAFE" }]}
+                        style={[s.techRow, { borderRadius: 0, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: COLORS.border }, on && { backgroundColor: COLORS.highlightBg }]}
                         onPress={() => { setManagerId(m.id); setShowManagerList(false); }}
                       >
                         <View style={[s.checkBox, on && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}>
@@ -1725,7 +1725,7 @@ function EventDetailsModal({
                         <TouchableOpacity
                           key={mgr.id}
                           testID={`manager-edit-${mgr.id}`}
-                          style={[s.techRow, { borderRadius: 0, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: COLORS.border }, on && { backgroundColor: "#DBEAFE" }]}
+                          style={[s.techRow, { borderRadius: 0, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: COLORS.border }, on && { backgroundColor: COLORS.highlightBg }]}
                           onPress={() => { setManagerId(mgr.id); setShowManagerList(false); }}
                         >
                           <View style={[s.checkBox, on && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}>
@@ -1974,7 +1974,7 @@ const s = StyleSheet.create({
     flex: 1, alignItems: "center", paddingVertical: 8,
     borderLeftWidth: 1, borderLeftColor: COLORS.border,
   },
-  dayHeaderToday: { backgroundColor: "#DBEAFE" },
+  dayHeaderToday: { backgroundColor: COLORS.highlightBg },
   dayLabel: { fontSize: 11, color: COLORS.textSecondary, fontWeight: "800", letterSpacing: 1 },
   dayNum: { fontSize: 18, fontWeight: "700", color: COLORS.text, marginTop: 2 },
   dayNumBig: { fontSize: 34, fontWeight: "900", color: COLORS.text, marginTop: 2 },

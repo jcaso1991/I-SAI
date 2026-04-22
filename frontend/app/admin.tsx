@@ -141,7 +141,7 @@ export default function Admin() {
               onPress={() => setTheme("light")}
               style={[
                 s.themeOption,
-                theme === "light" && { borderColor: COLORS.primary, backgroundColor: "#EFF6FF" },
+                theme === "light" && { borderColor: COLORS.primary, backgroundColor: COLORS.primarySoft },
               ]}
             >
               <Ionicons name="sunny" size={22} color={theme === "light" ? COLORS.primary : COLORS.textSecondary} />

@@ -635,6 +635,49 @@ agent_communication_round_5:
       - Removed categories "Sanitarios", "Cocina" and "Mobiliario" from
         /app/frontend/src/stamps.ts and /app/backend/server.py
         (BUILTIN_STAMPS). No DB migration needed (icons are resolved on
+
+agent_communication_round_6:
+    -agent: "main"
+    -message: |
+      ITERATION 6 (dark-mode polish, frontend-only):
+      Problem reported by user: dark theme looked broken on app and
+      several details were unreadable on web.
+
+      Root causes identified (via grep of hardcoded hex colors):
+        1. `/app/frontend/app/presupuestos/[id].tsx` — `comboList` style had
+           `backgroundColor: "#fff"` hardcoded. The dropdown list text uses
+           `COLORS.text` which in dark mode is near-white → white on white,
+           totally invisible. This was the CRITICAL bug.
+        2. Multiple components used light-accent hex backgrounds that never
+           swapped in dark mode:
+              - #DBEAFE  (highlight blue) → calendar today header, selected
+                user-filter rows, admin role badge, planos option icon.
+              - #FEF3C7  (pill orange)    → materiales pending pills, planos
+                option icon.
+              - #EDE9FE  (pill purple)    → users "comercial" role badge.
+              - #EFF6FF  (primary soft)   → admin theme-selector button,
+                DateTimeField open button.
+              - #8B5CF6  (accent purple)  → presupuestos cards & buttons.
+
+      Fix applied:
+        - `/app/frontend/src/theme.tsx` extended LIGHT & DARK palettes with:
+            primarySoft, highlightBg, highlightText,
+            pillBlueBg / pillBlueText,
+            pillOrangeBg / pillOrangeText,
+            pillPurpleBg / pillPurpleText,
+            accent / accentText, canvasPaper.
+        - Replaced every hardcoded accent hex in:
+            materiales.tsx, users.tsx, presupuestos/index.tsx,
+            presupuestos/[id].tsx (including comboList), planos/index.tsx,
+            calendario.tsx (4 occurrences incl. dayHeaderToday),
+            admin.tsx, DateTimeField.tsx.
+        - Extended theme.tsx CSS overrides (web-only safety net) with
+          targeted `[style*="background-color: rgb(...)"]` rules for every
+          light-accent hex, plus text-colour rules for their paired text
+          colours, so any forgotten spot still auto-adapts on web.
+
+      Backend: UNCHANGED — no retest required.
+
         each render; legacy shapes with removed icon_keys would just fail
         to render but no crash — none exist yet in DB).
       - Added new "Control de accesos" category with 16 symbols:

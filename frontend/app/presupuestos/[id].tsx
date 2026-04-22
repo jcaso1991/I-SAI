@@ -206,7 +206,7 @@ export default function BudgetEditor() {
           <TouchableOpacity style={[s.iconBtn, { backgroundColor: COLORS.primary }]} onPress={saveBudget} disabled={saving}>
             {saving ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="save" size={20} color="#fff" />}
           </TouchableOpacity>
-          <TouchableOpacity style={[s.iconBtn, { backgroundColor: "#8B5CF6" }]} onPress={generatePdf}>
+          <TouchableOpacity style={[s.iconBtn, { backgroundColor: COLORS.accent }]} onPress={generatePdf}>
             <Ionicons name="document-text" size={20} color="#fff" />
           </TouchableOpacity>
         </View>
@@ -293,7 +293,7 @@ export default function BudgetEditor() {
           <Field label="Cargo" value={f.cargo_cliente} onChange={(v) => set("cargo_cliente", v)} />
         </Section>
 
-        <TouchableOpacity style={[s.bigBtn, { backgroundColor: "#8B5CF6" }]} onPress={generatePdf}>
+        <TouchableOpacity style={[s.bigBtn, { backgroundColor: COLORS.accent }]} onPress={generatePdf}>
           <Ionicons name="document-text" size={22} color="#fff" />
           <Text style={s.bigBtnTxt}>Guardar y generar PDF</Text>
         </TouchableOpacity>
@@ -503,7 +503,7 @@ const s = StyleSheet.create({
     left: 0,
     right: 0,
     marginTop: 2,
-    backgroundColor: "#fff",
+    backgroundColor: COLORS.surface,
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: 8,

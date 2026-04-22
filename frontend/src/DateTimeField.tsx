@@ -209,7 +209,7 @@ const s = StyleSheet.create({
     borderRadius: 10, backgroundColor: COLORS.bg, borderWidth: 2,
     borderColor: COLORS.borderInput, paddingHorizontal: 12,
   },
-  btnOpen: { borderColor: COLORS.primary, backgroundColor: "#EFF6FF" },
+  btnOpen: { borderColor: COLORS.primary, backgroundColor: COLORS.primarySoft },
   btnText: { fontSize: 14, fontWeight: "700", color: COLORS.text },
   inlinePanel: {
     marginTop: 6, backgroundColor: COLORS.surface, borderRadius: 12,

@@ -51,6 +51,19 @@ const LIGHT = {
   errorBg: "#FEE2E2",
   errorText: "#991B1B",
   navy: "#0F172A",
+  // accents (NEW)
+  primarySoft: "#EFF6FF",   // very light blue — active/open buttons
+  highlightBg: "#DBEAFE",   // selected row / today column header
+  highlightText: "#1E40AF",
+  pillBlueBg: "#DBEAFE",
+  pillBlueText: "#1E40AF",
+  pillOrangeBg: "#FEF3C7",
+  pillOrangeText: "#92400E",
+  pillPurpleBg: "#EDE9FE",
+  pillPurpleText: "#5B21B6",
+  accent: "#8B5CF6",        // purple accent (presupuestos)
+  accentText: "#FFFFFF",
+  canvasPaper: "#FFFFFF",   // always white — drawings canvas
 };
 
 const DARK = {
@@ -71,6 +84,19 @@ const DARK = {
   errorBg: "#7F1D1D",
   errorText: "#FCA5A5",
   navy: "#E2E8F0",        // used as "strong text" — light in dark
+  // accents (NEW)
+  primarySoft: "#1E293B",
+  highlightBg: "#1E3A8A",
+  highlightText: "#BFDBFE",
+  pillBlueBg: "#1E3A8A",
+  pillBlueText: "#BFDBFE",
+  pillOrangeBg: "#78350F",
+  pillOrangeText: "#FDE68A",
+  pillPurpleBg: "#4C1D95",
+  pillPurpleText: "#DDD6FE",
+  accent: "#A78BFA",
+  accentText: "#FFFFFF",
+  canvasPaper: "#F8FAFC",  // slightly dim for readability
 };
 
 export const THEMES: Record<ThemeName, typeof LIGHT> = { light: LIGHT, dark: DARK };
@@ -191,6 +217,47 @@ function injectThemeCSS() {
 [data-theme="dark"] input, [data-theme="dark"] textarea {
   caret-color: ${DARK.text};
   color-scheme: dark;
+}
+/* ------------------------------------------------------------------
+ * Fallbacks for light-accent backgrounds that may still slip through
+ * as inline styles (e.g. 3rd-party RN-Web spots we haven't migrated).
+ * Each maps the light hex → its equivalent dark-palette entry.
+ * ------------------------------------------------------------------ */
+[data-theme="dark"] [style*="background-color: rgb(219, 234, 254)"],
+[data-theme="dark"] .r-backgroundColor-1niwhzg {  /* #DBEAFE */
+  background-color: ${DARK.highlightBg} !important;
+}
+[data-theme="dark"] [style*="background-color: rgb(254, 243, 199)"] {  /* #FEF3C7 */
+  background-color: ${DARK.pillOrangeBg} !important;
+}
+[data-theme="dark"] [style*="background-color: rgb(237, 233, 254)"] {  /* #EDE9FE */
+  background-color: ${DARK.pillPurpleBg} !important;
+}
+[data-theme="dark"] [style*="background-color: rgb(239, 246, 255)"] {  /* #EFF6FF */
+  background-color: ${DARK.primarySoft} !important;
+}
+[data-theme="dark"] [style*="background-color: rgb(220, 252, 231)"] {  /* #DCFCE7 */
+  background-color: ${DARK.syncedBg} !important;
+}
+[data-theme="dark"] [style*="background-color: rgb(254, 226, 226)"] {  /* #FEE2E2 */
+  background-color: ${DARK.errorBg} !important;
+}
+/* Text colours that should also adapt */
+[data-theme="dark"] [style*="color: rgb(30, 64, 175)"] {  /* #1E40AF */
+  color: ${DARK.pillBlueText} !important;
+}
+[data-theme="dark"] [style*="color: rgb(146, 64, 14)"] {  /* #92400E */
+  color: ${DARK.pillOrangeText} !important;
+}
+[data-theme="dark"] [style*="color: rgb(91, 33, 182)"],
+[data-theme="dark"] [style*="color: rgb(109, 40, 217)"] {  /* #5B21B6 / #6D28D9 */
+  color: ${DARK.pillPurpleText} !important;
+}
+[data-theme="dark"] [style*="color: rgb(22, 101, 52)"] {  /* #166534 */
+  color: ${DARK.syncedText} !important;
+}
+[data-theme="dark"] [style*="color: rgb(153, 27, 27)"] {  /* #991B1B */
+  color: ${DARK.errorText} !important;
 }
   `;
   if (!el) {

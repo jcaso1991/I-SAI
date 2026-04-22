@@ -121,8 +121,8 @@ export default function Users() {
                   {u.name || u.email} {isMe && <Text style={s.youBadge}>(tú)</Text>}
                 </Text>
                 <Text style={s.userEmail} numberOfLines={1}>{u.email}</Text>
-                <View style={[s.roleBadge, u.role === "admin" ? s.roleAdmin : u.role === "comercial" ? { backgroundColor: "#EDE9FE" } : s.roleUser]}>
-                  <Text style={[s.roleBadgeText, u.role === "admin" && { color: COLORS.primary }, u.role === "comercial" && { color: "#6D28D9" }]}>
+                <View style={[s.roleBadge, u.role === "admin" ? s.roleAdmin : u.role === "comercial" ? { backgroundColor: COLORS.pillPurpleBg } : s.roleUser]}>
+                  <Text style={[s.roleBadgeText, u.role === "admin" && { color: COLORS.pillBlueText }, u.role === "comercial" && { color: COLORS.pillPurpleText }]}>
                     {u.role === "admin" ? "ADMIN" : u.role === "comercial" ? "COMERCIAL" : "TÉCNICO"}
                   </Text>
                 </View>
@@ -475,7 +475,7 @@ const s = StyleSheet.create({
     alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 2,
     borderRadius: 6, marginTop: 2,
   },
-  roleAdmin: { backgroundColor: "#DBEAFE" },
+  roleAdmin: { backgroundColor: COLORS.pillBlueBg },
   roleUser: { backgroundColor: COLORS.bg },
   roleBadgeText: { fontSize: 10, fontWeight: "900", letterSpacing: 1, color: COLORS.textSecondary },
   actions: { flexDirection: "row", gap: 4 },

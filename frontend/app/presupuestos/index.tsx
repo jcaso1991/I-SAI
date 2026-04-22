@@ -75,7 +75,7 @@ export default function PresupuestosIndex() {
           </TouchableOpacity>
           <TouchableOpacity
             testID="btn-existing-budget"
-            style={[s.card, { backgroundColor: "#8B5CF6" }]}
+            style={[s.card, { backgroundColor: COLORS.accent }]}
             onPress={() => router.push("/presupuestos/existente")}
             activeOpacity={0.85}
           >

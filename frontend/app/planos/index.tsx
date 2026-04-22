@@ -239,7 +239,7 @@ function CreatePlanModal({
                 style={s.optionCard}
                 onPress={() => setStep("libre")}
               >
-                <View style={[s.optionIcon, { backgroundColor: "#DBEAFE" }]}>
+                <View style={[s.optionIcon, { backgroundColor: COLORS.pillBlueBg }]}>
                   <Ionicons name="document-text-outline" size={28} color={COLORS.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -253,7 +253,7 @@ function CreatePlanModal({
                 style={s.optionCard}
                 onPress={() => setStep("proyecto")}
               >
-                <View style={[s.optionIcon, { backgroundColor: "#FEF3C7" }]}>
+                <View style={[s.optionIcon, { backgroundColor: COLORS.pillOrangeBg }]}>
                   <Ionicons name="list-outline" size={28} color="#92400E" />
                 </View>
                 <View style={{ flex: 1 }}>
