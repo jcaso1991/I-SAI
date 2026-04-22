@@ -135,6 +135,16 @@ export const api = {
   satGet: (id: string) => request(`/sat/incidents/${id}`),
   satUpdate: (id: string, body: any) =>
     request(`/sat/incidents/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  satChangeStatus: (id: string, status: "pendiente" | "resuelta", comment: string) =>
+    request(`/sat/incidents/${id}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status, comment }),
+    }),
+  satAddNote: (id: string, comment: string) =>
+    request(`/sat/incidents/${id}/note`, {
+      method: "POST",
+      body: JSON.stringify({ status: "pendiente", comment }),
+    }),
   satDelete: (id: string) =>
     request(`/sat/incidents/${id}`, { method: "DELETE" }),
 

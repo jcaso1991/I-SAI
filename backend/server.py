@@ -1768,6 +1768,75 @@ async def sat_delete(iid: str, admin: dict = Depends(current_admin)):
         raise HTTPException(404, "Incidencia no encontrada")
     return {"ok": True}
 
+class SATStatusChangeIn(BaseModel):
+    status: str  # "pendiente" | "resuelta"
+    comment: str = Field("", max_length=4000)
+
+@api_router.post("/sat/incidents/{iid}/status")
+async def sat_change_status(iid: str, body: SATStatusChangeIn, user: dict = Depends(current_user)):
+    """Change the status of an incident and append a history entry with the
+    user's comment. This is the canonical way to toggle pendiente↔resuelta
+    from the UI so that every change is traceable."""
+    existing = await db.sat_incidents.find_one({"id": iid})
+    if not existing:
+        raise HTTPException(404, "Incidencia no encontrada")
+    if body.status not in {"pendiente", "resuelta"}:
+        raise HTTPException(400, "Estado inválido")
+
+    now = datetime.now(timezone.utc).isoformat()
+    prev = existing.get("status") or "pendiente"
+    entry = {
+        "id": str(uuid.uuid4()),
+        "action": "status_change",
+        "from_status": prev,
+        "to_status": body.status,
+        "comment": (body.comment or "").strip(),
+        "user_id": user.get("id"),
+        "user_name": user.get("name") or user.get("email") or "usuario",
+        "created_at": now,
+    }
+    patch = {
+        "status": body.status,
+        "updated_at": now,
+    }
+    if body.status == "resuelta" and prev != "resuelta":
+        patch["resolved_at"] = now
+        patch["resolved_by"] = user.get("id")
+    elif body.status == "pendiente":
+        patch["resolved_at"] = None
+        patch["resolved_by"] = None
+    await db.sat_incidents.update_one(
+        {"id": iid},
+        {"$set": patch, "$push": {"history": entry}},
+    )
+    doc = await db.sat_incidents.find_one({"id": iid}, {"_id": 0})
+    return doc
+
+@api_router.post("/sat/incidents/{iid}/note")
+async def sat_add_note(iid: str, body: SATStatusChangeIn, user: dict = Depends(current_user)):
+    """Add a free-form note to the history without changing status. Handy if
+    the SAT team wants to leave intermediate comments."""
+    existing = await db.sat_incidents.find_one({"id": iid})
+    if not existing:
+        raise HTTPException(404, "Incidencia no encontrada")
+    if not (body.comment or "").strip():
+        raise HTTPException(400, "El comentario no puede estar vacío")
+    now = datetime.now(timezone.utc).isoformat()
+    entry = {
+        "id": str(uuid.uuid4()),
+        "action": "note",
+        "comment": body.comment.strip(),
+        "user_id": user.get("id"),
+        "user_name": user.get("name") or user.get("email") or "usuario",
+        "created_at": now,
+    }
+    await db.sat_incidents.update_one(
+        {"id": iid},
+        {"$set": {"updated_at": now}, "$push": {"history": entry}},
+    )
+    doc = await db.sat_incidents.find_one({"id": iid}, {"_id": 0})
+    return doc
+
 
 # ====================  CRM SAT — clientes  ====================
 # Catálogo de clientes. Se puede importar desde Excel o mantener
