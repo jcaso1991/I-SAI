@@ -99,6 +99,17 @@ export const api = {
   deleteEventAttachment: (eid: string, aid: string) =>
     request(`/events/${encodeURIComponent(eid)}/attachments/${aid}`, { method: "DELETE" }),
 
+  // Notifications (in-app bell) — the backend creates these when a
+  // technician marks an event as completed / pending-completion.
+  listNotifications: (unreadOnly = false) =>
+    request(`/notifications${unreadOnly ? "?unread_only=true" : ""}`),
+  markNotificationRead: (id: string) =>
+    request(`/notifications/${id}/read`, { method: "POST" }),
+  markAllNotificationsRead: () =>
+    request("/notifications/read-all", { method: "POST" }),
+  deleteNotification: (id: string) =>
+    request(`/notifications/${id}`, { method: "DELETE" }),
+
   // Budgets (presupuestos)
   listBudgets: () => request("/budgets"),
   getBudget: (id: string) => request(`/budgets/${id}`),

@@ -45,6 +45,8 @@ type EventT = {
   attachments?: Array<{ id: string; filename: string; mime_type: string; size: number; uploaded_at?: string; uploaded_by?: string }>;
   base_event_id?: string | null;
   created_by: string;
+  status?: string;          // in_progress | completed | pending_completion
+  seguimiento?: string;
 };
 
 // Date helpers
@@ -111,6 +113,30 @@ export default function CalendarScreen() {
   const [allUsers, setAllUsers] = useState<{ id: string; name: string; email: string; color?: string }[]>([]);
   const [disabledUserIds, setDisabledUserIds] = useState<Set<string>>(new Set());
   const [filterOpen, setFilterOpen] = useState(false);
+
+  // Notifications state (bell icon in header + modal list).
+  type Notif = {
+    id: string; title: string; message: string; read: boolean; created_at: string;
+    event_id?: string; from_user_name?: string; type?: string;
+  };
+  const [notifications, setNotifications] = useState<Notif[]>([]);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  // Load / refresh notifications. Polled every 60 s while the screen is
+  // open so new arrivals show up without a manual refresh.
+  const loadNotifications = async () => {
+    try {
+      const res = await api.listNotifications();
+      setNotifications(res.items || []);
+      setUnreadCount(res.unread || 0);
+    } catch {}
+  };
+  useEffect(() => {
+    loadNotifications();
+    const t = setInterval(loadNotifications, 60000);
+    return () => clearInterval(t);
+  }, []);
 
   // Load user list (admins only — others see only their own events anyway).
   useEffect(() => {
@@ -272,6 +298,22 @@ export default function CalendarScreen() {
         <TouchableOpacity style={s.iconBtn} onPress={() => setAnchor(new Date())}>
           <Ionicons name="today-outline" size={22} color={COLORS.navy} />
         </TouchableOpacity>
+        {/* Notifications bell — visible to every user. The badge shows the
+            number of unread notifications addressed to this user.
+            For an event manager this is how they learn that a technician
+            just marked one of their events as completed or pending. */}
+        <TouchableOpacity
+          testID="btn-notifications"
+          style={s.iconBtn}
+          onPress={() => setShowNotifications(true)}
+        >
+          <Ionicons name="notifications-outline" size={22} color={COLORS.navy} />
+          {unreadCount > 0 && (
+            <View style={s.bellBadge}>
+              <Text style={s.bellBadgeText}>{unreadCount > 9 ? "9+" : unreadCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
 
       {/* View selector */}
@@ -401,9 +443,91 @@ export default function CalendarScreen() {
           event={openEvent}
           isAdmin={isAdmin}
           onClose={() => setOpenEvent(null)}
-          onChanged={() => { setOpenEvent(null); load(); }}
+          onChanged={() => { setOpenEvent(null); load(); loadNotifications(); }}
         />
       )}
+
+      {/* Notifications modal (bell drawer). */}
+      <Modal visible={showNotifications} transparent animationType="slide" onRequestClose={() => setShowNotifications(false)}>
+        <View style={s.notifSheetRoot}>
+          <View style={s.notifSheet}>
+            <View style={s.notifHeader}>
+              <View>
+                <Text style={s.notifTitle}>Notificaciones</Text>
+                <Text style={s.notifSub}>{unreadCount} sin leer</Text>
+              </View>
+              <View style={{ flexDirection: "row", gap: 6 }}>
+                {unreadCount > 0 && (
+                  <TouchableOpacity
+                    testID="btn-mark-all-read"
+                    style={s.notifHdrBtn}
+                    onPress={async () => {
+                      try { await api.markAllNotificationsRead(); } catch {}
+                      loadNotifications();
+                    }}
+                  >
+                    <Text style={{ color: COLORS.primary, fontWeight: "800", fontSize: 12 }}>Marcar todas</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={() => setShowNotifications(false)}>
+                  <Ionicons name="close" size={26} color={COLORS.text} />
+                </TouchableOpacity>
+              </View>
+            </View>
+            {notifications.length === 0 ? (
+              <View style={{ padding: 30, alignItems: "center" }}>
+                <Ionicons name="notifications-off-outline" size={36} color={COLORS.textDisabled} />
+                <Text style={{ color: COLORS.textSecondary, marginTop: 8, fontWeight: "700" }}>Sin notificaciones</Text>
+              </View>
+            ) : (
+              <ScrollView style={{ maxHeight: 480 }} contentContainerStyle={{ padding: 12, gap: 8 }}>
+                {notifications.map((n) => {
+                  const isCompleted = n.type === "event_completed";
+                  const isPending = n.type === "event_pending_completion";
+                  const accent = isPending ? "#F59E0B" : isCompleted ? "#10B981" : COLORS.primary;
+                  return (
+                    <TouchableOpacity
+                      key={n.id}
+                      style={[s.notifItem, !n.read && { borderLeftColor: accent, borderLeftWidth: 4, backgroundColor: COLORS.primarySoft }]}
+                      onPress={async () => {
+                        if (!n.read) {
+                          try { await api.markNotificationRead(n.id); } catch {}
+                          loadNotifications();
+                        }
+                        if (n.event_id) {
+                          // Try to navigate to the referenced event if it's in view.
+                          const ev = events.find((e) => e.id === n.event_id);
+                          if (ev) { setOpenEvent(ev); setShowNotifications(false); }
+                        }
+                      }}
+                    >
+                      <View style={[s.notifDot, { backgroundColor: accent }]} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.notifItemTitle}>{n.title}</Text>
+                        <Text style={s.notifItemMsg} numberOfLines={3}>{n.message}</Text>
+                        <Text style={s.notifItemDate}>
+                          {new Date(n.created_at).toLocaleString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        hitSlop={10}
+                        onPress={async (e) => {
+                          e?.stopPropagation?.();
+                          try { await api.deleteNotification(n.id); } catch {}
+                          loadNotifications();
+                        }}
+                      >
+                        <Ionicons name="close-circle-outline" size={18} color={COLORS.textDisabled} />
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
       </SafeAreaView>
     </ResponsiveLayout>
   );
@@ -998,6 +1122,13 @@ function DraggableEvent({
   const widthPct = ((100 / colInfo.total) * colInfo.span) - gapPct - rightReservePct;
   const leftPct = colInfo.col * (100 / colInfo.total);
 
+  // Status-driven visual treatment:
+  //   - completed           → dim the card (low opacity + grey overlay)
+  //   - pending_completion  → highlight with a thick coloured border + glow
+  const st = event.status || "in_progress";
+  const isCompleted = st === "completed";
+  const isPending = st === "pending_completion";
+
   return (
     <View
       style={[s.eventBox, {
@@ -1006,17 +1137,35 @@ function DraggableEvent({
         width: `${widthPct}%`,
         right: undefined as any,
         transform: [{ translateX: leftOffset }],
-        backgroundColor: bgTint,
-        borderLeftColor: baseColor,
-        opacity: mode === "move" ? 0.85 : 1,
-        zIndex: mode === "idle" ? 2 : 10,
+        backgroundColor: isCompleted ? "#E5E7EB" : bgTint,
+        borderLeftColor: isPending ? "#F59E0B" : baseColor,
+        borderLeftWidth: isPending ? 5 : 3,
+        opacity: mode === "move" ? 0.85 : (isCompleted ? 0.55 : 1),
+        zIndex: mode === "idle" ? (isPending ? 4 : 2) : 10,
         elevation: mode === "idle" ? 2 : 10,
+        // Pending events get a warm glow so they stand out at a glance.
+        ...(isPending ? Platform.select<any>({
+          web: { boxShadow: "0 0 0 2px rgba(245,158,11,0.35), 0 4px 16px rgba(245,158,11,0.25)" },
+          default: { shadowColor: "#F59E0B", shadowOpacity: 0.45, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } },
+        }) : {}),
         // @ts-ignore web-only cursor hint
         cursor: isAdmin ? (mode === "idle" ? "grab" : "grabbing") : "pointer",
       }]}
       {...(isAdmin && Platform.OS !== "web" ? panMove.panHandlers : {})}
       {...(isAdmin && Platform.OS === "web" ? { onMouseDown: onWebMouseDown } as any : {})}
     >
+      {/* Status badge overlay — small chip in the top-right corner */}
+      {(isCompleted || isPending) && (
+        <View pointerEvents="none" style={[
+          s.statusBadge,
+          { backgroundColor: isCompleted ? "#6B7280" : "#F59E0B" },
+        ]}>
+          <Ionicons
+            name={isCompleted ? "checkmark-done" : "alert-circle"}
+            size={11} color="#fff"
+          />
+        </View>
+      )}
       {isAdmin ? (
         <View pointerEvents="none" style={{ padding: 2 }}>
           {/* Top: assigned user(s) */}
@@ -1393,6 +1542,11 @@ function EventDetailsModal({
   const [managerId, setManagerId] = useState<string | null>(event.manager_id || null);
   const [managers, setManagers] = useState<Technician[]>([]);
   const [showManagerList, setShowManagerList] = useState(false);
+  // Work-status selector (completed / pending_completion / in_progress)
+  // and technician's observations ("seguimiento"). Stored on the event
+  // itself; when changed, the backend notifies the event's manager.
+  const [status, setStatus] = useState<string>(event.status || "in_progress");
+  const [seguimiento, setSeguimiento] = useState<string>(event.seguimiento || "");
 
   const m = event.material;
 
@@ -1425,7 +1579,33 @@ function EventDetailsModal({
         start_at: start.toISOString(),
         end_at: end.toISOString(),
         manager_id: managerId ?? null,
+        status,
+        seguimiento: seguimiento || undefined,
       } as any);
+      onChanged();
+    } catch (e: any) { Alert.alert("Error", e.message); }
+    finally { setSaving(false); }
+  };
+
+  // Fast-path used by the status chips: a technician just taps
+  // Terminado / Pendiente and we persist immediately without requiring
+  // full edit-mode. Validates that Pendiente comes with a seguimiento.
+  const saveStatus = async (newStatus: "completed" | "pending_completion", segText?: string) => {
+    if (newStatus === "pending_completion" && !(segText || "").trim()) {
+      Alert.alert(
+        "Observaciones requeridas",
+        "Añade las observaciones del técnico antes de marcar el evento como pendiente de terminar.",
+      );
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.updateEvent(event.id, {
+        status: newStatus,
+        ...(segText !== undefined ? { seguimiento: segText || undefined } : {}),
+      } as any);
+      setStatus(newStatus);
+      if (segText !== undefined) setSeguimiento(segText);
       onChanged();
     } catch (e: any) { Alert.alert("Error", e.message); }
     finally { setSaving(false); }
@@ -1784,6 +1964,84 @@ function EventDetailsModal({
               )
             )}
 
+            {/* Work status + technician's seguimiento. Visible to both the
+                admin and the assigned technician. Chips update the status
+                with a single tap; Pendiente forces a seguimiento text. */}
+            <Text style={s.mLabel}>Estado del trabajo</Text>
+            <View style={s.statusRow}>
+              <TouchableOpacity
+                testID="status-in_progress"
+                style={[
+                  s.statusChip,
+                  status === "in_progress" && { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+                ]}
+                onPress={() => saveStatus("in_progress" as any)}
+                disabled={saving || status === "in_progress"}
+              >
+                <Ionicons name="hourglass-outline" size={14} color={status === "in_progress" ? "#fff" : COLORS.primary} />
+                <Text style={[s.statusChipText, status === "in_progress" && { color: "#fff" }]}>En curso</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="status-completed"
+                style={[
+                  s.statusChip,
+                  status === "completed" && { backgroundColor: "#10B981", borderColor: "#10B981" },
+                ]}
+                onPress={() => saveStatus("completed")}
+                disabled={saving}
+              >
+                <Ionicons name="checkmark-done" size={14} color={status === "completed" ? "#fff" : "#10B981"} />
+                <Text style={[s.statusChipText, status === "completed" && { color: "#fff" }]}>Proyecto terminado</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="status-pending"
+                style={[
+                  s.statusChip,
+                  status === "pending_completion" && { backgroundColor: "#F59E0B", borderColor: "#F59E0B" },
+                ]}
+                onPress={() => {
+                  // Pendiente requires a seguimiento. If the technician hasn't
+                  // typed anything yet we enter edit mode so they see the
+                  // textarea and can submit afterwards.
+                  if (!seguimiento.trim()) {
+                    setEditing(true);
+                    setStatus("pending_completion");
+                    Alert.alert(
+                      "Observaciones requeridas",
+                      "Escribe las observaciones del técnico en el campo Seguimiento y vuelve a pulsar el chip para guardar.",
+                    );
+                    return;
+                  }
+                  saveStatus("pending_completion", seguimiento);
+                }}
+                disabled={saving}
+              >
+                <Ionicons name="alert-circle-outline" size={14} color={status === "pending_completion" ? "#fff" : "#F59E0B"} />
+                <Text style={[s.statusChipText, status === "pending_completion" && { color: "#fff" }]}>Pendiente de terminar</Text>
+              </TouchableOpacity>
+            </View>
+
+            {(editing || status === "pending_completion" || !!seguimiento) && (
+              <>
+                <Text style={s.mLabel}>Seguimiento (observaciones del técnico)</Text>
+                {editing ? (
+                  <TextInput
+                    testID="seguimiento-input"
+                    style={[s.input, { minHeight: 72, textAlignVertical: "top" }]}
+                    value={seguimiento}
+                    onChangeText={setSeguimiento}
+                    placeholder="Escribe aquí las observaciones…"
+                    placeholderTextColor={COLORS.textDisabled}
+                    multiline
+                  />
+                ) : (
+                  <Text style={[s.descText, !seguimiento && { color: COLORS.textDisabled }]}>
+                    {seguimiento || "Sin observaciones"}
+                  </Text>
+                )}
+              </>
+            )}
+
             {/* Attachments */}
             <Text style={s.mLabel}>Archivos adjuntos</Text>
             {attachments.length === 0 ? (
@@ -1992,6 +2250,58 @@ const s = StyleSheet.create({
     position: "absolute", left: 2, right: 2, borderRadius: 6,
     padding: 4, borderLeftWidth: 3, overflow: "hidden",
   },
+  statusBadge: {
+    position: "absolute", top: 3, right: 3,
+    width: 18, height: 18, borderRadius: 9,
+    alignItems: "center", justifyContent: "center",
+    zIndex: 5,
+  },
+  // Status chip row inside the Event detail modal.
+  statusRow: { flexDirection: "row", gap: 6, flexWrap: "wrap", marginTop: 4, marginBottom: 4 },
+  statusChip: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10,
+    backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
+  },
+  statusChipText: { fontSize: 12, fontWeight: "800", color: COLORS.text },
+  // --- Notifications bell + sheet ---
+  bellBadge: {
+    position: "absolute", top: 4, right: 4,
+    minWidth: 16, height: 16, borderRadius: 8,
+    paddingHorizontal: 4,
+    backgroundColor: "#EF4444",
+    borderWidth: 1.5, borderColor: COLORS.surface,
+    alignItems: "center", justifyContent: "center",
+  },
+  bellBadgeText: { color: "#fff", fontSize: 9, fontWeight: "900" },
+  notifSheetRoot: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "flex-end",
+  },
+  notifSheet: {
+    backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    maxHeight: "80%",
+  },
+  notifHeader: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 18, paddingVertical: 16,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  notifTitle: { fontSize: 18, fontWeight: "900", color: COLORS.text, letterSpacing: -0.3 },
+  notifSub: { fontSize: 12, color: COLORS.textSecondary, fontWeight: "700", marginTop: 2 },
+  notifHdrBtn: {
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+    backgroundColor: COLORS.primarySoft,
+  },
+  notifItem: {
+    flexDirection: "row", alignItems: "flex-start", gap: 10,
+    padding: 12, backgroundColor: COLORS.bg, borderRadius: 10,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  notifDot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
+  notifItemTitle: { fontSize: 13.5, fontWeight: "800", color: COLORS.text },
+  notifItemMsg: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2, lineHeight: 17 },
+  notifItemDate: { fontSize: 10.5, color: COLORS.textDisabled, marginTop: 4, fontWeight: "700" },
   eventTitle: { fontSize: 11, fontWeight: "800", color: COLORS.navy },
   eventTime: { fontSize: 10, color: COLORS.textSecondary, marginTop: 1 },
   eventMeta: { fontSize: 10, color: COLORS.textSecondary, marginTop: 1 },

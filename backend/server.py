@@ -799,6 +799,12 @@ class EventCreate(BaseModel):
     assigned_user_ids: List[str] = []
     manager_id: Optional[str] = None  # gestor del proyecto (admin)
     recurrence: Optional[RecurrenceRule] = None
+    # Status del trabajo. "in_progress" por defecto. Valores aceptados:
+    #   in_progress       — todavía en curso
+    #   completed         — proyecto terminado (oscurece el evento)
+    #   pending_completion — pendiente de terminar (resalta el evento)
+    status: Optional[str] = "in_progress"
+    seguimiento: Optional[str] = None  # observaciones del técnico
 
 class EventPatch(BaseModel):
     title: Optional[str] = None
@@ -809,6 +815,8 @@ class EventPatch(BaseModel):
     assigned_user_ids: Optional[List[str]] = None
     manager_id: Optional[str] = None
     recurrence: Optional[RecurrenceRule] = None
+    status: Optional[str] = None
+    seguimiento: Optional[str] = None
 
 class EventOut(BaseModel):
     id: str
@@ -827,6 +835,8 @@ class EventOut(BaseModel):
     base_event_id: Optional[str] = None  # for expanded occurrences
     created_by: str
     created_at: str
+    status: Optional[str] = "in_progress"
+    seguimiento: Optional[str] = None
 
 class AttachmentUpload(BaseModel):
     filename: str
@@ -998,12 +1008,29 @@ async def create_event(payload: EventCreate, admin: dict = Depends(current_admin
     return doc
 
 @api_router.patch("/events/{eid}", response_model=EventOut)
-async def update_event(eid: str, payload: EventPatch, admin: dict = Depends(current_admin)):
+async def update_event(eid: str, payload: EventPatch, user: dict = Depends(current_user)):
     # Strip virtual-occurrence suffix if present
     real_id = eid.split(":")[0]
     upd: dict = {}
     # Use exclude_unset so explicit nulls ARE applied (to clear optional fields).
     data = payload.dict(exclude_unset=True)
+
+    # Fetch current event for permission check and notification baseline.
+    ev_current = await db.events.find_one({"id": real_id}, {"_id": 0})
+    if not ev_current:
+        raise HTTPException(404, "Evento no encontrado")
+
+    is_admin = user.get("role") == "admin"
+    is_assigned = user["id"] in (ev_current.get("assigned_user_ids") or [])
+    if not is_admin:
+        # A non-admin can only modify `status` and `seguimiento`, and only
+        # if they are assigned to this event (i.e. the technician in charge).
+        if not is_assigned:
+            raise HTTPException(403, "No autorizado")
+        allowed = {"status", "seguimiento"}
+        if any(k not in allowed for k in data.keys()):
+            raise HTTPException(403, "Técnicos solo pueden modificar estado y seguimiento")
+
     for k, v in data.items():
         if k == "recurrence":
             upd["recurrence"] = v  # dict from pydantic or None (clears)
@@ -1016,6 +1043,40 @@ async def update_event(eid: str, payload: EventPatch, admin: dict = Depends(curr
     res = await db.events.update_one({"id": real_id}, {"$set": upd})
     if res.matched_count == 0:
         raise HTTPException(404, "Evento no encontrado")
+
+    # Notifications: whenever status changes, create an in-app notification
+    # for the event's manager (if set). The seguimiento text is included so
+    # the manager sees the technician's observations right in the list.
+    new_status = upd.get("status")
+    prev_status = ev_current.get("status") or "in_progress"
+    if new_status and new_status != prev_status and ev_current.get("manager_id"):
+        title = ev_current.get("title") or "Evento"
+        if new_status == "completed":
+            notif_title = f"Proyecto terminado: {title}"
+            notif_msg = f"{user.get('name') or user.get('email')} marcó el evento como completado."
+        elif new_status == "pending_completion":
+            notif_title = f"Pendiente de terminar: {title}"
+            seg = upd.get("seguimiento") or ev_current.get("seguimiento") or ""
+            notif_msg = (
+                f"{user.get('name') or user.get('email')} dejó el evento pendiente de terminar."
+                + (f"\nObservaciones: {seg}" if seg else "")
+            )
+        else:
+            notif_title = f"Estado actualizado: {title}"
+            notif_msg = f"El estado del evento pasó a '{new_status}'."
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": ev_current["manager_id"],
+            "event_id": real_id,
+            "type": f"event_{new_status}",
+            "title": notif_title,
+            "message": notif_msg,
+            "read": False,
+            "created_at": datetime.utcnow().isoformat(),
+            "from_user_id": user["id"],
+            "from_user_name": user.get("name") or user.get("email"),
+        })
+
     ev = await db.events.find_one({"id": real_id}, {"_id": 0})
     ev = await _attach_material(ev)
     ev = await _attach_users(ev)
@@ -1028,6 +1089,40 @@ async def delete_event(eid: str, admin: dict = Depends(current_admin)):
     res = await db.events.delete_one({"id": real_id})
     if res.deleted_count == 0:
         raise HTTPException(404, "Evento no encontrado")
+    return {"ok": True}
+
+# ---------------- Notifications ----------------
+@api_router.get("/notifications")
+async def list_notifications(user: dict = Depends(current_user), unread_only: bool = False):
+    """Returns notifications addressed to the current user, newest first."""
+    q: dict = {"user_id": user["id"]}
+    if unread_only:
+        q["read"] = False
+    cursor = db.notifications.find(q, {"_id": 0}).sort("created_at", -1).limit(100)
+    items = await cursor.to_list(length=100)
+    unread = await db.notifications.count_documents({"user_id": user["id"], "read": False})
+    return {"items": items, "unread": unread}
+
+@api_router.post("/notifications/{nid}/read")
+async def mark_notification_read(nid: str, user: dict = Depends(current_user)):
+    res = await db.notifications.update_one(
+        {"id": nid, "user_id": user["id"]},
+        {"$set": {"read": True}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(404, "Notificación no encontrada")
+    return {"ok": True}
+
+@api_router.post("/notifications/read-all")
+async def mark_all_read(user: dict = Depends(current_user)):
+    await db.notifications.update_many({"user_id": user["id"], "read": False}, {"$set": {"read": True}})
+    return {"ok": True}
+
+@api_router.delete("/notifications/{nid}")
+async def delete_notification(nid: str, user: dict = Depends(current_user)):
+    res = await db.notifications.delete_one({"id": nid, "user_id": user["id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Notificación no encontrada")
     return {"ok": True}
 
 # ---------------- Event attachments ----------------

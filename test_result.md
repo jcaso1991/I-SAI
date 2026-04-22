@@ -995,3 +995,151 @@ agent_communication_round_12:
 
       Verified via screenshot tool: picker modal renders all new symbols,
       palette row is visible, admin login works.
+
+
+agent_communication_round_13:
+    -agent: "main"
+    -message: |
+      ITERATION 13 (event status + seguimiento + notifications):
+
+      User requested a new UI in the calendar event modal to let the
+      technician mark the work as "Proyecto terminado" or "Pendiente de
+      terminar" (with an observations field). On save the event must
+      change visually in the calendar (dimmed / highlighted) and the
+      manager of the event must be notified.
+
+      Backend changes (/app/backend/server.py):
+
+      1. Event models (EventCreate / EventPatch / EventOut) gained two
+         new optional fields:
+           - status: "in_progress" | "completed" | "pending_completion"
+                     (default "in_progress")
+           - seguimiento: free text observations from the technician
+
+      2. PATCH /api/events/{id} permissions widened: a non-admin user
+         who is assigned to the event can now PATCH, but only the
+         fields `status` and `seguimiento`. Any other field still
+         returns 403.
+
+      3. When the PATCH detects that `status` changes, we insert a
+         notification in the new `notifications` collection:
+             { id, user_id=manager_id, event_id, type, title, message,
+               read:false, created_at, from_user_id, from_user_name }
+         For `pending_completion` the seguimiento text is embedded in
+         the notification message.
+
+      4. New endpoints:
+           GET  /api/notifications?unread_only=bool
+           POST /api/notifications/{id}/read
+           POST /api/notifications/read-all
+           DELETE /api/notifications/{id}
+         All return 401 without token and 404 for notifications that
+         don't belong to the requester.
+
+      Frontend changes:
+
+        /app/frontend/src/api.ts
+          listNotifications / markNotificationRead / markAllNotificationsRead
+          / deleteNotification helpers.
+
+        /app/frontend/app/calendario.tsx
+          - EventT type gained `status` and `seguimiento`.
+          - EventDetailsModal: three status chips (En curso / Proyecto
+            terminado / Pendiente de terminar). Each chip persists via
+            a one-shot `saveStatus()` call. The pending chip requires a
+            seguimiento — if empty it switches to edit mode and asks
+            the technician to fill it.
+          - Seguimiento text-area is always visible when status ==
+            pending_completion or when the event already has a
+            seguimiento value.
+          - Visual treatment of events:
+               completed           → grey bg, opacity 0.55, small
+                                     check-done badge top-right.
+               pending_completion  → thick orange border, glow shadow,
+                                     alert badge, raised z-index.
+          - Bell icon added in the header next to the "today" button,
+            with a red numeric badge for unread count. Polls every 60s.
+          - Notifications bottom-sheet modal lists items (title +
+            message + time); tapping one marks it read and, if the
+            referenced event is in view, opens it. "Marcar todas" bulk
+            action.
+
+      Needs backend retest of:
+        - PATCH /api/events/{id} for admin and for an assigned
+          technician (permissions + status/seguimiento persistence +
+          notification row created).
+        - All four /api/notifications endpoints.
+
+backend_status_notifications_tasks:
+  - task: "Event status (in_progress/completed/pending_completion) + technician PATCH restrictions"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "testing"
+        -comment: |
+          PASS (21/21 assertions in /app/backend_test.py targeting
+          https://excel-form-sync-1.preview.emergentagent.com/api).
+          - Admin POST /api/events with assigned_user_ids=[tech] + manager_id
+            returns 200 and defaults status="in_progress".
+          - Technician (assigned) PATCH {status:"completed"} → 200, body
+            status=="completed".
+          - Technician PATCH {title:"hack"} → 403 with detail
+            "Técnicos solo pueden modificar estado y seguimiento".
+          - Technician PATCH {status:"pending_completion",
+            seguimiento:"Falta cableado final"} → 200, body.status and
+            body.seguimiento persisted.
+          - Non-assigned technician PATCH /events/{id} → 403 "No autorizado".
+          - Admin regression: full PATCH with {title, description} still
+            works; response includes new fields `status` and `seguimiento`
+            with expected values; GET /api/events list includes the event
+            with `status` and `seguimiento` keys.
+
+  - task: "Notifications endpoints (list/read/read-all/delete)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "testing"
+        -comment: |
+          PASS. When technician changes status, backend inserts a
+          notification for the event's manager:
+          - GET /api/notifications as admin → items[0].user_id == admin_id,
+            event_id matches, type == "event_completed", read == false,
+            response.unread == 1.
+          - After second PATCH to pending_completion with seguimiento, admin
+            GET /api/notifications contains an item of type
+            "event_pending_completion" whose message includes
+            "Falta cableado final".
+          - POST /api/notifications/{nid}/read → 200; follow-up list shows
+            read=true for that id.
+          - POST /api/notifications/read-all → 200; follow-up GET shows
+            response.unread == 0.
+          - DELETE /api/notifications/{nid} → 200; subsequent list no longer
+            contains that notification.
+          Security/isolation:
+          - Other user (not manager) POST /{foreign_nid}/read → 404
+            (filtered by user_id in the query).
+          - Other user DELETE /{foreign_nid} → 404.
+          - Other user GET /notifications only returns their own items
+            (no leakage of admin's notifications).
+
+agent_communication_round_14:
+    -agent: "testing"
+    -message: |
+      Iteration 13 backend tests COMPLETE. 21/21 assertions passed via
+      /app/backend_test.py against
+      https://excel-form-sync-1.preview.emergentagent.com/api.
+      All 8 review steps verified (event create default status,
+      technician status PATCH, notification creation, technician field
+      restrictions, pending_completion with seguimiento, mark-read flow,
+      cross-user isolation, non-assigned tech 403, admin regression).
+      No issues found. Cleanup executed (event + test tech users deleted).
