@@ -899,6 +899,52 @@ agent_communication_round_10:
 
           or recolored the group, proving multi-state persistence.
 
+agent_communication_round_11:
+    -agent: "main"
+    -message: |
+      ITERATION 11 (elegant UI redesign · home + sidebar):
+
+      User requested a more elegant overall look. Applied a surgical
+      redesign that touches only two highly-visible components:
+
+      1. /app/frontend/src/ResponsiveLayout.tsx (desktop sidebar):
+         - Brand zone: 10-radius square logo with the letter “i” and a
+           soft blue glow shadow + subtitle "Gestor de proyectos".
+         - User pill: first-and-last-name INITIALS in a solid avatar,
+           real name + role chip with a green status dot.
+         - Two section labels (NAVEGACIÓN / ADMINISTRACIÓN) in muted
+           uppercase.
+         - Link rows redesigned: no more full-background pill. Instead a
+           3-px primary accent bar on the left, primarySoft background,
+           and primary-colored text for the active state. Much cleaner.
+         - Logout shrunk to an inline link at the bottom.
+
+      2. /app/frontend/app/home.tsx (dashboard):
+         - Context-aware greeting (buenos días / buenas tardes / buenas
+           noches) + Spanish formatted date.
+         - Hero headline “Administrador 👋” in 38-px weight-900,
+           letter-spacing −1.
+         - 3 stat cards with icon + number + uppercase label
+           (primary / amber / green accents).
+         - Replaced the big emoji-like circular icons with a 2-column
+           tile grid on desktop (single column on mobile). Each tile
+           has a soft translucent coloured icon square + border in the
+           accent, bold title, descriptive subtitle, top-right arrow
+           chevron and optional coloured pill badge on the icon for
+           "pending" counts.
+         - Consistent soft shadow system (cross-platform via
+           Platform.select).
+
+      Verified across 3 viewports:
+        * Desktop 1440×900 in LIGHT + DARK → elegant, balanced, clean.
+        * Mobile 390×844 LIGHT → stacked stat cards, stacked tiles,
+          bottom-nav intact.
+
+      No backend changes, no behaviour changes — pure polish. Existing
+      navigation and auth flows all pass smoke test (API calls visible
+      in backend log: /api/stats, /api/materiales, /api/plans all 200).
+
+
       Backend UNCHANGED — no retest required.
 
             ↺ -15°, ↻ +15°, 90° step, Reset-0°, followed by size ± and

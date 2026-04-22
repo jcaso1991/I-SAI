@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import {
-  View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator,
+  View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -8,6 +8,27 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { api, clearToken, COLORS } from "../src/api";
 import ResponsiveLayout from "../src/ResponsiveLayout";
 import { useBreakpoint } from "../src/useBreakpoint";
+
+// Elegant greeting based on local hour.
+function greetingForNow(): string {
+  const h = new Date().getHours();
+  if (h < 6) return "Buenas noches";
+  if (h < 13) return "Buenos días";
+  if (h < 20) return "Buenas tardes";
+  return "Buenas noches";
+}
+
+// Spanish formatted date, e.g. "Martes, 22 de abril de 2026".
+function spanishToday(): string {
+  try {
+    const d = new Date().toLocaleDateString("es-ES", {
+      weekday: "long", day: "2-digit", month: "long", year: "numeric",
+    });
+    return d.charAt(0).toUpperCase() + d.slice(1);
+  } catch {
+    return "";
+  }
+}
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -38,50 +59,66 @@ export default function HomeScreen() {
 
   const isAdmin = me?.role === "admin";
   const logout = async () => { await clearToken(); router.replace("/login"); };
+  const firstName = me?.name ? me.name.split(" ")[0] : "";
 
-  const Circle = ({
-    testID, icon, iconFamily = "ion", label, color, onPress, badge, big,
+  // ---------- Action tile ----------
+  const ActionTile = ({
+    testID, icon, iconFamily = "ion", title, subtitle, accent, onPress, badge,
   }: {
-    testID: string;
-    icon: string;
-    iconFamily?: "ion" | "mat";
-    label: string;
-    color: string;
-    onPress: () => void;
-    badge?: string;
-    big?: boolean;
+    testID: string; icon: string; iconFamily?: "ion" | "mat";
+    title: string; subtitle: string; accent: string;
+    onPress: () => void; badge?: string;
   }) => (
-    <TouchableOpacity testID={testID} style={s.circleWrap} onPress={onPress} activeOpacity={0.8}>
-      <View style={[s.circle, big && s.circleBig, { backgroundColor: color }]}>
+    <TouchableOpacity testID={testID} style={[s.tile, isWide && s.tileWide]} onPress={onPress} activeOpacity={0.85}>
+      <View style={[s.tileIcon, { backgroundColor: accent + "1A", borderColor: accent + "33" }]}>
         {iconFamily === "ion" ? (
-          <Ionicons name={icon as any} size={big ? 72 : 52} color="#fff" />
+          <Ionicons name={icon as any} size={28} color={accent} />
         ) : (
-          <MaterialCommunityIcons name={icon as any} size={big ? 80 : 56} color="#fff" />
+          <MaterialCommunityIcons name={icon as any} size={28} color={accent} />
         )}
         {badge ? (
-          <View style={s.circleBadge}>
-            <Text style={s.circleBadgeText}>{badge}</Text>
+          <View style={[s.tileBadge, { backgroundColor: accent }]}>
+            <Text style={s.tileBadgeText}>{badge}</Text>
           </View>
         ) : null}
       </View>
-      <Text style={[s.circleLabel, big && { fontSize: 18 }]}>{label}</Text>
+      <Text style={s.tileTitle}>{title}</Text>
+      <Text style={s.tileSubtitle}>{subtitle}</Text>
+      <View style={s.tileArrow}>
+        <Ionicons name="arrow-forward" size={16} color={accent} />
+      </View>
     </TouchableOpacity>
+  );
+
+  const StatCard = ({
+    icon, value, label, accent,
+  }: { icon: string; value: number | string; label: string; accent: string }) => (
+    <View style={s.statCard}>
+      <View style={[s.statIcon, { backgroundColor: accent + "1A" }]}>
+        <Ionicons name={icon as any} size={18} color={accent} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={s.statVal}>{value}</Text>
+        <Text style={s.statLbl}>{label}</Text>
+      </View>
+    </View>
   );
 
   const content = (
     <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
+      {/* Mobile: compact header on top */}
       {!isWide && (
         <View style={s.header}>
           <View style={{ flex: 1 }}>
-            <Text style={s.hello}>Hola{me?.name ? `, ${me.name.split(" ")[0]}` : ""}</Text>
-            <Text style={s.sub}>{isAdmin ? "Administrador" : "Técnico"}</Text>
+            <Text style={s.greetingSmall}>{greetingForNow()}</Text>
+            <Text style={s.helloSmall}>{firstName || "Bienvenido"}</Text>
           </View>
           <TouchableOpacity
             testID="btn-logout"
             style={s.logoutBtn}
             onPress={logout}
           >
-            <Ionicons name="log-out-outline" size={22} color={COLORS.navy} />
+            <Ionicons name="log-out-outline" size={20} color={COLORS.text} />
           </TouchableOpacity>
         </View>
       )}
@@ -90,69 +127,69 @@ export default function HomeScreen() {
         <View style={s.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>
       ) : (
         <ScrollView contentContainerStyle={[s.scroll, isWide && s.scrollWide]}>
-          <View style={isWide && { maxWidth: 1100, width: "100%", alignSelf: "center" }}>
-            <Text style={[s.title, isWide && { fontSize: 36 }]}>
-              {isWide ? `Hola${me?.name ? `, ${me.name.split(" ")[0]}` : ""}` : "Panel principal"}
-            </Text>
-            <Text style={s.subtitle}>
-              {isWide ? "Selecciona un módulo para empezar" : "Selecciona una sección"}
-            </Text>
+          <View style={isWide ? s.wideWrap : undefined}>
 
-            <View style={[s.circlesRow, isWide && s.circlesRowWide]}>
-              <Circle
+            {/* Desktop hero */}
+            {isWide && (
+              <View style={s.hero}>
+                <Text style={s.heroGreet}>{greetingForNow()},</Text>
+                <Text style={s.heroName}>{firstName || "Bienvenido"} 👋</Text>
+                <Text style={s.heroDate}>{spanishToday()}</Text>
+              </View>
+            )}
+
+            {/* Stats cards row */}
+            {stats && (
+              <View style={[s.statsRow, !isWide && { marginTop: 16 }]}>
+                <StatCard icon="folder" value={stats.total} label="Proyectos totales" accent={COLORS.primary} />
+                <StatCard icon="time" value={stats.pending} label="Pendientes" accent="#F59E0B" />
+                <StatCard icon="checkmark-circle" value={stats.synced} label="Sincronizados" accent="#10B981" />
+              </View>
+            )}
+
+            {/* Section header */}
+            <Text style={[s.sectionLabel, { marginTop: 28 }]}>ACCESOS RÁPIDOS</Text>
+
+            {/* Action tiles grid */}
+            <View style={[s.tilesGrid, isWide && s.tilesGridWide]}>
+              <ActionTile
                 testID="circle-proyectos"
                 iconFamily="mat"
                 icon="set-square"
-                label="Proyectos"
-                color={COLORS.primary}
+                title="Proyectos"
+                subtitle="Gestiona la base sincronizada con OneDrive"
+                accent={COLORS.primary}
                 onPress={() => router.push("/materiales")}
                 badge={stats && stats.pending > 0 ? String(stats.pending) : undefined}
-                big={isWide}
               />
-              <Circle
+              <ActionTile
                 testID="circle-calendario"
                 icon="calendar"
-                label="Calendario"
-                color="#10B981"
+                title="Calendario"
+                subtitle="Planifica y arrastra eventos por equipo"
+                accent="#10B981"
                 onPress={() => router.push("/calendario")}
-                big={isWide}
               />
-              <Circle
+              <ActionTile
                 testID="circle-planos"
                 icon="map"
-                label="Planos"
-                color="#F59E0B"
+                title="Planos"
+                subtitle="Dibuja sobre PDFs y añade símbolos"
+                accent="#F59E0B"
                 onPress={() => router.push("/planos")}
-                big={isWide}
               />
               {(isAdmin || me?.role === "comercial") && (
-                <Circle
+                <ActionTile
                   testID="circle-presupuestos"
                   icon="document-text"
-                  label="Presupuestos"
-                  color="#8B5CF6"
+                  title="Presupuestos"
+                  subtitle="Genera PDFs oficiales rellenables"
+                  accent="#8B5CF6"
                   onPress={() => router.push("/presupuestos")}
-                  big={isWide}
                 />
               )}
             </View>
 
-            {stats && (
-              <View style={[s.statsCard, isWide && { marginTop: 36 }]}>
-                <View style={s.statCol}>
-                  <Text style={s.statNum}>{stats.total}</Text>
-                  <Text style={s.statLbl}>Total proyectos</Text>
-                </View>
-                <View style={s.statCol}>
-                  <Text style={[s.statNum, { color: COLORS.pendingText }]}>{stats.pending}</Text>
-                  <Text style={s.statLbl}>Pendientes</Text>
-                </View>
-                <View style={s.statCol}>
-                  <Text style={[s.statNum, { color: COLORS.syncedText }]}>{stats.synced}</Text>
-                  <Text style={s.statLbl}>Sincronizados</Text>
-                </View>
-              </View>
-            )}
           </View>
         </ScrollView>
       )}
@@ -166,44 +203,114 @@ export default function HomeScreen() {
   );
 }
 
+const shadowLight = Platform.select<any>({
+  web: { boxShadow: "0 2px 12px rgba(15, 23, 42, 0.06)" },
+  default: { shadowColor: "#0F172A", shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+});
+
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
+
+  // Mobile header
   header: {
-    flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingVertical: 14,
-    backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    flexDirection: "row", alignItems: "center",
+    paddingHorizontal: 20, paddingVertical: 14,
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
-  hello: { fontSize: 22, fontWeight: "900", color: COLORS.text, letterSpacing: -0.5 },
-  sub: { fontSize: 13, color: COLORS.textSecondary, marginTop: 2 },
-  logoutBtn: { width: 40, height: 40, borderRadius: 10, backgroundColor: COLORS.bg, alignItems: "center", justifyContent: "center" },
+  greetingSmall: { fontSize: 12, color: COLORS.textSecondary, fontWeight: "700", letterSpacing: 0.3 },
+  helloSmall: { fontSize: 20, fontWeight: "900", color: COLORS.text, letterSpacing: -0.4 },
+  logoutBtn: {
+    width: 40, height: 40, borderRadius: 12, backgroundColor: COLORS.bg,
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  scroll: { padding: 20, paddingBottom: 40, gap: 12 },
-  scrollWide: { padding: 40 },
-  title: { fontSize: 26, fontWeight: "900", color: COLORS.text, marginTop: 8 },
-  subtitle: { fontSize: 14, color: COLORS.textSecondary, marginBottom: 16 },
-  circlesRow: {
-    flexDirection: "row", justifyContent: "space-around", alignItems: "flex-start",
-    paddingVertical: 12, flexWrap: "wrap", gap: 8,
+  scroll: { padding: 20, paddingBottom: 40 },
+  scrollWide: { padding: 48 },
+  wideWrap: { maxWidth: 1160, width: "100%", alignSelf: "center" },
+
+  // Hero (desktop)
+  hero: { marginBottom: 32 },
+  heroGreet: { fontSize: 16, color: COLORS.textSecondary, fontWeight: "700", letterSpacing: 0.2 },
+  heroName: {
+    fontSize: 38, fontWeight: "900", color: COLORS.text,
+    letterSpacing: -1, marginTop: 2,
   },
-  circlesRowWide: { justifyContent: "center", gap: 60, paddingVertical: 40 },
-  circleWrap: { alignItems: "center", gap: 8, flexBasis: "30%", minWidth: 100 },
-  circle: {
-    width: 110, height: 110, borderRadius: 55, alignItems: "center", justifyContent: "center",
-    shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4,
+  heroDate: { fontSize: 13, color: COLORS.textSecondary, fontWeight: "600", marginTop: 6, letterSpacing: 0.2 },
+
+  // Stats row
+  statsRow: {
+    flexDirection: "row", gap: 12, flexWrap: "wrap",
+  },
+  statCard: {
+    flex: 1, minWidth: 180,
+    flexDirection: "row", alignItems: "center", gap: 12,
+    padding: 16,
+    backgroundColor: COLORS.surface, borderRadius: 16,
+    borderWidth: 1, borderColor: COLORS.border,
+    ...shadowLight,
+  },
+  statIcon: {
+    width: 42, height: 42, borderRadius: 12,
+    alignItems: "center", justifyContent: "center",
+  },
+  statVal: { fontSize: 24, fontWeight: "900", color: COLORS.text, letterSpacing: -0.5 },
+  statLbl: { fontSize: 11, fontWeight: "700", color: COLORS.textSecondary, letterSpacing: 0.3, textTransform: "uppercase", marginTop: 1 },
+
+  // Section labels
+  sectionLabel: {
+    fontSize: 11, fontWeight: "900", color: COLORS.textDisabled,
+    letterSpacing: 1.6, marginBottom: 10,
+  },
+
+  // Action tiles
+  tilesGrid: {
+    flexDirection: "row", flexWrap: "wrap", gap: 14,
+  },
+  tilesGridWide: { gap: 18 },
+  tile: {
+    flexBasis: "100%",
+    backgroundColor: COLORS.surface, borderRadius: 18,
+    borderWidth: 1, borderColor: COLORS.border,
+    padding: 20,
+    position: "relative",
+    minWidth: 260,
+    ...shadowLight,
+    // @ts-ignore — react-native-web accepts these as flex items
+    flexGrow: 1, flexShrink: 1,
+    maxWidth: "100%",
+  },
+  tileWide: {
+    // Two-column layout on desktop: gap=18, so width is 50% - 9px.
+    // @ts-ignore
+    flexBasis: "calc(50% - 9px)",
+    maxWidth: "calc(50% - 9px)",
+  },
+  tileIcon: {
+    width: 48, height: 48, borderRadius: 14,
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 1, marginBottom: 14,
     position: "relative",
   },
-  circleBig: { width: 170, height: 170, borderRadius: 85 },
-  circleBadge: {
-    position: "absolute", top: -4, right: -4, minWidth: 26, height: 26, borderRadius: 13,
-    backgroundColor: "#EF4444", paddingHorizontal: 8, alignItems: "center", justifyContent: "center",
+  tileBadge: {
+    position: "absolute", top: -5, right: -5,
+    minWidth: 22, height: 22, borderRadius: 11,
+    paddingHorizontal: 6,
+    alignItems: "center", justifyContent: "center",
     borderWidth: 2, borderColor: COLORS.surface,
   },
-  circleBadgeText: { color: "#fff", fontSize: 12, fontWeight: "900" },
-  circleLabel: { fontSize: 15, fontWeight: "800", color: COLORS.text },
-  statsCard: {
-    flexDirection: "row", marginTop: 24, backgroundColor: COLORS.surface, borderRadius: 16,
-    borderWidth: 1, borderColor: COLORS.border, padding: 16,
+  tileBadgeText: { color: "#fff", fontSize: 11, fontWeight: "900" },
+  tileTitle: {
+    fontSize: 17, fontWeight: "900", color: COLORS.text,
+    letterSpacing: -0.3, marginBottom: 4,
   },
-  statCol: { flex: 1, alignItems: "center", gap: 4 },
-  statNum: { fontSize: 24, fontWeight: "900", color: COLORS.text },
-  statLbl: { fontSize: 11, fontWeight: "700", color: COLORS.textSecondary, letterSpacing: 0.5, textTransform: "uppercase" },
+  tileSubtitle: {
+    fontSize: 13, color: COLORS.textSecondary, fontWeight: "500", lineHeight: 18,
+  },
+  tileArrow: {
+    position: "absolute", top: 20, right: 20,
+    opacity: 0.7,
+  },
 });
