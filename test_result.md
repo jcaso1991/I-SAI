@@ -627,5 +627,35 @@ agent_communication_round_4:
           · `StampPicker` modal now shows sectioned categories with an
             uppercase header per group + "Personalizadas" section at the
             bottom for user-uploaded stamps.
+
+agent_communication_round_5:
+    -agent: "main"
+    -message: |
+      ITERATION 5 (access-control palette + rotation):
+      - Removed categories "Sanitarios", "Cocina" and "Mobiliario" from
+        /app/frontend/src/stamps.ts and /app/backend/server.py
+        (BUILTIN_STAMPS). No DB migration needed (icons are resolved on
+        each render; legacy shapes with removed icon_keys would just fail
+        to render but no crash — none exist yet in DB).
+      - Added new "Control de accesos" category with 16 symbols:
+          card_reader, keypad, fingerprint, face_reader, maglock,
+          electric_strike, exit_button, emergency_button, intercom,
+          video_intercom, controller, door_contact, turnstile, bollard,
+          barrier, gate_motor.
+      - Added "siren" (Sirena) to Seguridad category.
+      - Planos editor rotation support (frontend-only, /app/frontend/app/planos/[id].tsx):
+          · Added optional `rotation?: number` (degrees) on every shape type.
+          · `renderShape` wraps line/rect/stamp in <G transform="rotate(r cx cy)">
+            around the shape center; StampView merges rotation + translate/scale.
+          · `hitTest` inverse-rotates the tap point when the shape has
+            rotation so selection remains precise at any angle.
+          · New `rotateSelected(delta)` helper normalized to [-180,180];
+            delta=0 resets to 0°.
+          · Bottom bar (when a shape is selected) now shows 4 new buttons:
+            ↺ -15°, ↻ +15°, 90° step, Reset-0°, followed by size ± and
+            the trash. Selection label also shows current angle ("· 90°").
+      Backend change is static data only (BUILTIN_STAMPS list rebuilt);
+      /api/stamps endpoint still returns the same shape — no retest needed.
+
       Verified via screenshot tool: picker modal renders all new symbols,
       palette row is visible, admin login works.

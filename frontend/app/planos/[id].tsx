@@ -15,9 +15,9 @@ import { BUILTIN_STAMPS, STAMP_STROKE, CATEGORY_ORDER } from "../../src/stamps";
 import { captureCanvasJpegBase64, shareOrDownloadBase64 } from "../../src/canvasCapture";
 
 type Pt = { x: number; y: number };
-type LineShape = { id: string; type: "line"; points: Pt[]; stroke: string; strokeWidth: number };
-type RectShape = { id: string; type: "rect"; x: number; y: number; w: number; h: number; stroke: string; strokeWidth: number; fill: string };
-type CircleShape = { id: string; type: "circle"; cx: number; cy: number; r: number; stroke: string; strokeWidth: number; fill: string };
+type LineShape = { id: string; type: "line"; points: Pt[]; stroke: string; strokeWidth: number; rotation?: number };
+type RectShape = { id: string; type: "rect"; x: number; y: number; w: number; h: number; stroke: string; strokeWidth: number; fill: string; rotation?: number };
+type CircleShape = { id: string; type: "circle"; cx: number; cy: number; r: number; stroke: string; strokeWidth: number; fill: string; rotation?: number };
 type StampShape = {
   id: string; type: "stamp"; x: number; y: number; w: number; h: number;
   stampId: string; icon_key?: string; image_base64?: string; rotation?: number;
@@ -315,6 +315,20 @@ export default function PlanEditor() {
       if (sh.type === "circle") return { ...sh, stroke: color, fill: hexToRgba(color, 0.1) };
       if (sh.type === "stamp") return { ...sh, color };
       return sh;
+    }));
+    markDirty();
+  };
+
+  const rotateSelected = (deltaDeg: number) => {
+    if (!selectedId) return;
+    setShapes((arr) => arr.map((sh) => {
+      if (sh.id !== selectedId) return sh;
+      const cur = sh.rotation || 0;
+      // Keep value normalized to [-180, 180] for readable UI state; special-case delta=0 to reset.
+      let next = deltaDeg === 0 ? 0 : cur + deltaDeg;
+      if (next > 180) next -= 360;
+      if (next < -180) next += 360;
+      return { ...sh, rotation: next } as Shape;
     }));
     markDirty();
   };
@@ -669,8 +683,24 @@ export default function PlanEditor() {
       <View style={s.bottomBar}>
         {selectedShape ? (
           <View style={s.selectedRow}>
-            <Text style={s.selectedLabel}>Selección: {shapeLabel(selectedShape)}</Text>
-            <View style={{ flexDirection: "row", gap: 8 }}>
+            <Text style={s.selectedLabel} numberOfLines={1}>
+              Selección: {shapeLabel(selectedShape)}
+              {selectedShape.rotation ? ` · ${Math.round(selectedShape.rotation)}°` : ""}
+            </Text>
+            <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <TouchableOpacity testID="btn-rot-left" style={s.btnIconSm} onPress={() => rotateSelected(-15)}>
+                <Ionicons name="return-up-back" size={20} color={COLORS.navy} />
+              </TouchableOpacity>
+              <TouchableOpacity testID="btn-rot-right" style={s.btnIconSm} onPress={() => rotateSelected(15)}>
+                <Ionicons name="return-up-forward" size={20} color={COLORS.navy} />
+              </TouchableOpacity>
+              <TouchableOpacity testID="btn-rot-90" style={s.btnIconSm} onPress={() => rotateSelected(90)}>
+                <Text style={{ fontWeight: "800", color: COLORS.navy, fontSize: 11 }}>90°</Text>
+              </TouchableOpacity>
+              <TouchableOpacity testID="btn-rot-reset" style={s.btnIconSm} onPress={() => rotateSelected(0)} disabled={!selectedShape.rotation}>
+                <Ionicons name="refresh" size={18} color={selectedShape.rotation ? COLORS.navy : COLORS.textDisabled} />
+              </TouchableOpacity>
+              <View style={{ width: 1, height: 28, backgroundColor: COLORS.border, marginHorizontal: 2, alignSelf: "center" }} />
               <TouchableOpacity style={s.btnIconSm} onPress={() => resizeSelected(0.8)}>
                 <Ionicons name="remove" size={20} color={COLORS.navy} />
               </TouchableOpacity>
@@ -689,7 +719,7 @@ export default function PlanEditor() {
               : tool === "circle" ? "Arrastra para crear un círculo"
               : tool === "stamp" ? `Toca para colocar: ${currentStamp?.name || "pieza"}`
               : tool === "eraser" ? "Toca una pieza para borrarla"
-              : tool === "select" ? "Toca para seleccionar · arrastra para mover · pellizca con 2 dedos para cambiar tamaño"
+              : tool === "select" ? "Toca para seleccionar · arrastra para mover · usa ↺ ↻ 90° para rotar"
               : ""}
           </Text>
         )}
@@ -717,21 +747,49 @@ export default function PlanEditor() {
 
 // ---------------- helpers ----------------
 
+// Geometric center of a shape (used for rotation pivot + hit-testing).
+function shapeCenter(sh: Shape): Pt {
+  if (sh.type === "line") {
+    if (sh.points.length === 0) return { x: 0, y: 0 };
+    let sx = 0, sy = 0;
+    for (const p of sh.points) { sx += p.x; sy += p.y; }
+    return { x: sx / sh.points.length, y: sy / sh.points.length };
+  }
+  if (sh.type === "rect") return { x: sh.x + sh.w / 2, y: sh.y + sh.h / 2 };
+  if (sh.type === "circle") return { x: sh.cx, y: sh.cy };
+  // stamp
+  return { x: sh.x + sh.w / 2, y: sh.y + sh.h / 2 };
+}
+
+function rotatePt(x: number, y: number, cx: number, cy: number, deg: number): Pt {
+  const a = (deg * Math.PI) / 180;
+  const cos = Math.cos(a), sin = Math.sin(a);
+  const dx = x - cx, dy = y - cy;
+  return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
+}
+
 function renderShape(sh: Shape, selected: boolean) {
   const highlight = selected ? "#EF4444" : undefined;
+  const rot = sh.rotation || 0;
+  const c = shapeCenter(sh);
+  const rotAttr = rot ? `rotate(${rot} ${c.x} ${c.y})` : undefined;
   if (sh.type === "line") {
     if (sh.points.length < 2) {
-      // draw dot
-      return <Circle key={sh.id} cx={sh.points[0].x} cy={sh.points[0].y} r={sh.strokeWidth / 2} fill={highlight || sh.stroke} />;
+      const dot = <Circle key={sh.id} cx={sh.points[0].x} cy={sh.points[0].y} r={sh.strokeWidth / 2} fill={highlight || sh.stroke} />;
+      return rotAttr ? <G key={sh.id} transform={rotAttr}>{dot}</G> : dot;
     }
     const d = sh.points.map((p, i) => (i === 0 ? `M${p.x} ${p.y}` : `L${p.x} ${p.y}`)).join(" ");
-    return <Path key={sh.id} d={d} stroke={highlight || sh.stroke} strokeWidth={sh.strokeWidth} fill="none" strokeLinecap="round" strokeLinejoin="round" />;
+    const path = <Path d={d} stroke={highlight || sh.stroke} strokeWidth={sh.strokeWidth} fill="none" strokeLinecap="round" strokeLinejoin="round" />;
+    return rotAttr ? <G key={sh.id} transform={rotAttr}>{path}</G> : <G key={sh.id}>{path}</G>;
   }
   if (sh.type === "rect") {
-    return <Rect key={sh.id} x={sh.x} y={sh.y} width={sh.w} height={sh.h} stroke={highlight || sh.stroke} strokeWidth={sh.strokeWidth} fill={sh.fill} />;
+    const r = <Rect x={sh.x} y={sh.y} width={sh.w} height={sh.h} stroke={highlight || sh.stroke} strokeWidth={sh.strokeWidth} fill={sh.fill} />;
+    return rotAttr ? <G key={sh.id} transform={rotAttr}>{r}</G> : <G key={sh.id}>{r}</G>;
   }
   if (sh.type === "circle") {
-    return <Circle key={sh.id} cx={sh.cx} cy={sh.cy} r={sh.r} stroke={highlight || sh.stroke} strokeWidth={sh.strokeWidth} fill={sh.fill} />;
+    // Rotation of a true circle is visually identical; still wrap for consistency.
+    const cc = <Circle cx={sh.cx} cy={sh.cy} r={sh.r} stroke={highlight || sh.stroke} strokeWidth={sh.strokeWidth} fill={sh.fill} />;
+    return <G key={sh.id}>{cc}</G>;
   }
   if (sh.type === "stamp") {
     return <StampView key={sh.id} shape={sh} highlight={highlight} />;
@@ -758,8 +816,13 @@ function StampView({ shape, highlight }: { shape: StampShape; highlight?: string
     const info = builtin.render(shape.w);
     const scaleX = shape.w / 100;
     const scaleY = shape.h / 100;
+    const rot = shape.rotation || 0;
+    const cx = shape.x + shape.w / 2;
+    const cy = shape.y + shape.h / 2;
+    // Outer rotation group pivots around the stamp center; inner group positions/scales the raw 100x100 artwork.
+    const rotAttr = rot ? `rotate(${rot} ${cx} ${cy})` : "";
     return (
-      <G transform={`translate(${shape.x}, ${shape.y}) scale(${scaleX}, ${scaleY})`}>
+      <G transform={`${rotAttr} translate(${shape.x}, ${shape.y}) scale(${scaleX}, ${scaleY})`}>
         {info.paths.map((p, i) => (
           <Path key={i}
             d={p.d}
@@ -780,8 +843,12 @@ function StampView({ shape, highlight }: { shape: StampShape; highlight?: string
     );
   }
   if (shape.image_base64) {
+    const rot = shape.rotation || 0;
+    const cx = shape.x + shape.w / 2;
+    const cy = shape.y + shape.h / 2;
+    const rotAttr = rot ? `rotate(${rot} ${cx} ${cy})` : undefined;
     return (
-      <G>
+      <G transform={rotAttr}>
         <SvgImage
           x={shape.x} y={shape.y}
           width={shape.w} height={shape.h}
@@ -802,16 +869,23 @@ function hitTest(shapes: Shape[], x: number, y: number): Shape | null {
   // iterate in reverse so topmost is hit first
   for (let i = shapes.length - 1; i >= 0; i--) {
     const sh = shapes[i];
+    // If shape is rotated, inverse-rotate the test point back into its local coordinate frame.
+    let tx = x, ty = y;
+    if (sh.rotation) {
+      const c = shapeCenter(sh);
+      const p = rotatePt(x, y, c.x, c.y, -sh.rotation);
+      tx = p.x; ty = p.y;
+    }
     if (sh.type === "line") {
       for (const p of sh.points) {
-        if (Math.hypot(p.x - x, p.y - y) < 12) return sh;
+        if (Math.hypot(p.x - tx, p.y - ty) < 12) return sh;
       }
     } else if (sh.type === "rect") {
-      if (x >= sh.x && x <= sh.x + sh.w && y >= sh.y && y <= sh.y + sh.h) return sh;
+      if (tx >= sh.x && tx <= sh.x + sh.w && ty >= sh.y && ty <= sh.y + sh.h) return sh;
     } else if (sh.type === "circle") {
-      if (Math.hypot(x - sh.cx, y - sh.cy) <= sh.r + 4) return sh;
+      if (Math.hypot(tx - sh.cx, ty - sh.cy) <= sh.r + 4) return sh;
     } else if (sh.type === "stamp") {
-      if (x >= sh.x && x <= sh.x + sh.w && y >= sh.y && y <= sh.y + sh.h) return sh;
+      if (tx >= sh.x && tx <= sh.x + sh.w && ty >= sh.y && ty <= sh.y + sh.h) return sh;
     }
   }
   return null;
