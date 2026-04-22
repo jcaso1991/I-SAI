@@ -903,12 +903,20 @@ def _expand_recurrence(ev: dict, from_dt: datetime, to_dt: datetime) -> List[dic
     rtype = rec.get("type", "none")
     if rtype == "none":
         start = datetime.fromisoformat(ev["start_at"].replace("Z", "+00:00"))
+        # Defensive: normalise tz-naive ISO strings (some legacy rows) to UTC
+        # so comparisons with the tz-aware from_dt/to_dt never fail.
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
         if from_dt <= start < to_dt:
             return [ev]
         return []
     # compute step
     base_start = datetime.fromisoformat(ev["start_at"].replace("Z", "+00:00"))
     base_end = datetime.fromisoformat(ev["end_at"].replace("Z", "+00:00"))
+    if base_start.tzinfo is None:
+        base_start = base_start.replace(tzinfo=timezone.utc)
+    if base_end.tzinfo is None:
+        base_end = base_end.replace(tzinfo=timezone.utc)
     duration = base_end - base_start
     until_str = rec.get("until")
     until_dt = None
