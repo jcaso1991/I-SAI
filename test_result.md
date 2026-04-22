@@ -793,6 +793,75 @@ agent_communication_round_8:
       Backend UNCHANGED — no retest required.
 
           · Bottom bar (when a shape is selected) now shows 4 new buttons:
+
+agent_communication_round_9:
+    -agent: "main"
+    -message: |
+      ITERATION 9 (plan editor: multi-selection + marquee):
+
+      User request: one "Seleccionar" button with two sub-options —
+        (a) pick individual elements, (b) paint a rectangle and select
+      everything inside. Any bulk action (colour, size, rotation, delete,
+      move) must act on the entire selection.
+
+      Implementation (frontend only, /app/frontend/app/planos/[id].tsx):
+
+      1. State migration: `selectedId: string | null` →
+         `selectedIds: string[]`. Kept `selectedId = selectedIds[0]` as a
+         derived helper for existing single-item paths (pinch-zoom, text
+         edit, rotation label). Added `selectMode: "individual" | "area"`
+         and a transient `marquee` rect for the drag preview.
+
+      2. Sub-toolbar (visible only while the Seleccionar tool is active):
+         two chip buttons — "🫵 Individual" and "▭ Rectángulo" — plus a
+         red "Limpiar selección (N)" chip once at least one shape is in
+         the set.
+
+      3. Pointer logic inside handleStart / handleMove / handleEnd:
+          · `dragKindRef = "group" | "marquee" | null`
+          · Tap on a shape that is already in the selection → start a
+            group drag that translates EVERY selected shape.
+          · Individual mode + tap on a new shape → ADD it to the set
+            (running multi-select).
+          · Area mode + drag from empty canvas → paint a dashed blue
+            marquee; on release every shape whose center lies in the
+            rect is added to the selection.
+          · Tap empty canvas in Individual mode → clear selection.
+
+      4. Action helpers rewrote to iterate over `selectedIds`:
+          · `deleteSelected`, `rotateSelected`, `recolorSelected`,
+            `resizeSelected` all loop through every id in the set.
+          · Palette / bottom-bar label show "Color selección (N)" and
+            "N elementos seleccionados".
+          · Rotation-reset button stays enabled with multi-selection
+            (not every shape has the same angle so `disabled` rule only
+            applies to the single-selection case).
+
+      5. Visual feedback:
+          · Every selected shape still gets the red-dashed highlight via
+            the unchanged `renderShape(sh, selectedIds.includes(sh.id))`.
+          · Marquee rect drawn inside the SVG while dragging with
+            `strokeDasharray="8 4"` and a translucent blue fill.
+
+      6. Hint text is now mode-aware:
+          · area   → "Arrastra desde un espacio vacío para dibujar un
+                     rectángulo · toca una pieza para seleccionarla/moverla".
+          · individual → "Toca piezas para añadirlas a la selección ·
+                         toca vacío para limpiar · arrastra una
+                         seleccionada para mover todas".
+
+      Verified via automation on web:
+        * Three successive clicks on three stamp shapes with tool =
+          Seleccionar + mode = Individual produced bottom-bar text
+          "3 elementos seleccionados", palette label "Color selección
+          (3)", and a red dashed frame around each of the three stamps.
+        * The clear-selection chip in the sub-toolbar shows "Limpiar
+          selección (3)" and empties the set on tap.
+        * Backend PATCH /api/plans/... logged 200 OK every time we moved
+          or recolored the group, proving multi-state persistence.
+
+      Backend UNCHANGED — no retest required.
+
             ↺ -15°, ↻ +15°, 90° step, Reset-0°, followed by size ± and
             the trash. Selection label also shows current angle ("· 90°").
       Backend change is static data only (BUILTIN_STAMPS list rebuilt);

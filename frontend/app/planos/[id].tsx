@@ -79,7 +79,24 @@ export default function PlanEditor() {
   const [size, setSize] = useState(80);
   const [strokeColor, setStrokeColor] = useState<string>(PALETTE[0].value);
   const [strokeW, setStrokeW] = useState<number>(STROKE_WIDTHS[0].value);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // Sub-mode used when the Seleccionar tool is active:
+  //   - "individual": each tap toggles a shape in/out of the selection set
+  //   - "area": drag paints a marquee rectangle; on release every shape
+  //     whose center is inside the rect is added to the selection.
+  const [selectMode, setSelectMode] = useState<"individual" | "area">("individual");
+  // Marquee rect while the user is dragging (in canvas coordinates).
+  const [marquee, setMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  // What kind of drag is in progress in the Seleccionar tool: translate
+  // the whole group, or draw a marquee. Null when idle.
+  const dragKindRef = useRef<"group" | "marquee" | null>(null);
+
+  // Derived helpers for single-selection paths that existed before multi.
+  const selectedId = selectedIds.length > 0 ? selectedIds[0] : null;
+  const clearSelection = () => setSelectedIds([]);
+  const selectSingle = (id: string) => setSelectedIds([id]);
+  const toggleInSelection = (id: string) =>
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const [stamps, setStamps] = useState<StampItem[]>([]);
   const [showStampPicker, setShowStampPicker] = useState(false);
   const [showStampManager, setShowStampManager] = useState(false);
@@ -266,10 +283,30 @@ export default function PlanEditor() {
     } else if (tool === "select") {
       const hit = hitTest(shapes, x, y);
       if (hit) {
-        setSelectedId(hit.id);
+        if (selectedIds.includes(hit.id)) {
+          // Already in selection: prepare to drag the whole group.
+          dragKindRef.current = "group";
+        } else if (selectMode === "individual") {
+          // Individual mode: ADD this shape to the running selection, and
+          // also arm a potential group drag (so you can place+move quickly).
+          setSelectedIds((prev) => [...prev, hit.id]);
+          dragKindRef.current = "group";
+        } else {
+          // Area mode: clicking on a shape replaces selection with just this
+          // one — then drag still moves the whole (1-item) group.
+          setSelectedIds([hit.id]);
+          dragKindRef.current = "group";
+        }
         lastDragRef.current = { x, y };
       } else {
-        setSelectedId(null);
+        // Empty canvas space
+        if (selectMode === "area") {
+          // Start painting a marquee rectangle.
+          dragKindRef.current = "marquee";
+          setMarquee({ x1: x, y1: y, x2: x, y2: y });
+        } else {
+          clearSelection();
+        }
       }
     }
   };
@@ -292,14 +329,13 @@ export default function PlanEditor() {
       cur.x2 = x;
       cur.y2 = y;
       setShapes((s) => s.map((sh) => (sh.id === cur.id ? { ...cur } : sh)));
-    } else if (tool === "select" && selectedId && lastDragRef.current) {
+    } else if (tool === "select" && dragKindRef.current === "group" && selectedIds.length && lastDragRef.current) {
       const dx = x - lastDragRef.current.x;
       const dy = y - lastDragRef.current.y;
       lastDragRef.current = { x, y };
-      setShapes((arr) => arr.map((sh) => {
-        if (sh.id !== selectedId) return sh;
-        return translateShape(sh, dx, dy);
-      }));
+      setShapes((arr) => arr.map((sh) => (selectedIds.includes(sh.id) ? translateShape(sh, dx, dy) : sh)));
+    } else if (tool === "select" && dragKindRef.current === "marquee" && marquee) {
+      setMarquee({ ...marquee, x2: x, y2: y });
     } else if (tool === "eraser") {
       // continuous erase
       const hit = hitTest(shapes, x, y);
@@ -312,6 +348,30 @@ export default function PlanEditor() {
 
   const handleEnd = () => {
     const cur = currentDrawingRef.current;
+    // Finalize marquee selection in the Seleccionar tool (area mode):
+    // compute final rect and ADD every shape whose center falls inside it.
+    if (tool === "select" && dragKindRef.current === "marquee" && marquee) {
+      const r = {
+        x1: Math.min(marquee.x1, marquee.x2),
+        y1: Math.min(marquee.y1, marquee.y2),
+        x2: Math.max(marquee.x1, marquee.x2),
+        y2: Math.max(marquee.y1, marquee.y2),
+      };
+      const big = Math.abs(r.x2 - r.x1) > 4 && Math.abs(r.y2 - r.y1) > 4;
+      if (big) {
+        const inside = shapes
+          .filter((sh) => {
+            const c = shapeCenter(sh);
+            return c.x >= r.x1 && c.x <= r.x2 && c.y >= r.y1 && c.y <= r.y2;
+          })
+          .map((sh) => sh.id);
+        setSelectedIds((prev) => Array.from(new Set([...prev, ...inside])));
+      }
+      setMarquee(null);
+      dragKindRef.current = null;
+      lastDragRef.current = null;
+      return;
+    }
     if (cur) {
       // normalize rect so w,h positive
       if (cur.type === "rect") {
@@ -325,38 +385,47 @@ export default function PlanEditor() {
           setShapes((s) => s.filter((sh) => sh.id !== cur.id));
           currentDrawingRef.current = null;
           lastDragRef.current = null;
+          dragKindRef.current = null;
           return;
         }
       }
       markDirty();
     }
+    // Commit a group-drag move (if any).
+    if (tool === "select" && dragKindRef.current === "group") {
+      markDirty();
+    }
     currentDrawingRef.current = null;
     lastDragRef.current = null;
+    dragKindRef.current = null;
   };
 
   // ---------------- Selected shape actions ----------------
-  const selectedShape = shapes.find((s) => s.id === selectedId);
+  // When exactly ONE shape is selected we expose it as `selectedShape` so
+  // the existing single-item UI keeps working (text-edit button, label, …).
+  // Helpers below always iterate over the full `selectedIds` set so they
+  // work on multi-selection seamlessly.
+  const selectedShape = selectedIds.length === 1
+    ? shapes.find((s) => s.id === selectedIds[0]) || null
+    : null;
 
   const resizeSelected = (factor: number) => {
-    if (!selectedShape) return;
-    setShapes((arr) => arr.map((sh) => {
-      if (sh.id !== selectedShape.id) return sh;
-      return scaleShape(sh, factor);
-    }));
+    if (selectedIds.length === 0) return;
+    setShapes((arr) => arr.map((sh) => (selectedIds.includes(sh.id) ? scaleShape(sh, factor) : sh)));
     markDirty();
   };
 
   const deleteSelected = () => {
-    if (!selectedId) return;
-    setShapes((s) => s.filter((sh) => sh.id !== selectedId));
-    setSelectedId(null);
+    if (selectedIds.length === 0) return;
+    setShapes((s) => s.filter((sh) => !selectedIds.includes(sh.id)));
+    clearSelection();
     markDirty();
   };
 
   const recolorSelected = (color: string) => {
-    if (!selectedId) return;
+    if (selectedIds.length === 0) return;
     setShapes((arr) => arr.map((sh) => {
-      if (sh.id !== selectedId) return sh;
+      if (!selectedIds.includes(sh.id)) return sh;
       if (sh.type === "line") return { ...sh, stroke: color };
       if (sh.type === "rect") return { ...sh, stroke: color, fill: hexToRgba(color, 0.1) };
       if (sh.type === "circle") return { ...sh, stroke: color, fill: hexToRgba(color, 0.1) };
@@ -369,11 +438,10 @@ export default function PlanEditor() {
   };
 
   const rotateSelected = (deltaDeg: number) => {
-    if (!selectedId) return;
+    if (selectedIds.length === 0) return;
     setShapes((arr) => arr.map((sh) => {
-      if (sh.id !== selectedId) return sh;
+      if (!selectedIds.includes(sh.id)) return sh;
       const cur = sh.rotation || 0;
-      // Keep value normalized to [-180, 180] for readable UI state; special-case delta=0 to reset.
       let next = deltaDeg === 0 ? 0 : cur + deltaDeg;
       if (next > 180) next -= 360;
       if (next < -180) next += 360;
@@ -416,7 +484,7 @@ export default function PlanEditor() {
       { text: "Cancelar", style: "cancel" },
       {
         text: "Borrar", style: "destructive",
-        onPress: () => { setShapes([]); setSelectedId(null); markDirty(); },
+        onPress: () => { setShapes([]); clearSelection(); markDirty(); },
       },
     ]);
   };
@@ -497,7 +565,7 @@ export default function PlanEditor() {
 
   const exportAs = async (format: "jpg" | "pdf") => {
     try {
-      setSelectedId(null);
+      clearSelection();
       await new Promise((r) => setTimeout(r, 100));
       const jpgBase64 = await captureCanvasJpegBase64(canvasRef, {
         quality: 0.95,
@@ -520,7 +588,7 @@ export default function PlanEditor() {
   const saveBackToEvent = async (andGoBack?: boolean) => {
     if (!sourceEventId || !sourceAttachmentId) return;
     try {
-      setSelectedId(null);
+      clearSelection();
       await new Promise((r) => setTimeout(r, 100));
 
       // 1) Capture canvas as JPG base64 (cross-platform)
@@ -640,14 +708,14 @@ export default function PlanEditor() {
         style={s.toolbar}
         contentContainerStyle={{ gap: 8, paddingHorizontal: 12, alignItems: "center" }}
       >
-        <ToolBtn icon="pencil" active={tool === "pencil"} onPress={() => { setTool("pencil"); setSelectedId(null); }} label="Lápiz" />
-        <ToolBtn icon="remove-outline" active={tool === "straight"} onPress={() => { setTool("straight"); setSelectedId(null); }} label="Línea" />
-        <ToolBtn icon="square-outline" active={tool === "rect"} onPress={() => { setTool("rect"); setSelectedId(null); }} label="Cuadro" />
-        <ToolBtn icon="ellipse-outline" active={tool === "circle"} onPress={() => { setTool("circle"); setSelectedId(null); }} label="Círculo" />
-        <ToolBtn icon="text" active={tool === "text"} onPress={() => { setTool("text"); setSelectedId(null); }} label="Texto" />
-        <ToolBtn icon="cube" active={tool === "stamp"} onPress={() => { setTool("stamp"); setSelectedId(null); setShowStampPicker(true); }} label={currentStamp?.name || "Pieza"} />
-        <ToolBtn icon="trash-outline" active={tool === "eraser"} onPress={() => { setTool("eraser"); setSelectedId(null); }} label="Borrar" />
-        <ToolBtn icon="hand-left-outline" active={tool === "select"} onPress={() => { setTool("select"); }} label="Mover" />
+        <ToolBtn icon="pencil" active={tool === "pencil"} onPress={() => { setTool("pencil"); clearSelection(); }} label="Lápiz" />
+        <ToolBtn icon="remove-outline" active={tool === "straight"} onPress={() => { setTool("straight"); clearSelection(); }} label="Línea" />
+        <ToolBtn icon="square-outline" active={tool === "rect"} onPress={() => { setTool("rect"); clearSelection(); }} label="Cuadro" />
+        <ToolBtn icon="ellipse-outline" active={tool === "circle"} onPress={() => { setTool("circle"); clearSelection(); }} label="Círculo" />
+        <ToolBtn icon="text" active={tool === "text"} onPress={() => { setTool("text"); clearSelection(); }} label="Texto" />
+        <ToolBtn icon="cube" active={tool === "stamp"} onPress={() => { setTool("stamp"); clearSelection(); setShowStampPicker(true); }} label={currentStamp?.name || "Pieza"} />
+        <ToolBtn icon="trash-outline" active={tool === "eraser"} onPress={() => { setTool("eraser"); clearSelection(); }} label="Borrar" />
+        <ToolBtn icon="hand-left-outline" active={tool === "select"} onPress={() => { setTool("select"); }} label="Seleccionar" />
         <View style={{ width: 1, height: 28, backgroundColor: COLORS.border, marginHorizontal: 4 }} />
         <TouchableOpacity style={s.toolBtn} onPress={background ? removeBackground : pickBackground} disabled={bgUploading}>
           {bgUploading ? (
@@ -671,11 +739,55 @@ export default function PlanEditor() {
         )}
       </ScrollView>
 
+      {/* Sub-toolbar for the Seleccionar tool: choose between tapping
+          individual shapes or painting a marquee rectangle. */}
+      {tool === "select" && (
+        <View style={s.subToolbar}>
+          <Text style={s.subToolLabel}>Modo</Text>
+          <TouchableOpacity
+            testID="selmode-individual"
+            style={[s.subChip, selectMode === "individual" && s.subChipActive]}
+            onPress={() => setSelectMode("individual")}
+          >
+            <Ionicons
+              name="finger-print-outline"
+              size={16}
+              color={selectMode === "individual" ? "#fff" : COLORS.text}
+            />
+            <Text style={[s.subChipText, selectMode === "individual" && { color: "#fff" }]}>Individual</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            testID="selmode-area"
+            style={[s.subChip, selectMode === "area" && s.subChipActive]}
+            onPress={() => setSelectMode("area")}
+          >
+            <Ionicons
+              name="scan-outline"
+              size={16}
+              color={selectMode === "area" ? "#fff" : COLORS.text}
+            />
+            <Text style={[s.subChipText, selectMode === "area" && { color: "#fff" }]}>Rectángulo</Text>
+          </TouchableOpacity>
+          {selectedIds.length > 0 && (
+            <TouchableOpacity
+              testID="btn-clear-selection"
+              style={[s.subChip, { marginLeft: "auto", backgroundColor: COLORS.errorBg }]}
+              onPress={clearSelection}
+            >
+              <Ionicons name="close" size={16} color={COLORS.errorText} />
+              <Text style={[s.subChipText, { color: COLORS.errorText }]}>
+                Limpiar selección ({selectedIds.length})
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
       {/* Color + stroke-width row: applies to pencil/rect/circle/stamp.
           If a shape is selected, tapping a color recolors it; otherwise it becomes the default for new drawings. */}
       <View style={s.palette}>
         <Text style={s.paletteLabel}>
-          {selectedShape ? "Color selección" : "Color"}
+          {selectedIds.length > 0 ? `Color selección (${selectedIds.length})` : "Color"}
         </Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, alignItems: "center" }}>
           {PALETTE.map((c) => {
@@ -687,12 +799,11 @@ export default function PlanEditor() {
                 key={c.value}
                 testID={`color-${c.value}`}
                 onPress={() => {
-                  if (selectedShape) {
+                  if (selectedIds.length > 0) {
+                    // Apply to every selected shape (works for single or many).
                     recolorSelected(c.value);
-                    setStrokeColor(c.value);
-                  } else {
-                    setStrokeColor(c.value);
                   }
+                  setStrokeColor(c.value);
                 }}
                 style={[
                   s.colorDot,
@@ -754,21 +865,40 @@ export default function PlanEditor() {
                 opacity={0.75}
               />
             )}
-            {shapes.map((sh) => renderShape(sh, sh.id === selectedId))}
+            {shapes.map((sh) => renderShape(sh, selectedIds.includes(sh.id)))}
+            {/* Marquee selection rect (Seleccionar tool · Rectángulo). */}
+            {marquee && (
+              <Rect
+                x={Math.min(marquee.x1, marquee.x2)}
+                y={Math.min(marquee.y1, marquee.y2)}
+                width={Math.abs(marquee.x2 - marquee.x1)}
+                height={Math.abs(marquee.y2 - marquee.y1)}
+                stroke={COLORS.primary}
+                strokeWidth={1.5}
+                strokeDasharray="8 4"
+                fill={hexToRgba(COLORS.primary, 0.08)}
+              />
+            )}
           </Svg>
         </View>
       </View>
 
       {/* Bottom bar */}
       <View style={s.bottomBar}>
-        {selectedShape ? (
+        {selectedIds.length > 0 ? (
           <View style={s.selectedRow}>
             <Text style={s.selectedLabel} numberOfLines={1}>
-              Selección: {shapeLabel(selectedShape)}
-              {selectedShape.rotation ? ` · ${Math.round(selectedShape.rotation)}°` : ""}
+              {selectedIds.length === 1 && selectedShape ? (
+                <>
+                  Selección: {shapeLabel(selectedShape)}
+                  {selectedShape.rotation ? ` · ${Math.round(selectedShape.rotation)}°` : ""}
+                </>
+              ) : (
+                <>{selectedIds.length} elementos seleccionados</>
+              )}
             </Text>
             <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-              {selectedShape.type === "text" && (
+              {selectedShape?.type === "text" && (
                 <TouchableOpacity
                   testID="btn-edit-text"
                   style={[s.btnIconSm, { paddingHorizontal: 10, flexDirection: "row", gap: 4 }]}
@@ -792,8 +922,8 @@ export default function PlanEditor() {
               <TouchableOpacity testID="btn-rot-90" style={s.btnIconSm} onPress={() => rotateSelected(90)}>
                 <Text style={{ fontWeight: "800", color: COLORS.navy, fontSize: 11 }}>90°</Text>
               </TouchableOpacity>
-              <TouchableOpacity testID="btn-rot-reset" style={s.btnIconSm} onPress={() => rotateSelected(0)} disabled={!selectedShape.rotation}>
-                <Ionicons name="refresh" size={18} color={selectedShape.rotation ? COLORS.navy : COLORS.textDisabled} />
+              <TouchableOpacity testID="btn-rot-reset" style={s.btnIconSm} onPress={() => rotateSelected(0)} disabled={!selectedShape?.rotation && selectedIds.length === 1}>
+                <Ionicons name="refresh" size={18} color={COLORS.navy} />
               </TouchableOpacity>
               <View style={{ width: 1, height: 28, backgroundColor: COLORS.border, marginHorizontal: 2, alignSelf: "center" }} />
               <TouchableOpacity style={s.btnIconSm} onPress={() => resizeSelected(0.8)}>
@@ -816,7 +946,9 @@ export default function PlanEditor() {
               : tool === "text" ? "Toca donde quieras escribir · se abrirá un teclado"
               : tool === "stamp" ? `Toca para colocar: ${currentStamp?.name || "pieza"}`
               : tool === "eraser" ? "Toca una pieza para borrarla"
-              : tool === "select" ? "Toca para seleccionar · arrastra para mover · usa ↺ ↻ 90° para rotar"
+              : tool === "select" ? (selectMode === "area"
+                ? "Arrastra desde un espacio vacío para dibujar un rectángulo · toca una pieza para seleccionarla/moverla"
+                : "Toca piezas para añadirlas a la selección · toca vacío para limpiar · arrastra una seleccionada para mover todas")
               : ""}
           </Text>
         )}
@@ -1443,6 +1575,22 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.surface, paddingHorizontal: 12, paddingVertical: 6,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
+  subToolbar: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: COLORS.primarySoft, paddingHorizontal: 12, paddingVertical: 8,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  subToolLabel: {
+    fontSize: 11, fontWeight: "800", color: COLORS.textSecondary,
+    letterSpacing: 0.5,
+  },
+  subChip: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+    backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
+  },
+  subChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  subChipText: { fontSize: 12, fontWeight: "800", color: COLORS.text },
   palette: {
     flexDirection: "row", alignItems: "center", gap: 10,
     backgroundColor: COLORS.surface, paddingHorizontal: 12, paddingVertical: 8,
