@@ -105,6 +105,52 @@ export const api = {
   updateBudget: (id: string, body: any) => request(`/budgets/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteBudget: (id: string) => request(`/budgets/${id}`, { method: "DELETE" }),
   budgetsDefaultEquipos: () => request("/budgets-defaults/equipos"),
+  // Get budget PDF URL (authenticated blob fetch)
+  getBudgetPdfUrl: (id: string) => `${BASE}/api/budgets/${id}/pdf`,
+  getBudgetPdfBlob: async (id: string): Promise<Blob> => {
+    const t = await getToken();
+    const res = await fetch(`${BASE}/api/budgets/${id}/pdf`, {
+      headers: t ? { Authorization: `Bearer ${t}` } : {},
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.blob();
+  },
+  getBudgetPdfPreviewBlob: async (body: any): Promise<Blob> => {
+    const t = await getToken();
+    const res = await fetch(`${BASE}/api/budgets/pdf-preview`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(t ? { Authorization: `Bearer ${t}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(txt || `HTTP ${res.status}`);
+    }
+    return await res.blob();
+  },
+  // Convert JPEG/PNG base64 to a single-page PDF (returns base64 of the PDF)
+  imageToPdfBase64: async (base64: string, mime_type: string = "image/jpeg"): Promise<string> => {
+    const t = await getToken();
+    const res = await fetch(`${BASE}/api/utils/image-to-pdf`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(t ? { Authorization: `Bearer ${t}` } : {}),
+      },
+      body: JSON.stringify({ base64, mime_type }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(String(fr.result || "").split(",").pop() || "");
+      fr.onerror = () => reject(fr.error);
+      fr.readAsDataURL(blob);
+    });
+  },
   // Stamps
   listStamps: () => request("/stamps"),
   createStamp: (body: { name: string; image_base64: string }) =>

@@ -20,6 +20,8 @@ import base64
 from openpyxl import load_workbook
 import pypdfium2 as pdfium
 from PIL import Image
+from fastapi.responses import Response
+from pdf_filler import build_budget_pdf
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -1308,6 +1310,102 @@ DEFAULT_EQUIPMENT_LIST = [
 @api_router.get("/budgets-defaults/equipos")
 async def budgets_default_equipos(user: dict = Depends(current_admin_or_comercial)):
     return {"items": DEFAULT_EQUIPMENT_LIST}
+
+
+@api_router.get("/budgets/{bid}/pdf")
+async def get_budget_pdf(bid: str, user: dict = Depends(current_admin_or_comercial)):
+    """
+    Genera el PDF 'Hoja de instalación' rellenado con los datos del presupuesto,
+    manteniendo el layout exacto del template y los campos editables (AcroForm).
+    """
+    b = await db.budgets.find_one({"id": bid}, {"_id": 0})
+    if not b:
+        raise HTTPException(404, "Presupuesto no encontrado")
+    try:
+        pdf_bytes = build_budget_pdf(b)
+    except Exception as e:
+        logging.exception("PDF generation failed")
+        raise HTTPException(500, f"No se pudo generar el PDF: {e}")
+    filename = f"hoja_instalacion_{(b.get('n_proyecto') or bid)[:40]}.pdf"
+    safe = "".join(c for c in filename if c.isalnum() or c in "._-") or "hoja_instalacion.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{safe}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@api_router.post("/budgets/pdf-preview")
+async def post_budget_pdf_preview(payload: BudgetCreate,
+                                  user: dict = Depends(current_admin_or_comercial)):
+    """
+    Genera el PDF sin guardar el presupuesto. Útil para previsualizar antes de
+    guardar. Recibe en el body los mismos campos que BudgetCreate.
+    """
+    data = payload.dict()
+    data["equipos"] = [e if isinstance(e, dict) else e.dict() for e in (payload.equipos or [])]
+    try:
+        pdf_bytes = build_budget_pdf(data)
+    except Exception as e:
+        logging.exception("PDF preview failed")
+        raise HTTPException(500, f"No se pudo generar el PDF: {e}")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": 'inline; filename="hoja_instalacion_preview.pdf"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+# ---------------- Utilities: image -> PDF ----------------
+class ImageToPdfBody(BaseModel):
+    base64: str
+    mime_type: str = "image/jpeg"   # image/jpeg or image/png
+    filename: Optional[str] = "plano.pdf"
+
+
+@api_router.post("/utils/image-to-pdf")
+async def utils_image_to_pdf(body: ImageToPdfBody, user: dict = Depends(current_user)):
+    """
+    Convierte una imagen base64 (JPEG/PNG) a un PDF de una sola página
+    dimensionada al aspecto de la imagen. Devuelve application/pdf.
+    Utilidad para el editor de Planos al guardar de vuelta al evento.
+    """
+    if body.mime_type not in ("image/jpeg", "image/png"):
+        raise HTTPException(400, "Solo JPEG o PNG")
+    try:
+        raw = base64.b64decode(body.base64)
+    except Exception:
+        raise HTTPException(400, "Base64 inválido")
+    try:
+        img = Image.open(io.BytesIO(raw))
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        buf = io.BytesIO()
+        # Page size: match image aspect, cap dimensions to avoid huge PDFs
+        img.save(buf, format="PDF", resolution=150.0)
+        data = buf.getvalue()
+    except Exception as e:
+        logging.exception("image-to-pdf failed")
+        raise HTTPException(500, f"No se pudo generar PDF: {e}")
+    filename = body.filename or "plano.pdf"
+    if not filename.lower().endswith(".pdf"):
+        filename += ".pdf"
+    safe = "".join(c for c in filename if c.isalnum() or c in "._-") or "plano.pdf"
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{safe}"'},
+    )
+
+
+
+
 
 # ---------------- Seed ----------------
 async def seed_initial_data():

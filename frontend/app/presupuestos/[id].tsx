@@ -117,16 +117,45 @@ export default function BudgetEditor() {
   const generatePdf = async () => {
     const id = await saveBudget();
     if (!id) return;
-    const html = renderPdfHtml(f);
     try {
       if (Platform.OS === "web") {
-        const w = window.open("", "_blank");
-        if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 600); }
+        // Fetch the PDF (generated from exact template with editable AcroForm fields)
+        const blob = await api.getBudgetPdfBlob(id);
+        const url = URL.createObjectURL(blob);
+        const baseName = (f.n_proyecto || id).toString().replace(/[^\w.-]+/g, "_").slice(0, 40) || "hoja";
+        // Try open in new tab; browsers will allow downloading from the PDF viewer
+        const w = window.open(url, "_blank");
+        if (!w) {
+          // fallback: force download
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `hoja_instalacion_${baseName}.pdf`;
+          document.body.appendChild(a); a.click(); a.remove();
+        }
+        setTimeout(() => URL.revokeObjectURL(url), 30_000);
       } else {
-        const { uri } = await Print.printToFileAsync({ html });
+        // Native: download blob, write to FS, share
+        const blob = await api.getBudgetPdfBlob(id);
+        const reader = new FileReader();
+        const b64: string = await new Promise((res, rej) => {
+          reader.onload = () => res(String(reader.result || "").split(",").pop() || "");
+          reader.onerror = () => rej(reader.error);
+          reader.readAsDataURL(blob);
+        });
+        const FS = await import("expo-file-system/legacy");
+        const baseName = (f.n_proyecto || id).toString().replace(/[^\w.-]+/g, "_").slice(0, 40) || "hoja";
+        const uri = `${FS.cacheDirectory}hoja_instalacion_${baseName}.pdf`;
+        await FS.writeAsStringAsync(uri, b64, { encoding: FS.EncodingType.Base64 });
         const Sharing = await import("expo-sharing").catch(() => null as any);
-        if (Sharing?.isAvailableAsync && await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri);
-        else Alert.alert("PDF guardado", uri);
+        if (Sharing?.isAvailableAsync && await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri, {
+            mimeType: "application/pdf",
+            dialogTitle: "Hoja de instalación",
+            UTI: "com.adobe.pdf",
+          });
+        } else {
+          Alert.alert("PDF guardado", uri);
+        }
       }
     } catch (e: any) {
       Alert.alert("Error", e.message || "No se pudo generar PDF");

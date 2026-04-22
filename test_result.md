@@ -296,11 +296,7 @@ metadata:
   run_ui: false
 
 test_plan:
-  current_focus:
-    - "Events CRUD - Create with recurrence and assigned_user_ids"
-    - "Events listing with date window and recurrence expansion"
-    - "Events visibility filter - non-admin sees only assigned"
-    - "Events PATCH supports recurrence and assigned_user_ids updates"
+  current_focus: []
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -316,8 +312,90 @@ agent_communication:
       component (Ajustes, Proyectos, Inicio, Calendario, Planos), materiales.tsx
       renamed title to "Proyectos", calendario EventDetailsModal now has date/time pickers
       and attachments UI.
+    -agent: "main"
+    -message: |
+      ITERATION 3: Fixed 3 P0 bugs around PDF handling:
+      1. Hoja de instalación PDF: created /app/backend/pdf_filler.py that merges
+         a reportlab overlay on top of the EXACT user-uploaded template
+         (/app/backend/templates/hoja_instalacion.pdf) and attaches AcroForm
+         text/checkbox fields at the coordinates. Result: visually identical to
+         template AND editable (NeedAppearances=true). New endpoints:
+           GET  /api/budgets/{bid}/pdf         (from stored budget)
+           POST /api/budgets/pdf-preview       (from body, no save)
+           POST /api/utils/image-to-pdf        (JPEG/PNG base64 -> 1-page PDF)
+      2. Planos export JPG/PDF: replaced react-native-view-shot-only path with
+         a cross-platform helper /app/frontend/src/canvasCapture.ts that
+         serializes the SVG to canvas on web and uses captureRef on native.
+         PDF conversion is handled by the new /api/utils/image-to-pdf endpoint.
+         Verified on web: download works, PDF contains the drawing.
+      3. "Guardar y volver": reimplemented in /app/frontend/app/planos/[id].tsx
+         to upload the new attachment BEFORE deleting the old one (safer),
+         update source_attachment_id, and navigate to
+         /calendario?openEvent=<eventId>. Verified visually: after save, the
+         event modal reopens with the new attachment listed.
+      Backend needs_retesting: the 3 new endpoints above.
 
 backend_new_tasks:
+  - task: "Budget PDF generation from exact template"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py, /app/backend/pdf_filler.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: |
+          GET /api/budgets/{bid}/pdf returns application/pdf generated from
+          /app/backend/templates/hoja_instalacion.pdf with a reportlab overlay
+          and AcroForm text/checkbox fields (editable). Access: admin or comercial.
+          404 if not found. Also POST /api/budgets/pdf-preview accepts the same
+          body as BudgetCreate and returns the PDF without saving.
+        -working: true
+        -agent: "testing"
+        -comment: |
+          PASS (all scenarios via /app/backend_test_pdf.py, 47/47 assertions).
+          GET /api/budgets/{bid}/pdf:
+          - No token → 401; role=user → 403; admin and comercial → 200.
+          - Response Content-Type: application/pdf, first 5 bytes "%PDF-".
+          - Size 327,398 bytes (> 100KB, matches template).
+          - Content-Disposition: `inline; filename="hoja_instalacion_<n_proyecto>.pdf"`.
+          - Invalid id → 404 with detail "Presupuesto no encontrado".
+          POST /api/budgets/pdf-preview:
+          - No token → 401; role=user → 403.
+          - Minimal body {n_proyecto:"P-MIN-001"} → 200, bytes start with "%PDF-",
+            contains "/AcroForm" marker (editable).
+          - Full body with equipos, deliveries, names/cargos → 200 from comercial
+            token, application/pdf, size 327,398, contains "/AcroForm".
+
+  - task: "Image-to-PDF utility endpoint"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: |
+          POST /api/utils/image-to-pdf with {base64, mime_type in [image/jpeg,
+          image/png]} returns application/pdf. Used by the Planos editor to
+          convert a captured JPEG back into a PDF attachment when the source
+          was a PDF. Auth: any logged-in user (current_user).
+        -working: true
+        -agent: "testing"
+        -comment: |
+          PASS. /app/backend_test_pdf.py covers all scenarios:
+          - No token → 401.
+          - Valid JPEG base64 (Pillow-generated tiny JPEG) → 200 application/pdf
+            with first 4 bytes "%PDF".
+          - Valid PNG base64 → 200 application/pdf with "%PDF" magic.
+          - role=user (non-admin/non-comercial) → 200 (any logged-in user allowed).
+          - mime_type=text/plain → 400 with detail "Solo JPEG o PNG".
+          - base64="not-base64!!" → 400 with detail "Base64 inválido".
+
   - task: "Event attachments upload/get/delete"
     implemented: true
     working: true
@@ -395,6 +473,33 @@ backend_new_tasks:
         byte-exact what was uploaded.
       - 15MB limit enforced (413) with ~20.97M-char base64 (raw ~15.0000952MB).
       - Mime whitelist: application/pdf, image/jpeg, image/png → 200;
+    -agent: "testing"
+    -message: |
+      Iteration 3 PDF backend tests COMPLETE. 47/47 assertions passed via
+      /app/backend_test_pdf.py (targeting http://localhost:8001/api).
+      Results per focus task:
+      - POST /api/utils/image-to-pdf: PASS.
+        · No token → 401; any logged-in user (admin/comercial/user) → 200.
+        · JPEG and PNG (Pillow-generated tiny images) both produce
+          application/pdf with "%PDF" magic bytes.
+        · mime=text/plain → 400 "Solo JPEG o PNG".
+        · base64="not-base64!!" → 400 "Base64 inválido".
+      - POST /api/budgets/pdf-preview: PASS.
+        · No token → 401; role=user → 403; admin/comercial → 200.
+        · Minimal body (only n_proyecto) still returns valid PDF with /AcroForm.
+        · Full body (equipos, deliveries, firmas/cargos) → 327,398 bytes,
+          Content-Type application/pdf, /AcroForm marker present (editable).
+      - GET /api/budgets/{bid}/pdf: PASS.
+        · Created a budget via POST /api/budgets and fetched its PDF.
+        · No token → 401; role=user → 403; admin/comercial → 200.
+        · Response 327,398 bytes (>100KB, matches template), "%PDF-" header,
+          Content-Disposition: `inline; filename="hoja_instalacion_P-2026-100.pdf"`.
+        · Invalid id → 404 "Presupuesto no encontrado".
+      Regression: Budgets CRUD (POST/GET list/GET by id/PATCH/DELETE),
+      /api/events CRUD, and /api/plans CRUD all PASS.
+      Cleanup executed (all test budgets, events, plans and users deleted).
+      Focus tasks marked working: true and needs_retesting: false.
+
         text/plain → 400 with detail "Tipo no soportado. Solo PDF, JPEG o PNG".
       - Virtual eid `<base>:YYYY-MM-DD` works on all 3 endpoints (stored on
         base event; verified via list).

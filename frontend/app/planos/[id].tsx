@@ -7,14 +7,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { G, Path, Rect, Circle, SvgXml, Image as SvgImage } from "react-native-svg";
-import { captureRef } from "react-native-view-shot";
-import * as Print from "expo-print";
-import * as Sharing from "expo-sharing";
-import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import { api, COLORS } from "../../src/api";
 import { BUILTIN_STAMPS } from "../../src/stamps";
+import { captureCanvasJpegBase64, shareOrDownloadBase64 } from "../../src/canvasCapture";
 
 type Pt = { x: number; y: number };
 type LineShape = { id: string; type: "line"; points: Pt[]; stroke: string; strokeWidth: number };
@@ -362,48 +360,21 @@ export default function PlanEditor() {
     try {
       setSelectedId(null);
       await new Promise((r) => setTimeout(r, 100));
-      const uri = await captureRef(canvasRef, {
-        format: "jpg",
+      const jpgBase64 = await captureCanvasJpegBase64(canvasRef, {
         quality: 0.95,
-        result: "tmpfile",
+        width: canvasSize.w,
+        height: canvasSize.h,
       });
       const baseName = safeFilename(title);
       if (format === "jpg") {
-        // Copy to a file with the plan's title as filename
-        const destUri = `${FileSystem.cacheDirectory}${baseName}.jpg`;
-        try {
-          await FileSystem.deleteAsync(destUri, { idempotent: true });
-        } catch {}
-        await FileSystem.copyAsync({ from: uri, to: destUri });
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(destUri, {
-            mimeType: "image/jpeg",
-            dialogTitle: title,
-            UTI: "public.jpeg",
-          });
-        } else {
-          Alert.alert("Guardado", `Archivo creado: ${baseName}.jpg\n${destUri}`);
-        }
+        await shareOrDownloadBase64(jpgBase64, "image/jpeg", `${baseName}.jpg`);
       } else {
-        const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-        const html = `<html><head><title>${escapeHtml(title)}</title></head><body style="margin:0;padding:20px"><h2 style="font-family:sans-serif">${escapeHtml(title)}</h2><img src="data:image/jpeg;base64,${base64}" style="max-width:100%;border:1px solid #ccc"/></body></html>`;
-        const { uri: pdfUri } = await Print.printToFileAsync({ html, base64: false });
-        // rename the file to match title
-        const destUri = `${FileSystem.cacheDirectory}${baseName}.pdf`;
-        try { await FileSystem.deleteAsync(destUri, { idempotent: true }); } catch {}
-        await FileSystem.copyAsync({ from: pdfUri, to: destUri });
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(destUri, {
-            mimeType: "application/pdf",
-            dialogTitle: title,
-            UTI: "com.adobe.pdf",
-          });
-        } else {
-          Alert.alert("Guardado", `PDF creado: ${baseName}.pdf\n${destUri}`);
-        }
+        // Convert JPEG -> PDF via backend (works on web + native)
+        const pdfBase64 = await api.imageToPdfBase64(jpgBase64, "image/jpeg");
+        await shareOrDownloadBase64(pdfBase64, "application/pdf", `${baseName}.pdf`);
       }
     } catch (e: any) {
-      Alert.alert("Error al exportar", e.message);
+      Alert.alert("Error al exportar", e.message || String(e));
     }
   };
 
@@ -412,51 +383,56 @@ export default function PlanEditor() {
     try {
       setSelectedId(null);
       await new Promise((r) => setTimeout(r, 100));
-      // 1) Capture canvas as JPG base64
-      const uri = await captureRef(canvasRef, {
-        format: "jpg",
-        quality: 0.95,
-        result: "tmpfile",
-      });
-      const jpgBase64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
 
-      // 2) Generate a PDF with the JPG embedded
+      // 1) Capture canvas as JPG base64 (cross-platform)
+      const jpgBase64 = await captureCanvasJpegBase64(canvasRef, {
+        quality: 0.95,
+        width: canvasSize.w,
+        height: canvasSize.h,
+      });
+
+      // 2) If original was PDF, convert to PDF via backend. Otherwise keep JPEG.
       const baseName = safeFilename(sourceFilename || title);
       const isPdf = (sourceFilename || "").toLowerCase().endsWith(".pdf");
       let uploadBase64 = jpgBase64;
-      let mimeType = "image/jpeg";
-      let finalFilename = baseName.endsWith(".jpg") ? baseName : `${baseName}.jpg`;
-
+      let mimeType: "image/jpeg" | "application/pdf" = "image/jpeg";
+      let finalFilename = baseName.endsWith(".jpg") || baseName.endsWith(".jpeg")
+        ? baseName
+        : `${baseName}.jpg`;
       if (isPdf) {
-        const html = `<html><head><title>${escapeHtml(title)}</title></head><body style="margin:0;padding:0"><img src="data:image/jpeg;base64,${jpgBase64}" style="width:100%;display:block"/></body></html>`;
-        const { uri: pdfUri } = await Print.printToFileAsync({ html, base64: true });
-        // @ts-ignore Print returns base64 when requested
-        uploadBase64 = (pdfUri as any).base64 || await FileSystem.readAsStringAsync(pdfUri, { encoding: FileSystem.EncodingType.Base64 });
-        if (typeof pdfUri === "string") {
-          uploadBase64 = await FileSystem.readAsStringAsync(pdfUri, { encoding: FileSystem.EncodingType.Base64 });
-        }
+        uploadBase64 = await api.imageToPdfBase64(jpgBase64, "image/jpeg");
         mimeType = "application/pdf";
         finalFilename = baseName.endsWith(".pdf") ? baseName : `${baseName}.pdf`;
       }
 
-      // Save shapes state to the plan first (autosave)
-      try { await api.updatePlan(id, { data: { shapes, ...(background ? { background } : {}) } } as any); } catch {}
+      // 3) Save current shapes state to the plan
+      try {
+        await api.updatePlan(id, { data: { shapes, ...(background ? { background } : {}) } } as any);
+      } catch {}
 
-      // 3) Delete old attachment
-      await api.deleteEventAttachment(sourceEventId, sourceAttachmentId);
-      // 4) Upload new attachment
+      // 4) Upload new attachment FIRST (to avoid losing data if delete succeeds but upload fails)
       const newAtt = await api.uploadEventAttachment(sourceEventId, {
         filename: finalFilename,
         mime_type: mimeType,
         base64: uploadBase64,
       });
-      // 5) Update plan source_attachment_id so subsequent saves replace the new one
-      await api.updatePlan(id, { source_attachment_id: newAtt.id } as any);
+
+      // 5) Delete old attachment (best-effort)
+      try {
+        await api.deleteEventAttachment(sourceEventId, sourceAttachmentId);
+      } catch (err) {
+        console.warn("Could not delete old attachment:", err);
+      }
+
+      // 6) Update plan source_attachment_id so subsequent saves replace the new one
+      try {
+        await api.updatePlan(id, { source_attachment_id: newAtt.id } as any);
+      } catch {}
       setSourceAttachmentId(newAtt.id);
 
       if (andGoBack) {
-        // Navigate back to calendar
-        router.replace(`/calendario?openEvent=${sourceEventId}`);
+        // Navigate back to calendar and request to open the event
+        router.replace({ pathname: "/calendario", params: { openEvent: sourceEventId } });
       } else {
         Alert.alert("✅ Guardado", `El adjunto "${finalFilename}" se ha actualizado en el evento.`);
       }
@@ -488,10 +464,10 @@ export default function PlanEditor() {
           <Text style={s.headerTitle} numberOfLines={1}>{title}</Text>
           <Text style={s.headerSub}>{saving ? "Guardando..." : dirty ? "Sin guardar" : "Guardado"}</Text>
         </View>
-        <TouchableOpacity style={s.iconBtn} onPress={() => exportAs("jpg")}>
+        <TouchableOpacity testID="btn-export-jpg" style={s.iconBtn} onPress={() => exportAs("jpg")}>
           <Ionicons name="image-outline" size={22} color={COLORS.navy} />
         </TouchableOpacity>
-        <TouchableOpacity style={s.iconBtn} onPress={() => exportAs("pdf")}>
+        <TouchableOpacity testID="btn-export-pdf" style={s.iconBtn} onPress={() => exportAs("pdf")}>
           <Ionicons name="document-outline" size={22} color={COLORS.navy} />
         </TouchableOpacity>
         {sourceEventId && sourceAttachmentId && (
