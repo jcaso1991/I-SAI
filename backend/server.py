@@ -2110,6 +2110,17 @@ async def sat_client_import(
     return {"ok": True, "created": created, "updated": updated, "skipped": skipped}
 
 
+# -----------------------------------------------------------------------------
+# Portfolio — self-contained HTML presentation for clients.
+# -----------------------------------------------------------------------------
+from portfolio_view import build_portfolio_html  # noqa: E402
+
+@api_router.get("/portfolio", response_class=HTMLResponse)
+async def portfolio_html():
+    """Public URL that renders the i-SAI portfolio (no auth, self-contained HTML)."""
+    return HTMLResponse(content=build_portfolio_html(), media_type="text/html")
+
+
 app.include_router(api_router)
 
 app.add_middleware(
