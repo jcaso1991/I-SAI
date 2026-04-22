@@ -133,7 +133,6 @@ export default function PlansList() {
         onClose={() => setShowCreate(false)}
         onDone={(id) => { setShowCreate(false); router.push(`/planos/${id}`); }}
       />
-      <BottomNav active="planos" isAdmin={me?.role === "admin"} />
       </SafeAreaView>
     </ResponsiveLayout>
   );

@@ -8,7 +8,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../src/api";
-import BottomNav from "../src/BottomNav";
 import ResponsiveLayout from "../src/ResponsiveLayout";
 import { useBreakpoint } from "../src/useBreakpoint";
 import DateTimeField from "../src/DateTimeField";
@@ -481,6 +480,64 @@ function DayView({
   );
 }
 
+
+/**
+ * Column layout for overlapping events: returns eventId -> { col, total }.
+ * Events that overlap in time form a "cluster" and are assigned distinct
+ * columns so they can be rendered side-by-side instead of on top of each
+ * other. Simple greedy algorithm (classic calendar layout).
+ */
+function layoutEventColumns(
+  events: EventT[]
+): Map<string, { col: number; total: number }> {
+  const result = new Map<string, { col: number; total: number }>();
+  if (!events.length) return result;
+  const sorted = [...events].sort((a, b) => {
+    const sa = new Date(a.start_at).getTime();
+    const sb = new Date(b.start_at).getTime();
+    if (sa !== sb) return sa - sb;
+    return new Date(b.end_at).getTime() - new Date(a.end_at).getTime();
+  });
+  let cluster: EventT[] = [];
+  let clusterEnd = -Infinity;
+  const flush = () => {
+    if (!cluster.length) return;
+    const colEnds: number[] = [];
+    const colOf = new Map<string, number>();
+    for (const e of cluster) {
+      const s = new Date(e.start_at).getTime();
+      const en = new Date(e.end_at).getTime();
+      let col = -1;
+      for (let i = 0; i < colEnds.length; i++) {
+        if (colEnds[i] <= s) { col = i; break; }
+      }
+      if (col === -1) { col = colEnds.length; colEnds.push(en); }
+      else { colEnds[col] = en; }
+      colOf.set(e.id, col);
+    }
+    const total = Math.max(1, colEnds.length);
+    for (const e of cluster) {
+      result.set(e.id, { col: colOf.get(e.id) ?? 0, total });
+    }
+    cluster = [];
+  };
+  for (const e of sorted) {
+    const s = new Date(e.start_at).getTime();
+    const en = new Date(e.end_at).getTime();
+    if (cluster.length === 0 || s < clusterEnd) {
+      cluster.push(e);
+      clusterEnd = Math.max(clusterEnd, en);
+    } else {
+      flush();
+      cluster = [e];
+      clusterEnd = en;
+    }
+  }
+  flush();
+  return result;
+}
+
+
 // ---------------- DayColumn (with draggable events) ----------------
 function DayColumn({
   day, events, isAdmin, onCreate, onTapEvent, onMoveEvent, isToday, nowY, compact,
@@ -520,6 +577,9 @@ function DayColumn({
     onPanResponderTerminate: () => setDragRange(null),
   }), [isAdmin, dragRange, onCreate]);
 
+  // Compute overlap-aware column layout for this day's events
+  const columnLayout = useMemo(() => layoutEventColumns(events), [events]);
+
   return (
     <View style={{ flex: 1, height: HOURS * HOUR_H, position: "relative", borderLeftWidth: 1, borderLeftColor: COLORS.border, backgroundColor: isToday ? "rgba(59,130,246,0.04)" : "transparent" }}>
       <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} {...pan.panHandlers} />
@@ -546,6 +606,7 @@ function DayColumn({
           weekDays={weekDays}
           colW={colW}
           dayIndex={dayIndex}
+          layout={columnLayout.get(ev.id) || { col: 0, total: 1 }}
         />
       ))}
       {dragRange && (
@@ -565,12 +626,13 @@ function DayColumn({
 // ---------------- Draggable event (move + resize) ----------------
 function DraggableEvent({
   event, day, isAdmin, compact, onTap, onMoveEvent,
-  weekDays, colW, dayIndex,
+  weekDays, colW, dayIndex, layout,
 }: {
   event: EventT; day: Date; isAdmin: boolean; compact: boolean;
   onTap: () => void;
   onMoveEvent: (ev: EventT, s: Date, e: Date) => Promise<void>;
   weekDays?: Date[]; colW?: number; dayIndex?: number;
+  layout?: { col: number; total: number };
 }) {
   const start = new Date(event.start_at);
   const end = new Date(event.end_at);
@@ -800,10 +862,19 @@ function DraggableEvent({
   const baseColor = userColor || (hasMaterial ? COLORS.primary : "#6366F1");
   // Compute a light tint from the user color (use 22 alpha hex = ~13% opacity)
   const bgTint = baseColor + "33";
+  // Horizontal overlap layout (side-by-side when overlapping)
+  const colInfo = layout || { col: 0, total: 1 };
+  const gapPct = colInfo.total > 1 ? 1 : 0; // small gap between columns (%)
+  const widthPct = (100 / colInfo.total) - gapPct;
+  const leftPct = colInfo.col * (100 / colInfo.total);
+
   return (
     <View
       style={[s.eventBox, {
         top, height,
+        left: `${leftPct}%`,
+        width: `${widthPct}%`,
+        right: undefined as any,
         transform: [{ translateX: leftOffset }],
         backgroundColor: bgTint,
         borderLeftColor: baseColor,

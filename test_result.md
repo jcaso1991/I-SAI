@@ -297,8 +297,8 @@ metadata:
 
 test_plan:
   current_focus:
-    - "GET /api/managers lists admin users"
-    - "Events CRUD with manager_id field"
+    - "PDF template filling via existing AcroForm widgets (visual + editable)"
+    - "Event column layout (side-by-side for overlapping events)"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"

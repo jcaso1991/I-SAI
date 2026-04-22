@@ -242,7 +242,6 @@ export default function Admin() {
           <Text style={s.cardSub}>{user?.email} · {user?.role}</Text>
         </View>
       </ScrollView>
-      <BottomNav active="ajustes" isAdmin={isAdmin} />
     </SafeAreaView>
     </ResponsiveLayout>
   );
