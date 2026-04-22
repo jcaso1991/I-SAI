@@ -43,20 +43,51 @@ export default function PlansList() {
 
   useFocusEffect(useCallback(() => { load(); }, []));
 
-  const doDelete = (p: Plan) => {
-    Alert.alert("Eliminar plano", `¿Eliminar "${p.title}"?`, [
+  const confirmAsync = (title: string, message: string, okText = "Eliminar"): Promise<boolean> => {
+    if (Platform.OS === "web") {
+      // react-native-web's Alert.alert only forwards title+message to window.alert
+      // and silently drops the buttons array, so destructive callbacks never
+      // fire. Fall back to a real confirm dialog on web.
+      return Promise.resolve(typeof window !== "undefined" && window.confirm(`${title}\n\n${message}`));
+    }
+    return new Promise<boolean>((resolve) => {
+      Alert.alert(title, message, [
+        { text: "Cancelar", style: "cancel", onPress: () => resolve(false) },
+        { text: okText, style: "destructive", onPress: () => resolve(true) },
+      ]);
+    });
+  };
+
+  const doDelete = async (p: Plan) => {
+    const ok = await confirmAsync("Eliminar plano", `¿Eliminar "${p.title}"? Esta acción no se puede deshacer.`);
+    if (!ok) return;
+    try {
+      await api.deletePlan(p.id);
+      load();
+    } catch (e: any) {
+      Alert.alert("Error", e.message);
+    }
+  };
+
+  const doExport = (p: Plan, format: "pdf" | "jpeg") => {
+    // Navigate to the editor with a one-shot export hint; the editor handles
+    // the actual canvas-to-file export (already implemented there for Web + Native).
+    router.push({ pathname: `/planos/${p.id}`, params: { export: format } } as any);
+  };
+
+  const showExportSheet = (p: Plan) => {
+    if (Platform.OS === "web") {
+      // Simple chooser via confirm; PDF is the primary action.
+      const usePdf = typeof window !== "undefined" && window.confirm(
+        `Exportar "${p.title}"\n\nAceptar = PDF\nCancelar = JPEG`
+      );
+      doExport(p, usePdf ? "pdf" : "jpeg");
+      return;
+    }
+    Alert.alert("Exportar plano", `"${p.title}"`, [
       { text: "Cancelar", style: "cancel" },
-      {
-        text: "Eliminar", style: "destructive",
-        onPress: async () => {
-          try {
-            await api.deletePlan(p.id);
-            load();
-          } catch (e: any) {
-            Alert.alert("Error", e.message);
-          }
-        },
-      },
+      { text: "PDF", onPress: () => doExport(p, "pdf") },
+      { text: "JPEG", onPress: () => doExport(p, "jpeg") },
     ]);
   };
 
@@ -94,36 +125,46 @@ export default function PlansList() {
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
           {plans.map((p) => (
-            <TouchableOpacity
-              key={p.id}
-              testID={`plan-card-${p.id}`}
-              style={s.planCard}
-              onPress={() => router.push(`/planos/${p.id}`)}
-              activeOpacity={0.8}
-            >
-              <View style={s.planIcon}>
-                <Ionicons name="map" size={24} color={COLORS.primary} />
-              </View>
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={s.planTitle} numberOfLines={2}>{p.title}</Text>
-                <Text style={s.planMeta}>
-                  {p.shape_count} pieza{p.shape_count !== 1 ? "s" : ""} · {p.created_by.split("@")[0]}
-                </Text>
-                <Text style={s.planDate}>
-                  {new Date(p.updated_at).toLocaleDateString("es-ES", {
-                    day: "2-digit", month: "short", year: "numeric",
-                  })}
-                </Text>
-              </View>
+            <View key={p.id} style={s.planCard} testID={`plan-card-${p.id}`}>
               <TouchableOpacity
-                testID={`btn-delete-plan-${p.id}`}
-                hitSlop={10}
-                style={s.trashBtn}
-                onPress={() => doDelete(p)}
+                style={s.planCardBody}
+                onPress={() => router.push(`/planos/${p.id}`)}
+                activeOpacity={0.8}
               >
-                <Ionicons name="trash-outline" size={20} color={COLORS.errorText} />
+                <View style={s.planIcon}>
+                  <Ionicons name="map" size={24} color={COLORS.primary} />
+                </View>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={s.planTitle} numberOfLines={2}>{p.title}</Text>
+                  <Text style={s.planMeta}>
+                    {p.shape_count} pieza{p.shape_count !== 1 ? "s" : ""} · {p.created_by.split("@")[0]}
+                  </Text>
+                  <Text style={s.planDate}>
+                    {new Date(p.updated_at).toLocaleDateString("es-ES", {
+                      day: "2-digit", month: "short", year: "numeric",
+                    })}
+                  </Text>
+                </View>
               </TouchableOpacity>
-            </TouchableOpacity>
+              <View style={s.planActions}>
+                <TouchableOpacity
+                  testID={`btn-export-plan-${p.id}`}
+                  hitSlop={8}
+                  style={s.actionBtn}
+                  onPress={() => showExportSheet(p)}
+                >
+                  <Ionicons name="download-outline" size={20} color={COLORS.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  testID={`btn-delete-plan-${p.id}`}
+                  hitSlop={8}
+                  style={s.actionBtn}
+                  onPress={() => doDelete(p)}
+                >
+                  <Ionicons name="trash-outline" size={20} color={COLORS.errorText} />
+                </TouchableOpacity>
+              </View>
+            </View>
           ))}
         </ScrollView>
       )}
@@ -370,9 +411,13 @@ const s = StyleSheet.create({
   },
   emptyBtnText: { color: "#fff", fontWeight: "800", fontSize: 14, letterSpacing: 1 },
   planCard: {
-    flexDirection: "row", alignItems: "center", gap: 12,
-    backgroundColor: COLORS.surface, borderRadius: 14, padding: 14,
+    flexDirection: "row", alignItems: "stretch", gap: 4,
+    backgroundColor: COLORS.surface, borderRadius: 14,
     borderWidth: 1, borderColor: COLORS.border,
+    overflow: "hidden",
+  },
+  planCardBody: {
+    flex: 1, flexDirection: "row", alignItems: "center", gap: 12, padding: 14,
   },
   planIcon: {
     width: 48, height: 48, borderRadius: 12, backgroundColor: COLORS.bg,
@@ -381,6 +426,14 @@ const s = StyleSheet.create({
   planTitle: { fontSize: 16, fontWeight: "800", color: COLORS.text },
   planMeta: { fontSize: 13, color: COLORS.textSecondary },
   planDate: { fontSize: 11, color: COLORS.textDisabled, fontWeight: "600" },
+  planActions: {
+    flexDirection: "column", alignItems: "center", justifyContent: "center",
+    gap: 4, paddingHorizontal: 6, borderLeftWidth: 1, borderLeftColor: COLORS.border,
+  },
+  actionBtn: {
+    width: 36, height: 36, borderRadius: 8,
+    alignItems: "center", justifyContent: "center",
+  },
   trashBtn: { padding: 8 },
   modalRoot: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" },
   modalCard: {

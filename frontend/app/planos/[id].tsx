@@ -63,8 +63,9 @@ const TOOLBAR_H = 64;
 const BOTTOM_H = 84;
 
 export default function PlanEditor() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, export: exportParam } = useLocalSearchParams<{ id: string; export?: string }>();
   const router = useRouter();
+  const autoExportRef = useRef(false);
 
   const [loading, setLoading] = useState(true);
   const [title, setTitle] = useState("");
@@ -122,6 +123,18 @@ export default function PlanEditor() {
       }
     })();
   }, [id]);
+
+  // One-shot auto-export: when the editor is opened from the list with
+  // ?export=pdf|jpeg, fire the export right after the plan has finished
+  // loading (so the canvas is mounted and sized correctly).
+  useEffect(() => {
+    if (loading || autoExportRef.current) return;
+    if (exportParam !== "pdf" && exportParam !== "jpeg") return;
+    autoExportRef.current = true;
+    const format: "pdf" | "jpg" = exportParam === "pdf" ? "pdf" : "jpg";
+    // Give SVG two frames to paint before capturing.
+    setTimeout(() => { exportAs(format); }, 400);
+  }, [loading, exportParam]);
 
   // Debounced autosave
   useEffect(() => {

@@ -689,6 +689,50 @@ agent_communication_round_6:
       - Planos editor rotation support (frontend-only, /app/frontend/app/planos/[id].tsx):
           · Added optional `rotation?: number` (degrees) on every shape type.
           · `renderShape` wraps line/rect/stamp in <G transform="rotate(r cx cy)">
+
+agent_communication_round_7:
+    -agent: "main"
+    -message: |
+      ITERATION 7 (planos list: fix delete + add export):
+
+      Bugs reported by user:
+        1. Delete button on the planos list didn't work.
+        2. No way to export a plan straight from the list.
+
+      Root cause for #1:
+        - react-native-web's `Alert.alert(title, msg, buttons)` only forwards
+          title+message to the native `window.alert` and silently drops the
+          buttons array, so the destructive callback that actually calls
+          `api.deletePlan()` NEVER fired on web.
+        - On top of that the trash `<TouchableOpacity>` was nested inside the
+          whole-card `<TouchableOpacity>`. On web the click bubbled up and
+          opened the editor instead of triggering the delete handler.
+
+      Fix (/app/frontend/app/planos/index.tsx):
+        1. Added a `confirmAsync` helper that uses `window.confirm` on web
+           (returning a real boolean) and `Alert.alert` on native.
+        2. Refactored the row: it is now a plain `<View>` containing:
+             - A tappable `planCardBody` (opens the editor).
+             - A separate `planActions` column with two independent
+               `TouchableOpacity`s: export (download icon) and delete (trash).
+           No more nested touchables → clicks no longer propagate.
+        3. Verified via automation:
+             * Plans count went 29 → 28 after delete.
+             * The specific `btn-delete-plan-{id}` disappears.
+
+      New feature: export from the list:
+        - Each row now has a new blue download icon next to trash.
+        - On web: a confirm dialog lets the user pick PDF (Aceptar) or
+          JPEG (Cancelar).
+        - On native: Alert.alert with three buttons (PDF, JPEG, Cancelar).
+        - The handler navigates to `/planos/{id}?export={pdf|jpeg}`.
+        - `/app/frontend/app/planos/[id].tsx` listens for the `export`
+          search-param and, once the plan finishes loading, triggers
+          `exportAs(format)` one-shot. Verified the URL parameter is
+          correctly propagated (`?export=pdf`) and the editor auto-loads.
+
+      Backend UNCHANGED — no retest required.
+
             around the shape center; StampView merges rotation + translate/scale.
           · `hitTest` inverse-rotates the tap point when the shape has
             rotation so selection remains precise at any angle.
