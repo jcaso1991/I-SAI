@@ -87,6 +87,10 @@ export default function PlanEditor() {
   const [selectMode, setSelectMode] = useState<"individual" | "area">("individual");
   // Marquee rect while the user is dragging (in canvas coordinates).
   const [marquee, setMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  // Mirror of `marquee` kept in a ref so handlers captured inside the
+  // useMemo-wrapped PanResponder always read the freshest rect, even if
+  // the PanResponder closure is stale.
+  const marqueeRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   // What kind of drag is in progress in the Seleccionar tool: translate
   // the whole group, or draw a marquee. Null when idle.
   const dragKindRef = useRef<"group" | "marquee" | null>(null);
@@ -218,7 +222,11 @@ export default function PlanEditor() {
     },
     onPanResponderRelease: () => { pinchRef.current = null; handleEnd(); },
     onPanResponderTerminate: () => { pinchRef.current = null; handleEnd(); },
-  }), [tool, currentStampId, size, selectedId, shapes]);
+    // NOTE: we include `selectMode`, `selectedIds`, `strokeColor` and
+    // `strokeW` in the deps because the handlers read them via closure.
+    // Without these deps the PanResponder captured stale values from the
+    // first render and the Rectángulo / multi-select logic never fired.
+  }), [tool, selectMode, currentStampId, size, selectedId, selectedIds, strokeColor, strokeW, shapes]);
 
   const handleStart = (x: number, y: number) => {
     if (tool === "pencil") {
@@ -303,7 +311,9 @@ export default function PlanEditor() {
         if (selectMode === "area") {
           // Start painting a marquee rectangle.
           dragKindRef.current = "marquee";
-          setMarquee({ x1: x, y1: y, x2: x, y2: y });
+          const m0 = { x1: x, y1: y, x2: x, y2: y };
+          marqueeRef.current = m0;
+          setMarquee(m0);
         } else {
           clearSelection();
         }
@@ -334,8 +344,16 @@ export default function PlanEditor() {
       const dy = y - lastDragRef.current.y;
       lastDragRef.current = { x, y };
       setShapes((arr) => arr.map((sh) => (selectedIds.includes(sh.id) ? translateShape(sh, dx, dy) : sh)));
-    } else if (tool === "select" && dragKindRef.current === "marquee" && marquee) {
-      setMarquee({ ...marquee, x2: x, y2: y });
+    } else if (tool === "select" && dragKindRef.current === "marquee") {
+      // Use a functional update so we always work with the freshest rect
+      // (no stale-closure traps while the useMemo-wrapped PanResponder
+      //  re-renders between renders).
+      setMarquee((cur) => {
+        if (!cur) return cur;
+        const next = { ...cur, x2: x, y2: y };
+        marqueeRef.current = next;
+        return next;
+      });
     } else if (tool === "eraser") {
       // continuous erase
       const hit = hitTest(shapes, x, y);
@@ -350,12 +368,14 @@ export default function PlanEditor() {
     const cur = currentDrawingRef.current;
     // Finalize marquee selection in the Seleccionar tool (area mode):
     // compute final rect and ADD every shape whose center falls inside it.
-    if (tool === "select" && dragKindRef.current === "marquee" && marquee) {
+    // We read the marquee from the ref (always fresh) not the captured state.
+    if (tool === "select" && dragKindRef.current === "marquee" && marqueeRef.current) {
+      const mq = marqueeRef.current;
       const r = {
-        x1: Math.min(marquee.x1, marquee.x2),
-        y1: Math.min(marquee.y1, marquee.y2),
-        x2: Math.max(marquee.x1, marquee.x2),
-        y2: Math.max(marquee.y1, marquee.y2),
+        x1: Math.min(mq.x1, mq.x2),
+        y1: Math.min(mq.y1, mq.y2),
+        x2: Math.max(mq.x1, mq.x2),
+        y2: Math.max(mq.y1, mq.y2),
       };
       const big = Math.abs(r.x2 - r.x1) > 4 && Math.abs(r.y2 - r.y1) > 4;
       if (big) {
@@ -367,6 +387,7 @@ export default function PlanEditor() {
           .map((sh) => sh.id);
         setSelectedIds((prev) => Array.from(new Set([...prev, ...inside])));
       }
+      marqueeRef.current = null;
       setMarquee(null);
       dragKindRef.current = null;
       lastDragRef.current = null;

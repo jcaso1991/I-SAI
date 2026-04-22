@@ -858,6 +858,45 @@ agent_communication_round_9:
         * The clear-selection chip in the sub-toolbar shows "Limpiar
           selección (3)" and empties the set on tap.
         * Backend PATCH /api/plans/... logged 200 OK every time we moved
+
+agent_communication_round_10:
+    -agent: "main"
+    -message: |
+      ITERATION 10 (fix marquee selection in plan editor):
+
+      User reported: "la seleccion en cuadrado no funciona".
+
+      Root cause — classic stale-closure bug:
+        The PanResponder inside /app/frontend/app/planos/[id].tsx is wrapped
+        in `useMemo` with deps `[tool, currentStampId, size, selectedId,
+        shapes]`. Toggling the sub-mode from "Individual" to "Rectángulo"
+        (ITERATION 9) only updates `selectMode`, which was NOT a dep.
+        Hence handleStart kept seeing `selectMode === "individual"` (the
+        default value captured on the first render) and the marquee branch
+        never fired.
+
+      Fix (frontend only):
+        1. Added `selectMode`, `selectedIds`, `strokeColor`, `strokeW` to
+           the useMemo deps so the PanResponder rebuilds whenever any of
+           those values changes.
+        2. Added a `marqueeRef` that mirrors the marquee state. handleEnd
+           now reads `marqueeRef.current` instead of the captured
+           `marquee` state so the final rectangle used for hit-testing is
+           always the freshest one, immune to any remaining stale-closure.
+        3. handleMove uses a functional `setMarquee((cur) => ...)` so it
+           no longer depends on the captured `marquee` reference.
+
+      Verified via browser automation with a slow multi-step mouse drag
+      inside the canvas:
+        * During the drag a dashed blue rectangle with a translucent fill
+          is now visible — previously nothing appeared.
+        * On release the bottom bar reads "9 elementos seleccionados"
+          and nine shapes (stamps, a rect, a pencil stroke) get the red
+          dashed highlight; the palette label switches to "Color
+          selección (9)" and the clear chip appears with the count.
+
+      Backend UNCHANGED — no retest required.
+
           or recolored the group, proving multi-state persistence.
 
       Backend UNCHANGED — no retest required.
