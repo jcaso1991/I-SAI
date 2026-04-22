@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import Svg, { G, Path, Rect, Circle, SvgXml, Image as SvgImage } from "react-native-svg";
+import Svg, { G, Path, Rect, Circle, SvgXml, Image as SvgImage, Text as SvgText, Line as SvgLine } from "react-native-svg";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
@@ -18,14 +18,16 @@ type Pt = { x: number; y: number };
 type LineShape = { id: string; type: "line"; points: Pt[]; stroke: string; strokeWidth: number; rotation?: number };
 type RectShape = { id: string; type: "rect"; x: number; y: number; w: number; h: number; stroke: string; strokeWidth: number; fill: string; rotation?: number };
 type CircleShape = { id: string; type: "circle"; cx: number; cy: number; r: number; stroke: string; strokeWidth: number; fill: string; rotation?: number };
+type StraightLineShape = { id: string; type: "straight"; x1: number; y1: number; x2: number; y2: number; stroke: string; strokeWidth: number; rotation?: number };
+type TextShape = { id: string; type: "text"; x: number; y: number; text: string; fontSize: number; color: string; rotation?: number };
 type StampShape = {
   id: string; type: "stamp"; x: number; y: number; w: number; h: number;
   stampId: string; icon_key?: string; image_base64?: string; rotation?: number;
   color?: string;
 };
-type Shape = LineShape | RectShape | CircleShape | StampShape;
+type Shape = LineShape | RectShape | CircleShape | StraightLineShape | TextShape | StampShape;
 
-type Tool = "pencil" | "rect" | "circle" | "stamp" | "eraser" | "select";
+type Tool = "pencil" | "straight" | "rect" | "circle" | "text" | "stamp" | "eraser" | "select";
 type StampItem = { id: string; name: string; is_builtin: boolean; image_base64?: string | null; icon_key?: string | null };
 
 // Color palette for drawing tools (stroke color)
@@ -85,6 +87,11 @@ export default function PlanEditor() {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ w: 1000, h: 1000 });
+
+  // Text tool state: where the text was placed and the in-progress input.
+  const [textModal, setTextModal] = useState<{ x: number; y: number; editingId?: string } | null>(null);
+  const [textDraft, setTextDraft] = useState("");
+  const [textFontSize, setTextFontSize] = useState<number>(18);
 
   const canvasRef = useRef<View>(null);
   const saveTimer = useRef<any>(null);
@@ -221,6 +228,20 @@ export default function PlanEditor() {
       };
       currentDrawingRef.current = circ;
       setShapes((s) => [...s, circ]);
+    } else if (tool === "straight") {
+      // Straight line: press to fix the start, drag to stretch, release to finish.
+      const ln: StraightLineShape = {
+        id: uid(), type: "straight",
+        x1: x, y1: y, x2: x, y2: y,
+        stroke: strokeColor, strokeWidth: strokeW,
+      };
+      currentDrawingRef.current = ln;
+      setShapes((s) => [...s, ln]);
+    } else if (tool === "text") {
+      // One-shot tap opens the text editor modal at the tap position.
+      // (No drag — a single tap is enough to spawn text.)
+      setTextDraft("");
+      setTextModal({ x, y });
     } else if (tool === "stamp" && currentStampId) {
       const st = stamps.find((s) => s.id === currentStampId);
       if (!st) return;
@@ -267,6 +288,10 @@ export default function PlanEditor() {
     } else if (tool === "circle" && cur && cur.type === "circle") {
       cur.r = Math.hypot(x - cur.cx, y - cur.cy);
       setShapes((s) => s.map((sh) => (sh.id === cur.id ? { ...cur } : sh)));
+    } else if (tool === "straight" && cur && cur.type === "straight") {
+      cur.x2 = x;
+      cur.y2 = y;
+      setShapes((s) => s.map((sh) => (sh.id === cur.id ? { ...cur } : sh)));
     } else if (tool === "select" && selectedId && lastDragRef.current) {
       const dx = x - lastDragRef.current.x;
       const dy = y - lastDragRef.current.y;
@@ -293,6 +318,15 @@ export default function PlanEditor() {
         if (cur.w < 0) { cur.x += cur.w; cur.w = -cur.w; }
         if (cur.h < 0) { cur.y += cur.h; cur.h = -cur.h; }
         setShapes((s) => s.map((sh) => (sh.id === cur.id ? { ...cur } : sh)));
+      }
+      // Discard degenerate straight lines (user just tapped without dragging).
+      if (cur.type === "straight") {
+        if (Math.hypot(cur.x2 - cur.x1, cur.y2 - cur.y1) < 4) {
+          setShapes((s) => s.filter((sh) => sh.id !== cur.id));
+          currentDrawingRef.current = null;
+          lastDragRef.current = null;
+          return;
+        }
       }
       markDirty();
     }
@@ -326,6 +360,8 @@ export default function PlanEditor() {
       if (sh.type === "line") return { ...sh, stroke: color };
       if (sh.type === "rect") return { ...sh, stroke: color, fill: hexToRgba(color, 0.1) };
       if (sh.type === "circle") return { ...sh, stroke: color, fill: hexToRgba(color, 0.1) };
+      if (sh.type === "straight") return { ...sh, stroke: color };
+      if (sh.type === "text") return { ...sh, color };
       if (sh.type === "stamp") return { ...sh, color };
       return sh;
     }));
@@ -344,6 +380,35 @@ export default function PlanEditor() {
       return { ...sh, rotation: next } as Shape;
     }));
     markDirty();
+  };
+
+  // Commit the text-modal draft: either create a new TextShape at (x,y)
+  // or, if editingId is set, update the existing one in place.
+  const commitText = () => {
+    if (!textModal) return;
+    const t = textDraft.trim();
+    if (!t) {
+      setTextModal(null);
+      setTextDraft("");
+      return;
+    }
+    if (textModal.editingId) {
+      setShapes((arr) => arr.map((sh) => {
+        if (sh.id !== textModal.editingId) return sh;
+        if (sh.type !== "text") return sh;
+        return { ...sh, text: t, fontSize: textFontSize, color: strokeColor };
+      }));
+    } else {
+      const ts: TextShape = {
+        id: uid(), type: "text",
+        x: textModal.x, y: textModal.y,
+        text: t, fontSize: textFontSize, color: strokeColor,
+      };
+      setShapes((s) => [...s, ts]);
+    }
+    markDirty();
+    setTextModal(null);
+    setTextDraft("");
   };
 
   const clearAll = () => {
@@ -576,8 +641,10 @@ export default function PlanEditor() {
         contentContainerStyle={{ gap: 8, paddingHorizontal: 12, alignItems: "center" }}
       >
         <ToolBtn icon="pencil" active={tool === "pencil"} onPress={() => { setTool("pencil"); setSelectedId(null); }} label="Lápiz" />
+        <ToolBtn icon="remove-outline" active={tool === "straight"} onPress={() => { setTool("straight"); setSelectedId(null); }} label="Línea" />
         <ToolBtn icon="square-outline" active={tool === "rect"} onPress={() => { setTool("rect"); setSelectedId(null); }} label="Cuadro" />
         <ToolBtn icon="ellipse-outline" active={tool === "circle"} onPress={() => { setTool("circle"); setSelectedId(null); }} label="Círculo" />
+        <ToolBtn icon="text" active={tool === "text"} onPress={() => { setTool("text"); setSelectedId(null); }} label="Texto" />
         <ToolBtn icon="cube" active={tool === "stamp"} onPress={() => { setTool("stamp"); setSelectedId(null); setShowStampPicker(true); }} label={currentStamp?.name || "Pieza"} />
         <ToolBtn icon="trash-outline" active={tool === "eraser"} onPress={() => { setTool("eraser"); setSelectedId(null); }} label="Borrar" />
         <ToolBtn icon="hand-left-outline" active={tool === "select"} onPress={() => { setTool("select"); }} label="Mover" />
@@ -701,6 +768,21 @@ export default function PlanEditor() {
               {selectedShape.rotation ? ` · ${Math.round(selectedShape.rotation)}°` : ""}
             </Text>
             <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              {selectedShape.type === "text" && (
+                <TouchableOpacity
+                  testID="btn-edit-text"
+                  style={[s.btnIconSm, { paddingHorizontal: 10, flexDirection: "row", gap: 4 }]}
+                  onPress={() => {
+                    const sh = selectedShape as TextShape;
+                    setTextDraft(sh.text);
+                    setTextFontSize(sh.fontSize);
+                    setTextModal({ x: sh.x, y: sh.y, editingId: sh.id });
+                  }}
+                >
+                  <Ionicons name="create-outline" size={18} color={COLORS.primary} />
+                  <Text style={{ color: COLORS.primary, fontWeight: "800", fontSize: 12 }}>Editar</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity testID="btn-rot-left" style={s.btnIconSm} onPress={() => rotateSelected(-15)}>
                 <Ionicons name="return-up-back" size={20} color={COLORS.navy} />
               </TouchableOpacity>
@@ -728,8 +810,10 @@ export default function PlanEditor() {
         ) : (
           <Text style={s.hintText}>
             {tool === "pencil" ? "Dibuja libremente arrastrando el dedo"
+              : tool === "straight" ? "Pulsa para fijar inicio · arrastra y suelta para terminar la línea"
               : tool === "rect" ? "Arrastra para crear un cuadrado"
               : tool === "circle" ? "Arrastra para crear un círculo"
+              : tool === "text" ? "Toca donde quieras escribir · se abrirá un teclado"
               : tool === "stamp" ? `Toca para colocar: ${currentStamp?.name || "pieza"}`
               : tool === "eraser" ? "Toca una pieza para borrarla"
               : tool === "select" ? "Toca para seleccionar · arrastra para mover · usa ↺ ↻ 90° para rotar"
@@ -754,6 +838,73 @@ export default function PlanEditor() {
         onClose={() => setShowStampManager(false)}
         onRefresh={async () => setStamps(await api.listStamps())}
       />
+
+      {/* Text tool editor modal:
+          opened when the user taps on the canvas with the text tool active,
+          or when they press the "Editar texto" button for a selected text shape. */}
+      <Modal
+        visible={!!textModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setTextModal(null)}
+      >
+        <View style={s.modalRoot}>
+          <View style={[s.modalCard, { maxHeight: "auto", paddingBottom: 16 }]}>
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitle}>
+                {textModal?.editingId ? "Editar texto" : "Nuevo texto"}
+              </Text>
+              <TouchableOpacity onPress={() => setTextModal(null)}>
+                <Ionicons name="close" size={26} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              testID="text-input"
+              value={textDraft}
+              onChangeText={setTextDraft}
+              placeholder="Escribe aquí…"
+              placeholderTextColor={COLORS.textDisabled}
+              autoFocus
+              multiline
+              style={s.textField}
+              onSubmitEditing={commitText}
+            />
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 12, alignItems: "center" }}>
+              <Text style={{ color: COLORS.textSecondary, fontWeight: "700", fontSize: 12 }}>Tamaño</Text>
+              {[14, 18, 24, 32, 48].map((fs) => (
+                <TouchableOpacity
+                  key={fs}
+                  testID={`text-size-${fs}`}
+                  onPress={() => setTextFontSize(fs)}
+                  style={[s.fsChip, textFontSize === fs && s.fsChipActive]}
+                >
+                  <Text style={[s.fsChipText, textFontSize === fs && { color: "#fff" }]}>{fs}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={{ color: COLORS.textSecondary, fontSize: 11, marginTop: 8 }}>
+              El color del texto usa el color actual seleccionado en la paleta.
+            </Text>
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 16, justifyContent: "flex-end" }}>
+              <TouchableOpacity
+                style={[s.modalBtn, { backgroundColor: COLORS.bg }]}
+                onPress={() => { setTextModal(null); setTextDraft(""); }}
+              >
+                <Text style={[s.modalBtnText, { color: COLORS.text }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="text-commit"
+                style={[s.modalBtn, { backgroundColor: COLORS.primary }]}
+                onPress={commitText}
+              >
+                <Text style={[s.modalBtnText, { color: "#fff" }]}>
+                  {textModal?.editingId ? "Guardar" : "Añadir"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -770,6 +921,12 @@ function shapeCenter(sh: Shape): Pt {
   }
   if (sh.type === "rect") return { x: sh.x + sh.w / 2, y: sh.y + sh.h / 2 };
   if (sh.type === "circle") return { x: sh.cx, y: sh.cy };
+  if (sh.type === "straight") return { x: (sh.x1 + sh.x2) / 2, y: (sh.y1 + sh.y2) / 2 };
+  if (sh.type === "text") {
+    // Approximate text bbox center based on font-size and text length.
+    const w = sh.text.length * sh.fontSize * 0.55;
+    return { x: sh.x + w / 2, y: sh.y - sh.fontSize / 2 };
+  }
   // stamp
   return { x: sh.x + sh.w / 2, y: sh.y + sh.h / 2 };
 }
@@ -803,6 +960,42 @@ function renderShape(sh: Shape, selected: boolean) {
     // Rotation of a true circle is visually identical; still wrap for consistency.
     const cc = <Circle cx={sh.cx} cy={sh.cy} r={sh.r} stroke={highlight || sh.stroke} strokeWidth={sh.strokeWidth} fill={sh.fill} />;
     return <G key={sh.id}>{cc}</G>;
+  }
+  if (sh.type === "straight") {
+    const ln = (
+      <SvgLine
+        x1={sh.x1} y1={sh.y1} x2={sh.x2} y2={sh.y2}
+        stroke={highlight || sh.stroke} strokeWidth={sh.strokeWidth}
+        strokeLinecap="round"
+      />
+    );
+    return rotAttr ? <G key={sh.id} transform={rotAttr}>{ln}</G> : <G key={sh.id}>{ln}</G>;
+  }
+  if (sh.type === "text") {
+    const textEl = (
+      <SvgText
+        x={sh.x} y={sh.y}
+        fontSize={sh.fontSize}
+        fontWeight="600"
+        fill={highlight || sh.color}
+        stroke="none"
+      >
+        {sh.text}
+      </SvgText>
+    );
+    // Add a dashed bounding box when selected so the user can locate small labels.
+    if (highlight) {
+      const w = sh.text.length * sh.fontSize * 0.55;
+      const h = sh.fontSize * 1.2;
+      const bbox = (
+        <Rect x={sh.x - 2} y={sh.y - h} width={w + 4} height={h + 4}
+          stroke={highlight} strokeWidth={1} fill="none" strokeDasharray="4 3" />
+      );
+      return rotAttr
+        ? <G key={sh.id} transform={rotAttr}>{textEl}{bbox}</G>
+        : <G key={sh.id}>{textEl}{bbox}</G>;
+    }
+    return rotAttr ? <G key={sh.id} transform={rotAttr}>{textEl}</G> : <G key={sh.id}>{textEl}</G>;
   }
   if (sh.type === "stamp") {
     return <StampView key={sh.id} shape={sh} highlight={highlight} />;
@@ -899,6 +1092,19 @@ function hitTest(shapes: Shape[], x: number, y: number): Shape | null {
       if (Math.hypot(tx - sh.cx, ty - sh.cy) <= sh.r + 4) return sh;
     } else if (sh.type === "stamp") {
       if (tx >= sh.x && tx <= sh.x + sh.w && ty >= sh.y && ty <= sh.y + sh.h) return sh;
+    } else if (sh.type === "straight") {
+      // Distance from point to segment. Select if < 8px tolerance.
+      const vx = sh.x2 - sh.x1, vy = sh.y2 - sh.y1;
+      const wx = tx - sh.x1, wy = ty - sh.y1;
+      const len2 = vx * vx + vy * vy || 1;
+      const t = Math.max(0, Math.min(1, (wx * vx + wy * vy) / len2));
+      const px = sh.x1 + t * vx, py = sh.y1 + t * vy;
+      if (Math.hypot(tx - px, ty - py) < 8) return sh;
+    } else if (sh.type === "text") {
+      const w = sh.text.length * sh.fontSize * 0.55;
+      const h = sh.fontSize * 1.2;
+      // bbox: x..x+w, (y - h)..y
+      if (tx >= sh.x - 2 && tx <= sh.x + w + 4 && ty >= sh.y - h - 2 && ty <= sh.y + 4) return sh;
     }
   }
   return null;
@@ -911,6 +1117,8 @@ function translateShape(sh: Shape, dx: number, dy: number): Shape {
   if (sh.type === "rect") return { ...sh, x: sh.x + dx, y: sh.y + dy };
   if (sh.type === "circle") return { ...sh, cx: sh.cx + dx, cy: sh.cy + dy };
   if (sh.type === "stamp") return { ...sh, x: sh.x + dx, y: sh.y + dy };
+  if (sh.type === "straight") return { ...sh, x1: sh.x1 + dx, y1: sh.y1 + dy, x2: sh.x2 + dx, y2: sh.y2 + dy };
+  if (sh.type === "text") return { ...sh, x: sh.x + dx, y: sh.y + dy };
   return sh;
 }
 
@@ -936,6 +1144,18 @@ function scaleShape(sh: Shape, factor: number): Shape {
     const nh = sh.h * factor;
     return { ...sh, x: cx - nw / 2, y: cy - nh / 2, w: nw, h: nh };
   }
+  if (sh.type === "straight") {
+    const cx = (sh.x1 + sh.x2) / 2;
+    const cy = (sh.y1 + sh.y2) / 2;
+    return {
+      ...sh,
+      x1: cx + (sh.x1 - cx) * factor, y1: cy + (sh.y1 - cy) * factor,
+      x2: cx + (sh.x2 - cx) * factor, y2: cy + (sh.y2 - cy) * factor,
+    };
+  }
+  if (sh.type === "text") {
+    return { ...sh, fontSize: Math.max(8, Math.round(sh.fontSize * factor)) };
+  }
   return sh;
 }
 
@@ -944,6 +1164,8 @@ function shapeLabel(sh: Shape): string {
   if (sh.type === "rect") return "Cuadrado";
   if (sh.type === "circle") return "Círculo";
   if (sh.type === "stamp") return "Pieza";
+  if (sh.type === "straight") return "Línea";
+  if (sh.type === "text") return `Texto "${sh.text.slice(0, 20)}${sh.text.length > 20 ? "…" : ""}"`;
   return "";
 }
 
@@ -1292,6 +1514,24 @@ const s = StyleSheet.create({
     letterSpacing: 1.5, marginTop: 8, marginBottom: 4, marginLeft: 4,
     textTransform: "uppercase",
   },
+  textField: {
+    borderWidth: 1, borderColor: COLORS.borderInput, borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 10,
+    minHeight: 80, maxHeight: 160,
+    fontSize: 16, color: COLORS.text, backgroundColor: COLORS.surface,
+    textAlignVertical: "top",
+  },
+  fsChip: {
+    minWidth: 36, height: 28, paddingHorizontal: 8, borderRadius: 6,
+    backgroundColor: COLORS.bg, alignItems: "center", justifyContent: "center",
+  },
+  fsChipActive: { backgroundColor: COLORS.primary },
+  fsChipText: { fontSize: 12, fontWeight: "700", color: COLORS.text },
+  modalBtn: {
+    paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10,
+    alignItems: "center", justifyContent: "center",
+  },
+  modalBtnText: { fontSize: 14, fontWeight: "800" },
   stampCell: {
     width: "30%", minWidth: 90, alignItems: "center", padding: 10, gap: 4,
     backgroundColor: COLORS.bg, borderRadius: 12, borderWidth: 2, borderColor: "transparent",

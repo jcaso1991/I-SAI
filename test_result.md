@@ -738,6 +738,60 @@ agent_communication_round_7:
             rotation so selection remains precise at any angle.
           · New `rotateSelected(delta)` helper normalized to [-180,180];
             delta=0 resets to 0°.
+
+agent_communication_round_8:
+    -agent: "main"
+    -message: |
+      ITERATION 8 (new drawing tools: Line + Text):
+
+      User requested two new tools in the plan editor:
+        * Straight line: press to fix start, drag, release to finish.
+        * Text: tap to place + keyboard to type.
+
+      Implementation (frontend only, /app/frontend/app/planos/[id].tsx):
+
+      1. Types:
+         * `StraightLineShape = { type: "straight"; x1, y1, x2, y2; stroke;
+           strokeWidth; rotation? }`
+         * `TextShape = { type: "text"; x, y; text; fontSize; color;
+           rotation? }`
+         * `Tool` union extended with `"straight" | "text"`.
+
+      2. Interaction:
+         * `handleStart` creates a straight line pinned at (x,y); handleMove
+           updates x2/y2; handleEnd discards lines under 4 px (so a stray
+           tap doesn't leave an invisible dot on the canvas).
+         * `handleStart` on the text tool opens a TextInput modal at the
+           tapped spot. Submit creates a new TextShape using the current
+           palette colour and selected font-size (14/18/24/32/48).
+         * Selecting a text shape shows an extra "✏ Editar" button next
+           to the rotation controls which re-opens the modal in edit mode
+           and updates the shape in place.
+
+      3. Rendering (SVG):
+         * Straight line → `<Line>` wrapped in a `<G rotate>` when the shape
+           has a rotation.
+         * Text → `<SvgText>` with an optional dashed bbox when selected so
+           small labels are easy to locate.
+
+      4. Hit-testing:
+         * Line: point-to-segment distance < 8 px.
+         * Text: approximate bbox (len * fontSize * 0.55 × fontSize * 1.2).
+
+      5. Translate / Scale / Color / Rotation all extended for the two new
+         shape types (font-size scales instead of stretching the bbox).
+
+      6. Toolbar: new `ToolBtn` entries "Línea" (remove-outline icon) and
+         "Texto" (text icon) inserted next to pencil/rect/circle. Hint text
+         updated for both new tools.
+
+      Verified visually on web: the toolbar shows all 6 tools, a straight
+      horizontal line renders correctly on drag, and the text modal lets
+      the user input "Etiqueta ejemplo" at size 32, producing a legible
+      bold label at the tap position. Autosave fired correctly (header
+      went from "Sin guardar" → "Guardado").
+      Backend UNCHANGED — no retest required.
+
           · Bottom bar (when a shape is selected) now shows 4 new buttons:
             ↺ -15°, ↻ +15°, 90° step, Reset-0°, followed by size ± and
             the trash. Selection label also shows current angle ("· 90°").
