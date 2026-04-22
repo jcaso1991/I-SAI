@@ -1,7 +1,8 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Query, UploadFile, File
 from fastapi.responses import RedirectResponse, HTMLResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+import re
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
@@ -1766,6 +1767,163 @@ async def sat_delete(iid: str, admin: dict = Depends(current_admin)):
     if res.deleted_count == 0:
         raise HTTPException(404, "Incidencia no encontrada")
     return {"ok": True}
+
+
+# ====================  CRM SAT — clientes  ====================
+# Catálogo de clientes. Se puede importar desde Excel o mantener
+# manualmente. Cada incidencia puede (opcionalmente) enlazar a un cliente
+# vía `client_id` para centralizar información.
+
+class SATClientIn(BaseModel):
+    cliente: str = Field(..., min_length=1, max_length=240)
+    direccion: str = Field("", max_length=400)
+    contacto: str = Field("", max_length=160)
+    telefono: str = Field("", max_length=80)
+
+@api_router.get("/sat/clients")
+async def sat_clients_list(user: dict = Depends(current_user)):
+    rows = await db.sat_clients.find({}, {"_id": 0}).sort("cliente", 1).to_list(5000)
+    return rows
+
+@api_router.get("/sat/clients/{cid}")
+async def sat_client_get(cid: str, user: dict = Depends(current_user)):
+    doc = await db.sat_clients.find_one({"id": cid}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Cliente no encontrado")
+    return doc
+
+@api_router.post("/sat/clients")
+async def sat_client_create(body: SATClientIn, admin: dict = Depends(current_admin)):
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": str(uuid.uuid4()),
+        "cliente": body.cliente.strip(),
+        "direccion": body.direccion.strip(),
+        "contacto": body.contacto.strip(),
+        "telefono": body.telefono.strip(),
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.sat_clients.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api_router.patch("/sat/clients/{cid}")
+async def sat_client_update(cid: str, body: SATClientIn, admin: dict = Depends(current_admin)):
+    existing = await db.sat_clients.find_one({"id": cid})
+    if not existing:
+        raise HTTPException(404, "Cliente no encontrado")
+    patch = {
+        "cliente": body.cliente.strip(),
+        "direccion": body.direccion.strip(),
+        "contacto": body.contacto.strip(),
+        "telefono": body.telefono.strip(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.sat_clients.update_one({"id": cid}, {"$set": patch})
+    doc = await db.sat_clients.find_one({"id": cid}, {"_id": 0})
+    return doc
+
+@api_router.delete("/sat/clients/{cid}")
+async def sat_client_delete(cid: str, admin: dict = Depends(current_admin)):
+    res = await db.sat_clients.delete_one({"id": cid})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Cliente no encontrado")
+    return {"ok": True}
+
+def _match_header(headers: list, *needles: str) -> Optional[int]:
+    """Return the index of the first header that contains any of the
+    needles (case/accent-insensitive, substring match). Used to support
+    Excel files with slight typos in column names (e.g. 'Responsablñe')."""
+    import unicodedata
+    def norm(s: str) -> str:
+        s = str(s or "").strip().lower()
+        return "".join(c for c in unicodedata.normalize("NFD", s)
+                       if unicodedata.category(c) != "Mn")
+    for i, h in enumerate(headers):
+        nh = norm(h)
+        if any(n in nh for n in needles):
+            return i
+    return None
+
+@api_router.post("/sat/clients/import")
+async def sat_client_import(
+    file: UploadFile = File(...),
+    replace: bool = False,
+    admin: dict = Depends(current_admin),
+):
+    """Admin-only: import clients from an uploaded .xlsx/.xlsm file.
+    - Auto-detects columns using keyword matching on headers (tolerant to
+      typos like 'Responsablñe' in the real data).
+    - `replace=true` wipes the collection before importing.
+    - Default behaviour = upsert by `cliente` name (case-insensitive).
+    Returns {created, updated, skipped}.
+    """
+    try:
+        from openpyxl import load_workbook
+    except Exception:
+        raise HTTPException(500, "openpyxl no instalado en el servidor")
+    try:
+        raw = await file.read()
+        import io
+        wb = load_workbook(io.BytesIO(raw), data_only=True, keep_vba=False, read_only=True)
+    except Exception as e:
+        raise HTTPException(400, f"Archivo Excel inválido: {e}")
+
+    ws = wb.active
+    rows_iter = ws.iter_rows(values_only=True)
+    try:
+        headers = list(next(rows_iter))
+    except StopIteration:
+        raise HTTPException(400, "La hoja está vacía")
+
+    col_cli = _match_header(headers, "client", "nombre")
+    col_dir = _match_header(headers, "direcc", "address")
+    col_con = _match_header(headers, "responsab", "contact")
+    col_tel = _match_header(headers, "tel", "phone", "movil")
+    if col_cli is None:
+        raise HTTPException(400, "No se ha encontrado una columna 'Cliente' en el Excel")
+
+    if replace:
+        await db.sat_clients.delete_many({})
+
+    created = updated = skipped = 0
+    now = datetime.now(timezone.utc).isoformat()
+    for r in rows_iter:
+        try:
+            name = str(r[col_cli]).strip() if col_cli is not None and r[col_cli] is not None else ""
+        except IndexError:
+            name = ""
+        if not name:
+            skipped += 1
+            continue
+        def _cell(ix):
+            if ix is None: return ""
+            try:
+                v = r[ix]
+                return str(v).strip() if v is not None else ""
+            except IndexError:
+                return ""
+        doc = {
+            "cliente": name,
+            "direccion": _cell(col_dir),
+            "contacto": _cell(col_con),
+            "telefono": _cell(col_tel),
+            "updated_at": now,
+        }
+        # Upsert by case-insensitive name match.
+        existing = await db.sat_clients.find_one({
+            "cliente": {"$regex": f"^{re.escape(name)}$", "$options": "i"}
+        })
+        if existing:
+            await db.sat_clients.update_one({"id": existing["id"]}, {"$set": doc})
+            updated += 1
+        else:
+            doc["id"] = str(uuid.uuid4())
+            doc["created_at"] = now
+            await db.sat_clients.insert_one(doc)
+            created += 1
+    return {"ok": True, "created": created, "updated": updated, "skipped": skipped}
 
 
 app.include_router(api_router)

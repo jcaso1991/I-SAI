@@ -138,6 +138,37 @@ export const api = {
   satDelete: (id: string) =>
     request(`/sat/incidents/${id}`, { method: "DELETE" }),
 
+  // CRM SAT — clients catalog (with Excel import)
+  satClientList: () => request("/sat/clients"),
+  satClientGet: (id: string) => request(`/sat/clients/${id}`),
+  satClientCreate: (body: { cliente: string; direccion?: string; contacto?: string; telefono?: string }) =>
+    request("/sat/clients", { method: "POST", body: JSON.stringify(body) }),
+  satClientUpdate: (id: string, body: any) =>
+    request(`/sat/clients/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  satClientDelete: (id: string) =>
+    request(`/sat/clients/${id}`, { method: "DELETE" }),
+  satClientImport: async (file: { uri: string; name: string; mimeType?: string } | File, replace = false) => {
+    const form = new FormData();
+    // Web File object vs native { uri, name }
+    if (typeof File !== "undefined" && file instanceof File) {
+      form.append("file", file);
+    } else {
+      // @ts-ignore — native form-data with uri
+      form.append("file", { uri: (file as any).uri, name: (file as any).name, type: (file as any).mimeType || "application/vnd.ms-excel.sheet.macroenabled.12" } as any);
+    }
+    const token = await getToken();
+    const res = await fetch(`${BASE}/api/sat/clients/import?replace=${replace ? "true" : "false"}`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    return res.json();
+  },
+
   // Budgets (presupuestos)
   listBudgets: () => request("/budgets"),
   getBudget: (id: string) => request(`/budgets/${id}`),
