@@ -1724,12 +1724,61 @@ async def sat_public_create(body: SATPublicIn):
 async def sat_list(
     user: dict = Depends(current_user),
     status: Optional[str] = None,
+    client_id: Optional[str] = None,
 ):
+    # Lazy auto-revive: any incident scheduled for past time returns as "pendiente".
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await _sat_auto_revive(now_iso)
+
     q: dict = {}
-    if status in {"pendiente", "resuelta"}:
+    if status in {"pendiente", "resuelta", "agendada"}:
         q["status"] = status
-    rows = await db.sat_incidents.find(q, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    if client_id:
+        q["client_id"] = client_id
+    rows = await db.sat_incidents.find(q, {"_id": 0}).sort("created_at", -1).to_list(2000)
     return rows
+
+async def _sat_auto_revive(now_iso: str):
+    """Move incidents whose scheduled_for date has passed back to pendiente
+    and leave a history note describing the auto-revival."""
+    overdue = await db.sat_incidents.find({
+        "status": "agendada",
+        "scheduled_for": {"$lte": now_iso},
+    }, {"_id": 0}).to_list(500)
+    for ev in overdue:
+        entry = {
+            "id": str(uuid.uuid4()),
+            "action": "auto_revive",
+            "from_status": "agendada",
+            "to_status": "pendiente",
+            "comment": "Ha llegado la fecha programada. La incidencia vuelve a Pendiente.",
+            "user_id": None,
+            "user_name": "Sistema",
+            "created_at": now_iso,
+        }
+        await db.sat_incidents.update_one(
+            {"id": ev["id"]},
+            {
+                "$set": {"status": "pendiente", "updated_at": now_iso, "scheduled_for": None},
+                "$push": {"history": entry},
+            },
+        )
+        # Also notify admins about the revived incident
+        admins = await db.users.find({"role": "admin"}, {"_id": 0, "id": 1}).to_list(200)
+        for a in admins:
+            await db.notifications.insert_one({
+                "id": str(uuid.uuid4()),
+                "user_id": a["id"],
+                "event_id": None,
+                "type": "sat_revived",
+                "title": f"Incidencia reactivada: {ev.get('cliente','')}",
+                "message": ev.get("observaciones", "")[:200],
+                "read": False,
+                "created_at": now_iso,
+                "from_user_id": None,
+                "from_user_name": "Sistema",
+                "link": f"/sat?openIncident={ev['id']}",
+            })
 
 @api_router.get("/sat/incidents/{iid}")
 async def sat_get(iid: str, user: dict = Depends(current_user)):
@@ -1808,6 +1857,54 @@ async def sat_change_status(iid: str, body: SATStatusChangeIn, user: dict = Depe
     await db.sat_incidents.update_one(
         {"id": iid},
         {"$set": patch, "$push": {"history": entry}},
+    )
+    doc = await db.sat_incidents.find_one({"id": iid}, {"_id": 0})
+    return doc
+
+class SATScheduleIn(BaseModel):
+    scheduled_for: str  # ISO datetime
+    comment: str = Field("", max_length=4000)
+
+@api_router.post("/sat/incidents/{iid}/schedule")
+async def sat_schedule(iid: str, body: SATScheduleIn, user: dict = Depends(current_user)):
+    """Reschedule an incident. Moves it to status='agendada' with the chosen
+    date/time. When that date arrives, `_sat_auto_revive` flips it back to
+    pendiente and notifies the admins."""
+    existing = await db.sat_incidents.find_one({"id": iid})
+    if not existing:
+        raise HTTPException(404, "Incidencia no encontrada")
+    try:
+        sched = datetime.fromisoformat(body.scheduled_for.replace("Z", "+00:00"))
+        if sched.tzinfo is None:
+            sched = sched.replace(tzinfo=timezone.utc)
+    except Exception:
+        raise HTTPException(400, "Fecha inválida")
+    now = datetime.now(timezone.utc).isoformat()
+    prev = existing.get("status") or "pendiente"
+    pretty = sched.strftime("%d/%m/%Y %H:%M")
+    entry = {
+        "id": str(uuid.uuid4()),
+        "action": "scheduled",
+        "from_status": prev,
+        "to_status": "agendada",
+        "scheduled_for": sched.isoformat(),
+        "comment": (body.comment or "").strip() or f"Incidencia reagendada para el {pretty}.",
+        "user_id": user.get("id"),
+        "user_name": user.get("name") or user.get("email") or "usuario",
+        "created_at": now,
+    }
+    await db.sat_incidents.update_one(
+        {"id": iid},
+        {
+            "$set": {
+                "status": "agendada",
+                "scheduled_for": sched.isoformat(),
+                "resolved_at": None,
+                "resolved_by": None,
+                "updated_at": now,
+            },
+            "$push": {"history": entry},
+        },
     )
     doc = await db.sat_incidents.find_one({"id": iid}, {"_id": 0})
     return doc

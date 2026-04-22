@@ -33,19 +33,21 @@ type Incident = {
   telefono: string;
   observaciones: string;
   comentarios_sat: string;
-  status: "pendiente" | "resuelta";
+  status: "pendiente" | "resuelta" | "agendada";
   created_at: string;
+  scheduled_for?: string | null;
   client_id?: string | null;
   history?: HistoryEntry[];
 };
 
 type HistoryEntry = {
   id: string;
-  action: "status_change" | "note";
+  action: "status_change" | "note" | "scheduled" | "auto_revive";
   from_status?: string;
   to_status?: string;
+  scheduled_for?: string;
   comment: string;
-  user_id: string;
+  user_id: string | null;
   user_name: string;
   created_at: string;
 };
@@ -89,13 +91,14 @@ export default function SATScreen() {
     params.tab === "clientes" ? "clientes" : "incidencias"
   );
   const [showViewMenu, setShowViewMenu] = useState(false);
-  const [tab, setTab] = useState<"pendiente" | "resuelta">("pendiente");
+  const [tab, setTab] = useState<"pendiente" | "resuelta" | "agendada">("pendiente");
   const [items, setItems] = useState<Incident[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [openItem, setOpenItem] = useState<Incident | null>(null);
   const [creatingIncident, setCreatingIncident] = useState<Partial<Incident> | null>(null);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [showNewClient, setShowNewClient] = useState(false);
+  const [viewingClientIncidents, setViewingClientIncidents] = useState<Client | null>(null);
   const [clientSearch, setClientSearch] = useState("");
   const [copied, setCopied] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -189,6 +192,7 @@ export default function SATScreen() {
 
   const pendingCount = items.filter((i) => i.status === "pendiente").length;
   const resolvedCount = items.filter((i) => i.status === "resuelta").length;
+  const scheduledCount = items.filter((i) => i.status === "agendada").length;
   const visibleIncidents = items.filter((i) => i.status === tab);
   const visibleClients = clients.filter((c) => {
     if (!clientSearch.trim()) return true;
@@ -325,6 +329,11 @@ export default function SATScreen() {
                 testID="tab-pendientes"
               />
               <TabPill
+                label="Agendadas" count={scheduledCount}
+                active={tab === "agendada"} onPress={() => setTab("agendada")}
+                testID="tab-agendadas"
+              />
+              <TabPill
                 label="Resueltas" count={resolvedCount}
                 active={tab === "resuelta"} onPress={() => setTab("resuelta")}
                 testID="tab-resueltas"
@@ -431,6 +440,7 @@ export default function SATScreen() {
                     isAdmin={isAdmin}
                     onEdit={() => setEditingClient(c)}
                     onNewIncident={() => handleNewIncidentFromClient(c)}
+                    onViewIncidents={() => setViewingClientIncidents(c)}
                   />
                 ))}
               </ScrollView>
@@ -468,6 +478,13 @@ export default function SATScreen() {
           client={null}
           onClose={() => setShowNewClient(false)}
           onSaved={() => { setShowNewClient(false); load(); }}
+        />
+      )}
+      {viewingClientIncidents && (
+        <ClientIncidentsModal
+          client={viewingClientIncidents}
+          onClose={() => setViewingClientIncidents(null)}
+          onOpenIncident={(inc) => { setViewingClientIncidents(null); setOpenItem(inc); }}
         />
       )}
     </ResponsiveLayout>
@@ -529,8 +546,8 @@ function IncidentCard({ item, clientName, onPress }:
   );
 }
 
-function ClientCard({ client, isAdmin, onEdit, onNewIncident }:
-  { client: Client; isAdmin: boolean; onEdit: () => void; onNewIncident: () => void }) {
+function ClientCard({ client, isAdmin, onEdit, onNewIncident, onViewIncidents }:
+  { client: Client; isAdmin: boolean; onEdit: () => void; onNewIncident: () => void; onViewIncidents: () => void }) {
   return (
     <View testID={`client-${client.id}`} style={s.clientCard}>
       <View style={{ flex: 1 }}>
@@ -556,7 +573,15 @@ function ClientCard({ client, isAdmin, onEdit, onNewIncident }:
           )}
         </View>
       </View>
-      <View style={{ flexDirection: "row", gap: 6 }}>
+      <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+        <TouchableOpacity
+          testID={`client-view-incidents-${client.id}`}
+          style={s.clientActionSecondary}
+          onPress={onViewIncidents}
+        >
+          <Ionicons name="list-outline" size={16} color={COLORS.primary} />
+          <Text style={s.clientActionSecondaryText}>Ver incidencias</Text>
+        </TouchableOpacity>
         <TouchableOpacity
           testID={`client-new-incident-${client.id}`}
           style={s.clientActionPrimary}
@@ -642,6 +667,7 @@ function IncidentModal({ item, clients, isAdmin, onClose, onChanged }: {
   const [saving, setSaving] = useState(false);
   // Pending status change → triggers the comment prompt.
   const [pendingStatus, setPendingStatus] = useState<"pendiente" | "resuelta" | null>(null);
+  const [showSchedule, setShowSchedule] = useState(false);
 
   // Apply the status change after user has written a comment.
   const applyStatusChange = async (status: "pendiente" | "resuelta", comment: string) => {
@@ -762,6 +788,15 @@ function IncidentModal({ item, clients, isAdmin, onClose, onChanged }: {
               </TouchableOpacity>
             )}
             <TouchableOpacity
+              testID="sat-schedule"
+              style={[s.scheduleBtn, saving && { opacity: 0.6 }]}
+              onPress={() => setShowSchedule(true)}
+              disabled={saving}
+            >
+              <Ionicons name="calendar-outline" size={16} color="#4F46E5" />
+              <Text style={s.scheduleBtnText}>Reagendar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               testID="sat-pending"
               style={[s.pendingBtn, saving && { opacity: 0.6 }]}
               onPress={() => setPendingStatus("pendiente")}
@@ -793,6 +828,30 @@ function IncidentModal({ item, clients, isAdmin, onClose, onChanged }: {
           onConfirm={(comment) => applyStatusChange(pendingStatus, comment)}
         />
       )}
+      {showSchedule && (
+        <SchedulePrompt
+          currentStatus={current.status}
+          saving={saving}
+          onCancel={() => setShowSchedule(false)}
+          onConfirm={async (iso, comment) => {
+            setSaving(true);
+            try {
+              // Persist field edits first so nothing is lost.
+              await api.satUpdate(item.id, {
+                cliente, direccion, telefono, observaciones,
+                comentarios_sat: comentarios,
+                client_id: clientId,
+              });
+              const updated = await api.satScheduleIncident(item.id, iso, comment);
+              setCurrent(updated);
+              setShowSchedule(false);
+              onChanged();
+            } catch (e: any) {
+              Alert.alert("Error", e?.message || "No se pudo reagendar");
+            } finally { setSaving(false); }
+          }}
+        />
+      )}
     </Modal>
   );
 }
@@ -804,22 +863,30 @@ function HistoryItem({ entry }: { entry: HistoryEntry }) {
       ? ""
       : d.toLocaleString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
   })();
-  const resolved = entry.to_status === "resuelta";
-  const accent = entry.action === "status_change"
-    ? (resolved ? "#10B981" : "#F59E0B")
-    : COLORS.primary;
-  const label = entry.action === "status_change"
-    ? (resolved ? "Marcó como RESUELTA" : "Marcó como PENDIENTE")
-    : "Dejó un comentario";
+  let accent = COLORS.primary;
+  let label = "Dejó un comentario";
+  let icon: any = "chatbubble-ellipses";
+  if (entry.action === "status_change") {
+    const resolved = entry.to_status === "resuelta";
+    accent = resolved ? "#10B981" : "#F59E0B";
+    label = resolved ? "Marcó como RESUELTA" : "Marcó como PENDIENTE";
+    icon = resolved ? "checkmark-done" : "time";
+  } else if (entry.action === "scheduled") {
+    accent = "#4F46E5";
+    const d = entry.scheduled_for ? new Date(entry.scheduled_for) : null;
+    const when2 = d && !isNaN(d.getTime()) ? d.toLocaleString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+    label = `Reagendó para ${when2}`;
+    icon = "calendar";
+  } else if (entry.action === "auto_revive") {
+    accent = "#F59E0B";
+    label = "Reactivada automáticamente";
+    icon = "refresh";
+  }
   return (
     <View style={[s.historyItem, { borderLeftColor: accent, borderLeftWidth: 3 }]}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
         <View style={[s.historyAvatar, { backgroundColor: accent }]}>
-          <Ionicons
-            name={entry.action === "status_change" ? (resolved ? "checkmark-done" : "time") : "chatbubble-ellipses"}
-            size={12}
-            color="#fff"
-          />
+          <Ionicons name={icon} size={12} color="#fff" />
         </View>
         <Text style={s.historyUser}>{entry.user_name}</Text>
         <Text style={s.historyAction}>· {label}</Text>
@@ -828,6 +895,158 @@ function HistoryItem({ entry }: { entry: HistoryEntry }) {
       </View>
       {!!entry.comment && <Text style={s.historyComment}>{entry.comment}</Text>}
     </View>
+  );
+}
+
+function SchedulePrompt({ currentStatus, saving, onCancel, onConfirm }: {
+  currentStatus: string; saving: boolean;
+  onCancel: () => void;
+  onConfirm: (iso: string, comment: string) => void;
+}) {
+  const now = new Date();
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const defaultDate = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`;
+  const defaultTime = `${pad(tomorrow.getHours())}:${pad(tomorrow.getMinutes())}`;
+  const [date, setDate] = useState(defaultDate);
+  const [time, setTime] = useState(defaultTime);
+  const [comment, setComment] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const handleConfirm = () => {
+    setError(null);
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date.trim());
+    const tm = /^(\d{2}):(\d{2})$/.exec(time.trim());
+    if (!m || !tm) { setError("Formato inválido. Usa AAAA-MM-DD y HH:MM."); return; }
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(tm[1]), Number(tm[2]), 0);
+    if (isNaN(d.getTime())) { setError("Fecha inválida"); return; }
+    if (d.getTime() <= Date.now()) { setError("La fecha debe ser en el futuro"); return; }
+    onConfirm(d.toISOString(), comment.trim());
+  };
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onCancel}>
+      <View style={s.promptRoot}>
+        <TouchableOpacity activeOpacity={1} style={StyleSheet.absoluteFill} onPress={onCancel} />
+        <View style={s.promptCard}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 }}>
+            <View style={[s.promptIcon, { backgroundColor: "#E0E7FF", borderColor: "#4F46E5" }]}>
+              <Ionicons name="calendar" size={22} color="#3730A3" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.promptTitle}>Reagendar incidencia</Text>
+              <Text style={s.promptSub}>
+                Elige fecha y hora. La incidencia pasará a la pestaña Agendadas y volverá a Pendiente automáticamente cuando llegue esa hora.
+              </Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.fieldLabel}>Fecha *</Text>
+              <TextInput
+                testID="schedule-date"
+                value={date} onChangeText={setDate}
+                placeholder="AAAA-MM-DD"
+                placeholderTextColor={COLORS.textDisabled}
+                style={s.input}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.fieldLabel}>Hora *</Text>
+              <TextInput
+                testID="schedule-time"
+                value={time} onChangeText={setTime}
+                placeholder="HH:MM"
+                placeholderTextColor={COLORS.textDisabled}
+                style={s.input}
+              />
+            </View>
+          </View>
+          <Text style={[s.fieldLabel, { marginTop: 10 }]}>Motivo (opcional)</Text>
+          <TextInput
+            testID="schedule-comment"
+            value={comment} onChangeText={setComment}
+            multiline numberOfLines={3}
+            placeholder="Ej: El cliente prefiere que pasemos el próximo lunes."
+            placeholderTextColor={COLORS.textDisabled}
+            style={[s.input, s.textarea]}
+          />
+          {error && <Text style={{ color: "#EF4444", fontSize: 12, fontWeight: "800", marginTop: 6 }}>{error}</Text>}
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 14 }}>
+            <TouchableOpacity style={[s.cancelBtn, { flex: 1 }]} onPress={onCancel} disabled={saving}>
+              <Text style={s.cancelBtnText}>Cancelar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              testID="schedule-confirm"
+              style={[s.scheduleBtn, { flex: 1 }, saving && { opacity: 0.6 }]}
+              onPress={handleConfirm}
+              disabled={saving}
+            >
+              {saving ? <ActivityIndicator color="#4F46E5" /> : <>
+                <Ionicons name="calendar" size={16} color="#4F46E5" />
+                <Text style={s.scheduleBtnText}>Confirmar agenda</Text>
+              </>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function ClientIncidentsModal({ client, onClose, onOpenIncident }: {
+  client: Client; onClose: () => void; onOpenIncident: (inc: Incident) => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<Incident[]>([]);
+
+  useFocusEffect(useCallback(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const list = await api.satListByClient(client.id);
+        if (alive) setItems(list);
+      } finally { if (alive) setLoading(false); }
+    })();
+    return () => { alive = false; };
+  }, [client.id]));
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <View style={s.sheetRoot}>
+        <TouchableOpacity activeOpacity={1} style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={s.sheet}>
+          <View style={s.modalHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.modalTitle}>Incidencias del cliente</Text>
+              <Text style={s.modalSub} numberOfLines={1}>{client.cliente}</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} hitSlop={14} style={s.closeBtn}>
+              <Ionicons name="close" size={22} color={COLORS.text} />
+            </TouchableOpacity>
+          </View>
+          {loading ? (
+            <View style={s.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>
+          ) : items.length === 0 ? (
+            <View style={s.center}>
+              <Ionicons name="folder-open-outline" size={48} color={COLORS.textDisabled} />
+              <Text style={s.emptyTitle}>Sin incidencias</Text>
+              <Text style={s.emptyMsg}>Este cliente aún no tiene incidencias registradas.</Text>
+            </View>
+          ) : (
+            <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
+              {items.map((it) => (
+                <IncidentCard
+                  key={it.id}
+                  item={it}
+                  onPress={() => { onClose(); setTimeout(() => onOpenIncident(it), 80); }}
+                />
+              ))}
+            </ScrollView>
+          )}
+        </View>
+      </View>
+    </Modal>
   );
 }
 

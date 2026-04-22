@@ -140,6 +140,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ status, comment }),
     }),
+  satScheduleIncident: (id: string, scheduledFor: string, comment: string) =>
+    request(`/sat/incidents/${id}/schedule`, {
+      method: "POST",
+      body: JSON.stringify({ scheduled_for: scheduledFor, comment }),
+    }),
+  satListByClient: (clientId: string) =>
+    request(`/sat/incidents?client_id=${encodeURIComponent(clientId)}`),
   satAddNote: (id: string, comment: string) =>
     request(`/sat/incidents/${id}/note`, {
       method: "POST",
