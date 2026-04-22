@@ -24,6 +24,7 @@ export default function BudgetEditor() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [budgetId, setBudgetId] = useState<string | null>(isNew ? null : String(params.id));
+  const [defaultEquipos, setDefaultEquipos] = useState<string[]>([]);
 
   // Form state
   const [f, setF] = useState<any>({
@@ -52,18 +53,20 @@ export default function BudgetEditor() {
           Alert.alert("Acceso restringido", "Solo admins y comerciales");
           router.replace("/home"); return;
         }
+        // Always load default equipment suggestions (used by the combo)
+        try {
+          const def = await api.budgetsDefaultEquipos();
+          setDefaultEquipos(def.items || []);
+        } catch {}
         if (budgetId) {
           const b = await api.getBudget(budgetId);
           setF((prev: any) => ({ ...prev, ...b }));
         } else {
-          // Load default equipos
-          try {
-            const def = await api.budgetsDefaultEquipos();
-            setF((prev: any) => ({
-              ...prev,
-              equipos: (def.items || []).map((it: string) => ({ elemento: it, cantidad: "", ubicacion: "", observaciones: "" })),
-            }));
-          } catch {}
+          // Start with one empty equipo row (user fills with combo or free text)
+          setF((prev: any) => ({
+            ...prev,
+            equipos: [{ elemento: "", cantidad: "", ubicacion: "", observaciones: "" }],
+          }));
           if (params.material_id) {
             try {
               const m = await (api as any).getMaterial?.(params.material_id);
@@ -178,11 +181,14 @@ export default function BudgetEditor() {
   }
 
   return (
-    <ResponsiveLayout active="home" isAdmin={me?.role === "admin"} userName={me?.name}
+    <ResponsiveLayout active="presupuestos" isAdmin={me?.role === "admin"} userName={me?.name}
       onLogout={async () => { await clearToken(); router.replace("/login"); }}>
     <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
       <View style={s.header}>
-        <TouchableOpacity style={s.iconBtn} onPress={() => router.replace("/presupuestos")}>
+        <TouchableOpacity style={s.iconBtn} onPress={() => {
+          try { if (router.canGoBack && router.canGoBack()) { router.back(); return; } } catch {}
+          router.replace("/presupuestos");
+        }}>
           <Ionicons name="chevron-back" size={26} color={COLORS.navy} />
         </TouchableOpacity>
         <Text style={s.headerTitle} numberOfLines={1}>
@@ -237,7 +243,12 @@ export default function BudgetEditor() {
           </View>
           {f.equipos.map((e: Equipo, i: number) => (
             <View key={i} style={s.eqRow}>
-              <TextInput value={e.elemento} onChangeText={(v) => setEq(i, "elemento", v)} style={[s.eqInp, { flex: 2 }]} placeholder="Elemento" placeholderTextColor={COLORS.textDisabled} />
+              <ElementoCombo
+                value={e.elemento}
+                onChange={(v) => setEq(i, "elemento", v)}
+                suggestions={defaultEquipos}
+                style={{ flex: 2 }}
+              />
               <TextInput value={e.cantidad} onChangeText={(v) => setEq(i, "cantidad", v)} style={[s.eqInp, { flex: 0.6 }]} placeholder="0" placeholderTextColor={COLORS.textDisabled} keyboardType="number-pad" />
               <TextInput value={e.ubicacion} onChangeText={(v) => setEq(i, "ubicacion", v)} style={[s.eqInp, { flex: 1.2 }]} placeholder="—" placeholderTextColor={COLORS.textDisabled} />
               <TextInput value={e.observaciones} onChangeText={(v) => setEq(i, "observaciones", v)} style={[s.eqInp, { flex: 1.5 }]} placeholder="—" placeholderTextColor={COLORS.textDisabled} />
@@ -313,6 +324,68 @@ function Check({ label, value, onChange }: any) {
     </TouchableOpacity>
   );
 }
+
+/**
+ * Combobox editable: texto libre + botón desplegable con sugerencias.
+ * El usuario puede escribir manualmente o elegir uno de los preestablecidos.
+ */
+function ElementoCombo({ value, onChange, suggestions, style }: {
+  value: string;
+  onChange: (v: string) => void;
+  suggestions: string[];
+  style?: any;
+}) {
+  const [open, setOpen] = useState(false);
+  const q = (value || "").toLowerCase().trim();
+  const filtered = q
+    ? suggestions.filter((it) => it.toLowerCase().includes(q))
+    : suggestions;
+  const showList = open && filtered.length > 0;
+
+  return (
+    <View style={[{ position: "relative", zIndex: open ? 50 : 1 }, style]}>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <TextInput
+          testID="elemento-input"
+          value={value}
+          onChangeText={(v) => { onChange(v); if (v.length > 0 && !open) setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 200)}
+          style={[s.eqInp, { flex: 1, paddingRight: 28 }]}
+          placeholder="Elemento (escribir o elegir…)"
+          placeholderTextColor={COLORS.textDisabled}
+        />
+        <TouchableOpacity
+          testID="elemento-dropdown"
+          style={{ position: "absolute", right: 2, padding: 4 }}
+          onPress={() => setOpen((v) => !v)}
+        >
+          <Ionicons name={open ? "chevron-up" : "chevron-down"} size={18} color={COLORS.primary} />
+        </TouchableOpacity>
+      </View>
+      {showList && (
+        <View style={s.comboList}>
+          <ScrollView
+            style={{ maxHeight: 220 }}
+            keyboardShouldPersistTaps="always"
+            nestedScrollEnabled
+          >
+            {filtered.slice(0, 50).map((it, idx) => (
+              <TouchableOpacity
+                key={idx}
+                style={s.comboItem}
+                onPress={() => { onChange(it); setOpen(false); }}
+              >
+                <Text style={s.comboItemTxt}>{it}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+    </View>
+  );
+}
+
 
 function renderPdfHtml(f: any): string {
   const row = (label: string, v: string) => `<tr><td style="font-weight:700;padding:4px 8px;width:35%;border-bottom:1px solid #ccc">${label}</td><td style="padding:4px 8px;border-bottom:1px solid #ccc">${escapeHtml(v || "")}</td></tr>`;
@@ -411,6 +484,31 @@ const s = StyleSheet.create({
   eqHeaderTxt: { fontSize: 10, fontWeight: "900", color: COLORS.textSecondary, letterSpacing: 1 },
   eqRow: { flexDirection: "row", gap: 4, alignItems: "center" },
   eqInp: { backgroundColor: COLORS.bg, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 8, fontSize: 13, color: COLORS.text, borderWidth: 1, borderColor: COLORS.border },
+  comboList: {
+    position: "absolute",
+    top: "100%",
+    left: 0,
+    right: 0,
+    marginTop: 2,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    zIndex: 100,
+    // web box-shadow (RN web maps this)
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
+  },
+  comboItem: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  comboItemTxt: { fontSize: 13, color: COLORS.text },
   addRow: {
     flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start",
     paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8,

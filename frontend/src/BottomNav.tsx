@@ -4,7 +4,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS } from "./api";
 
-export type BottomTab = "home" | "proyectos" | "calendario" | "planos" | "ajustes";
+export type BottomTab = "home" | "proyectos" | "calendario" | "planos" | "presupuestos" | "ajustes";
 
 export default function BottomNav({ active, isAdmin }: { active: BottomTab; isAdmin?: boolean }) {
   const router = useRouter();
@@ -17,6 +17,7 @@ export default function BottomNav({ active, isAdmin }: { active: BottomTab; isAd
       case "proyectos": router.replace("/materiales"); break;
       case "calendario": router.replace("/calendario"); break;
       case "planos": router.replace("/planos"); break;
+      case "presupuestos": router.replace("/presupuestos"); break;
       case "ajustes": router.replace("/admin"); break;
     }
   };
@@ -28,6 +29,7 @@ export default function BottomNav({ active, isAdmin }: { active: BottomTab; isAd
     if (tab === "proyectos") return <MaterialCommunityIcons name={on ? "set-square" : "set-square"} size={26} color={color} />;
     if (tab === "calendario") return <Ionicons name={on ? "calendar" : "calendar-outline"} size={24} color={color} />;
     if (tab === "planos") return <Ionicons name={on ? "map" : "map-outline"} size={24} color={color} />;
+    if (tab === "presupuestos") return <Ionicons name={on ? "document-text" : "document-text-outline"} size={24} color={color} />;
     return <Ionicons name={on ? "settings" : "settings-outline"} size={24} color={color} />;
   };
 
@@ -36,14 +38,15 @@ export default function BottomNav({ active, isAdmin }: { active: BottomTab; isAd
     proyectos: "Proyectos",
     calendario: "Calendario",
     planos: "Planos",
+    presupuestos: "Presupuestos",
     ajustes: "Ajustes",
   };
 
-  // Order (left → right): Ajustes, Proyectos, Inicio, Calendario, Planos
+  // Order (left → right): Ajustes, Proyectos, Inicio, Calendario, Planos, Presupuestos
   // Ajustes only visible for admins
   const tabs: BottomTab[] = isAdmin
-    ? ["ajustes", "proyectos", "home", "calendario", "planos"]
-    : ["proyectos", "home", "calendario", "planos"];
+    ? ["ajustes", "proyectos", "home", "calendario", "planos", "presupuestos"]
+    : ["proyectos", "home", "calendario", "planos", "presupuestos"];
 
   return (
     <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 6) }]}>

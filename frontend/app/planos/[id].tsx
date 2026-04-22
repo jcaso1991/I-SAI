@@ -83,7 +83,7 @@ export default function PlanEditor() {
         if (m) setSourceFilename(m[1]);
       } catch (e: any) {
         Alert.alert("Error", e.message);
-        router.back();
+        try { if (router.canGoBack && router.canGoBack()) { router.back(); } else { router.replace("/planos"); } } catch { router.replace("/planos"); }
       } finally {
         setLoading(false);
       }
@@ -457,7 +457,10 @@ export default function PlanEditor() {
   return (
     <SafeAreaView style={s.root} edges={["top"]}>
       <View style={s.header}>
-        <TouchableOpacity style={s.iconBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={s.iconBtn} onPress={() => {
+          try { if (router.canGoBack && router.canGoBack()) { router.back(); return; } } catch {}
+          router.replace("/planos");
+        }}>
           <Ionicons name="chevron-back" size={26} color={COLORS.navy} />
         </TouchableOpacity>
         <View style={{ flex: 1, alignItems: "center" }}>

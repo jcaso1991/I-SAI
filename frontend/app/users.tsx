@@ -83,7 +83,10 @@ export default function Users() {
   return (
     <SafeAreaView style={s.root} edges={["top"]}>
       <View style={s.header}>
-        <TouchableOpacity style={s.iconBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={s.iconBtn} onPress={() => {
+          try { if (router.canGoBack && router.canGoBack()) { router.back(); return; } } catch {}
+          router.replace("/admin");
+        }}>
           <Ionicons name="chevron-back" size={26} color={COLORS.navy} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>Usuarios</Text>

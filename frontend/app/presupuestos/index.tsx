@@ -36,7 +36,7 @@ export default function PresupuestosIndex() {
 
   if (me && !canAccess) {
     return (
-      <ResponsiveLayout active="home" isAdmin={isAdmin} onLogout={logout} userName={me?.name}>
+      <ResponsiveLayout active="presupuestos" isAdmin={isAdmin} onLogout={logout} userName={me?.name}>
         <SafeAreaView style={s.root}>
           <View style={s.denied}>
             <Ionicons name="lock-closed" size={64} color={COLORS.textDisabled} />
@@ -49,7 +49,7 @@ export default function PresupuestosIndex() {
   }
 
   return (
-    <ResponsiveLayout active="home" isAdmin={isAdmin} onLogout={logout} userName={me?.name}>
+    <ResponsiveLayout active="presupuestos" isAdmin={isAdmin} onLogout={logout} userName={me?.name}>
     <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
       <View style={s.header}>
         {!isWide && (

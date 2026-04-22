@@ -32,7 +32,7 @@ export default function PresupuestoExistente() {
   }, [q]));
 
   return (
-    <ResponsiveLayout active="home" isAdmin={me?.role === "admin"} userName={me?.name}
+    <ResponsiveLayout active="presupuestos" isAdmin={me?.role === "admin"} userName={me?.name}
       onLogout={async () => { await clearToken(); router.replace("/login"); }}>
     <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
       <View style={s.header}>

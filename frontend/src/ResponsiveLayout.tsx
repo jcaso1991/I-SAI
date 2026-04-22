@@ -52,6 +52,7 @@ export default function ResponsiveLayout({
         <SideLink active={active === "proyectos"} label="Proyectos" icon="set-square" to="/materiales" matIcon />
         <SideLink active={active === "calendario"} label="Calendario" icon="calendar" to="/calendario" />
         <SideLink active={active === "planos"} label="Planos" icon="map" to="/planos" />
+        <SideLink active={active === "presupuestos"} label="Presupuestos" icon="document-text" to="/presupuestos" />
         {isAdmin && (
           <>
             <View style={s.divider} />

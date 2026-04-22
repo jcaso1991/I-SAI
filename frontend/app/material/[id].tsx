@@ -153,7 +153,10 @@ export default function MaterialDetail() {
   return (
     <SafeAreaView style={s.root} edges={["top"]}>
       <View style={s.header}>
-        <TouchableOpacity testID="btn-back" style={s.iconBtn} onPress={() => router.back()}>
+        <TouchableOpacity testID="btn-back" style={s.iconBtn} onPress={() => {
+          try { if (router.canGoBack && router.canGoBack()) { router.back(); return; } } catch {}
+          router.replace("/materiales");
+        }}>
           <Ionicons name="chevron-back" size={26} color={COLORS.navy} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>Detalle</Text>
