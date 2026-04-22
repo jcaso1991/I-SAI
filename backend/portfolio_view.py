@@ -290,6 +290,9 @@ def build_portfolio_html() -> str:
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
         background: #F4F7FB; color: #0F172A; line-height: 1.5;
         -webkit-font-smoothing: antialiased;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
       }
       img { display: block; max-width: 100%; height: auto; }
       h1, h2, h3, h4 { letter-spacing: -0.4px; }
@@ -521,73 +524,170 @@ def build_portfolio_html() -> str:
       .footer p { font-size: 13px; font-weight: 800; color: #0B2545; }
       .footer small { font-size: 12px; color: #94A3B8; font-weight: 600; display: block; margin-top: 4px; }
 
-      /* Print */
+      /* ========== PRINT ========== */
       @media print {
-        @page { size: A4; margin: 10mm; }
-        html, body { background: #fff !important; }
-        .no-print { display: none !important; }
-        .topbar { position: static !important; box-shadow: none; border: 0; padding: 8px 12px; }
-        .hero { padding: 12px 10px 18px; page-break-inside: avoid; }
-        .hero h1 { font-size: 28px !important; line-height: 1.15; }
-        .hero-lead { font-size: 13px !important; margin-top: 10px; }
-        .hero-img { padding: 4px; max-height: 220px; overflow: hidden; }
-        .hero-img img { max-height: 210px; object-fit: contain; }
-        section.section { padding: 14px 14px; page-break-inside: auto; }
-        section.section .section-title { font-size: 20px; }
-        section.section .section-lead { font-size: 12px; margin-top: 6px; }
+        @page { size: A4; margin: 8mm; }
+        @page :first { margin-top: 8mm; }
 
-        /* Module rows: side-by-side, flow naturally, avoid splitting mid-module */
+        html, body {
+          background: #fff !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          color-adjust: exact !important;
+        }
+        .no-print { display: none !important; }
+
+        /* Topbar slim */
+        .topbar {
+          position: static !important; box-shadow: none !important;
+          padding: 6px 10px !important; border-bottom: 2px solid #1976D2 !important;
+          break-after: avoid-page;
+        }
+        .brand-mark { width: 28px !important; height: 28px !important; font-size: 15px !important; border-radius: 7px !important; }
+        .brand-title { font-size: 14px !important; }
+        .brand-sub { font-size: 9px !important; }
+
+        /* Hero compact and coloured */
+        .hero {
+          padding: 14px 14px 18px !important;
+          background: linear-gradient(180deg,#F4F7FB 0%,#E6F0FB 100%) !important;
+          break-inside: avoid; break-after: auto;
+          gap: 16px !important;
+        }
+        .kicker { font-size: 10px !important; margin-bottom: 6px !important; letter-spacing: 1.5px !important; }
+        .hero h1 { font-size: 24px !important; line-height: 1.12 !important; letter-spacing: -0.8px !important; }
+        .hero-lead { font-size: 11.5px !important; margin-top: 8px !important; line-height: 1.5 !important; }
+        .badges { margin-top: 10px !important; gap: 6px !important; }
+        .badge { padding: 4px 9px !important; font-size: 10px !important; }
+        .hero-img { padding: 4px !important; max-height: 190px !important; overflow: hidden; border-radius: 10px !important; }
+        .hero-img img { max-height: 180px !important; width: 100% !important; object-fit: contain !important; }
+
+        /* Sections layout */
+        section.section { padding: 14px 14px !important; break-inside: auto !important; }
+        section.alt { background: #EEF3FA !important; }
+        section.section .section-title {
+          font-size: 18px !important; letter-spacing: -0.4px !important;
+          break-after: avoid-page !important; page-break-after: avoid !important;
+        }
+        section.section .section-lead {
+          font-size: 11px !important; margin-top: 4px !important;
+          break-after: avoid-page !important; page-break-after: avoid !important;
+        }
+        /* Keep title+lead with the grid/content that follows */
+        .adv-grid, .roles-grid, .cases-grid, .tech-grid, .modules-wrap {
+          break-before: avoid-page !important;
+        }
+
+        /* Module rows: compact side-by-side */
         .module-row, .module-row.flip {
           display: flex !important;
           flex-direction: row !important;
-          gap: 18px !important;
-          padding: 10px 0 !important;
-          page-break-inside: avoid;
-          break-inside: avoid;
-          align-items: flex-start;
+          gap: 12px !important;
+          padding: 6px 0 !important;
+          margin: 4px 0 !important;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+          align-items: flex-start !important;
+          border-top: 1px dashed #E2E8F0 !important;
         }
+        .module-row:first-of-type { border-top: none !important; padding-top: 0 !important; }
         .module-shot {
-          flex: 0 0 42% !important;
-          max-width: 42% !important;
-          padding: 4px !important;
+          flex: 0 0 38% !important;
+          max-width: 38% !important;
+          padding: 3px !important;
           margin: 0 !important;
-          break-inside: avoid;
+          background: #fff !important;
+          border: 1px solid #E2E8F0 !important;
+          border-radius: 6px !important;
+          box-shadow: none !important;
         }
         .module-shot img {
-          max-height: 240px !important;
+          max-height: 140px !important;
           width: 100% !important;
-          object-fit: contain;
+          object-fit: contain !important;
+          border-radius: 3px !important;
         }
         .module-text { flex: 1 !important; min-width: 0 !important; }
-        .module-title { font-size: 18px !important; margin-top: 2px; }
-        .module-sub { font-size: 12px !important; }
-        .module-desc { font-size: 12px !important; line-height: 1.45; margin-bottom: 8px; }
-        .module-section-title { font-size: 9px !important; margin: 4px 0 4px; letter-spacing: 1px; }
-        .benefits li, .steps li { font-size: 11.5px !important; margin-bottom: 4px !important; line-height: 1.35; }
-        .module-icon { width: 40px !important; height: 40px !important; font-size: 20px !important; border-radius: 10px !important; }
-        .module-head { margin-bottom: 10px !important; gap: 10px !important; }
-        .steps .step-num { width: 18px !important; height: 18px !important; font-size: 10px !important; }
+        .module-head { margin-bottom: 4px !important; gap: 6px !important; }
+        .module-icon { width: 28px !important; height: 28px !important; font-size: 14px !important; border-radius: 6px !important; border-width: 1.5px !important; }
+        .module-num { font-size: 9px !important; letter-spacing: 0.8px !important; }
+        .module-title { font-size: 13px !important; letter-spacing: -0.3px !important; margin-top: 0 !important; }
+        .module-sub { font-size: 9.5px !important; margin-top: 0 !important; }
+        .module-desc { font-size: 10px !important; line-height: 1.38 !important; margin-bottom: 4px !important; }
+        .module-section-title { font-size: 8px !important; margin: 2px 0 2px !important; letter-spacing: 0.8px !important; }
+        .benefits li, .steps li { font-size: 9.5px !important; margin-bottom: 2px !important; line-height: 1.28 !important; }
+        .benefits .dot { width: 5px !important; height: 5px !important; }
+        .steps .step-num { width: 13px !important; height: 13px !important; font-size: 8px !important; line-height: 13px !important; }
 
-        /* Grids compact */
-        .adv-grid, .roles-grid, .cases-grid, .tech-grid {
-          gap: 10px !important; margin-top: 14px !important;
-        }
+        /* Grids compact 3-col */
+        .adv-grid { grid-template-columns: repeat(3, 1fr) !important; gap: 8px !important; margin-top: 10px !important; }
+        .roles-grid { grid-template-columns: repeat(3, 1fr) !important; gap: 8px !important; margin-top: 10px !important; }
+        .cases-grid { grid-template-columns: repeat(3, 1fr) !important; gap: 8px !important; margin-top: 10px !important; }
+        /* Tech: 6 columns = single row → saves ~half a page */
+        .tech-grid { grid-template-columns: repeat(6, 1fr) !important; gap: 6px !important; margin-top: 10px !important; }
+
         .adv-card, .role-card, .case-card, .tech-card {
-          padding: 14px !important; page-break-inside: avoid;
+          padding: 10px !important;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+          border-radius: 10px !important;
+          background: #fff !important;
         }
-        .role-badge, .adv-icon, .case-icon {
-          width: 36px !important; height: 36px !important; font-size: 18px !important; margin-bottom: 8px !important;
+        .adv-icon, .role-badge, .case-icon {
+          width: 30px !important; height: 30px !important; font-size: 15px !important;
+          margin-bottom: 6px !important; border-radius: 8px !important;
         }
-        .adv-card h3, .role-card h3, .case-card h3 { font-size: 14px !important; margin-bottom: 6px !important; }
-        .adv-card p { font-size: 12px !important; line-height: 1.4; }
-        .role-card li, .case-card li { font-size: 11.5px !important; margin-bottom: 4px !important; }
-        .tech-card h3 { font-size: 13px !important; }
-        .tech-card p { font-size: 11.5px !important; }
+        .adv-card h3, .role-card h3, .case-card h3 {
+          font-size: 12px !important; margin-bottom: 4px !important;
+        }
+        .adv-card p { font-size: 10.5px !important; line-height: 1.38 !important; }
+        .role-card li, .case-card li {
+          font-size: 10px !important; margin-bottom: 3px !important; line-height: 1.32 !important; gap: 4px !important;
+        }
+        .case-card li::before {
+          width: 15px !important; height: 15px !important; line-height: 15px !important; font-size: 9px !important;
+        }
+        .tech-card .tech-icon { font-size: 18px !important; margin-bottom: 3px !important; }
+        .tech-card h3 { font-size: 11px !important; margin-top: 2px !important; }
+        .tech-card p { font-size: 10px !important; line-height: 1.35 !important; margin-top: 3px !important; }
 
-        .cta { background: #EEF3FA !important; color: #0B2545 !important; margin: 16px 14px !important; padding: 18px !important; }
-        .cta h2 { color: #0B2545 !important; font-size: 18px; }
-        .cta p { color: #475569 !important; font-size: 12px; margin: 6px auto 12px; }
-        .footer { padding: 10px !important; }
+        /* Keep entire grids whole when possible, but allow individual cards to flow
+           to the next page (never split a card, just move it whole). */
+        .adv-grid, .roles-grid {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+        /* cases-grid and tech-grid can span pages – keeps previous module rows on same page. */
+        .cases-grid, .tech-grid { break-inside: auto !important; }
+
+        /* Hide CTA on print - redundant in PDF (no clickable buttons) */
+        .cta { display: none !important; }
+        .footer {
+          padding: 6px 8px !important;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+          page-break-before: avoid !important;
+          break-before: avoid !important;
+        }
+        .footer p { font-size: 10px !important; display: inline !important; }
+        .footer small { font-size: 9px !important; display: inline !important; margin-left: 8px !important; margin-top: 0 !important; }
+
+        /* Tech section: compact enough to stay with previous section when possible */
+        section.section-tech {
+          padding: 10px 14px !important;
+          page-break-before: avoid !important;
+          break-before: avoid !important;
+        }
+        section.section-tech .section-title { font-size: 15px !important; margin-bottom: 2px !important; }
+        section.section-tech .section-lead { font-size: 10px !important; margin-top: 2px !important; }
+        .tech-card { padding: 8px 6px !important; text-align: center; }
+        .tech-card .tech-icon { font-size: 16px !important; margin-bottom: 2px !important; }
+        .tech-card h3 { font-size: 10px !important; margin-top: 2px !important; }
+        .tech-card p { font-size: 9px !important; line-height: 1.3 !important; margin-top: 2px !important; }
+
+        /* Never break inside small key elements */
+        h1, h2, h3, h4 { break-after: avoid !important; page-break-after: avoid !important; }
+        h1, h2, h3, h4, p, li { break-inside: avoid !important; orphans: 3; widows: 3; }
       }
 
       /* Mobile */
@@ -754,7 +854,7 @@ def build_portfolio_html() -> str:
   </div>
 </section>
 
-<section class="section">
+<section class="section section-tech">
   <h2 class="section-title">Tecnología</h2>
   <p class="section-lead">Un stack moderno, probado y mantenible.</p>
   <div class="tech-grid">
