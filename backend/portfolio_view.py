@@ -354,6 +354,26 @@ def build_portfolio_html() -> str:
         border-radius: 16px; box-shadow: 0 2px 20px rgba(15,23,42,0.05);
       }
 
+      /* Video demo */
+      .demo-video {
+        max-width: 1100px; margin: 0 auto 20px; padding: 0 32px;
+      }
+      .demo-video-wrap {
+        position: relative; padding-top: 56.25%; /* 16:9 */
+        border-radius: 16px; overflow: hidden;
+        background: #0B2545;
+        box-shadow: 0 8px 30px rgba(15,23,42,0.15);
+        border: 1px solid #E2E8F0;
+      }
+      .demo-video-wrap video {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        display: block; background: #0B2545;
+      }
+      .demo-caption {
+        text-align: center; margin-top: 12px;
+        font-size: 13px; color: #475569; font-weight: 600;
+      }
+
       /* Sections */
       section.section { padding: 56px 32px; }
       section.alt { background: #EEF3FA; }
@@ -742,6 +762,17 @@ def build_portfolio_html() -> str:
   <div class="hero-img">
     <img src="{hero_shot}" alt="Pantalla de login i-SAI"/>
   </div>
+</section>
+
+<!-- Vídeo demo -->
+<section class="demo-video no-print">
+  <div class="demo-video-wrap">
+    <video controls preload="metadata" playsinline poster="{hero_shot}">
+      <source src="/api/portfolio/demo.mp4" type="video/mp4"/>
+      Tu navegador no soporta vídeo HTML5.
+    </video>
+  </div>
+  <p class="demo-caption">🎬 Demo visual de i-SAI — 36 segundos</p>
 </section>
 
 <section class="section">

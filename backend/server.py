@@ -1,5 +1,5 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Query, UploadFile, File
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Query, UploadFile, File, Request
+from fastapi.responses import RedirectResponse, HTMLResponse, FileResponse, StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 import re
@@ -2114,11 +2114,54 @@ async def sat_client_import(
 # Portfolio — self-contained HTML presentation for clients.
 # -----------------------------------------------------------------------------
 from portfolio_view import build_portfolio_html  # noqa: E402
+from pathlib import Path as _Path  # noqa: E402
 
 @api_router.get("/portfolio", response_class=HTMLResponse)
 async def portfolio_html():
     """Public URL that renders the i-SAI portfolio (no auth, self-contained HTML)."""
     return HTMLResponse(content=build_portfolio_html(), media_type="text/html")
+
+
+@api_router.get("/portfolio/demo.mp4")
+async def portfolio_demo_video(request: Request):
+    """Serve the demo video with HTTP byte-range support (needed by <video>)."""
+    p = _Path(__file__).resolve().parent.parent / "frontend" / "assets" / "portfolio" / "demo.mp4"
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="demo video not built")
+    file_size = p.stat().st_size
+    range_header = request.headers.get("range")
+    if range_header:
+        # Basic single-range support: "bytes=<start>-<end>"
+        try:
+            units, rng = range_header.split("=", 1)
+            start_s, end_s = rng.split("-", 1)
+            start = int(start_s) if start_s else 0
+            end = int(end_s) if end_s else file_size - 1
+        except Exception:
+            start, end = 0, file_size - 1
+        end = min(end, file_size - 1)
+        length = end - start + 1
+
+        def iterfile():
+            with open(p, "rb") as f:
+                f.seek(start)
+                remaining = length
+                while remaining > 0:
+                    chunk = f.read(min(1024 * 64, remaining))
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+                    yield chunk
+
+        headers = {
+            "Content-Range": f"bytes {start}-{end}/{file_size}",
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(length),
+            "Content-Type": "video/mp4",
+        }
+        return StreamingResponse(iterfile(), status_code=206, headers=headers)
+
+    return FileResponse(p, media_type="video/mp4", headers={"Accept-Ranges": "bytes"})
 
 
 app.include_router(api_router)
