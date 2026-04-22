@@ -170,17 +170,40 @@ export default function CalendarScreen() {
   const selectAll = () => { const n = new Set<string>(); setDisabledUserIds(n); persistFilter(n); };
   const selectNone = () => { const n = new Set<string>(allUsers.map((u) => u.id)); setDisabledUserIds(n); persistFilter(n); };
 
-  // Apply user filter. We include events that have NO assigned users
-  // (so admins don't lose sight of unassigned events) OR at least one assignee
-  // NOT in disabled set.
+  // Apply user filter AND expand each event into one visual card per
+  // assigned technician. This way, if an event has two assignees, it shows
+  // up TWICE in the calendar (each with its own color/name) so every tech
+  // gets their own lane. The base event id is preserved as the id prefix
+  // (everything before "::u:") so edits/moves/deletes still hit the one
+  // real record in MongoDB.
   const filteredEvents = useMemo(() => {
     const adminRole = me?.role === "admin";
-    if (!adminRole || disabledUserIds.size === 0) return events;
-    return events.filter((ev) => {
+    const out: EventT[] = [];
+    for (const ev of events) {
       const ids = ev.assigned_user_ids || [];
-      if (ids.length === 0) return true; // keep unassigned
-      return ids.some((id) => !disabledUserIds.has(id));
-    });
+      const users = ev.assigned_users || [];
+      // Admin filter: hide events whose every assignee is disabled.
+      if (adminRole && disabledUserIds.size > 0 && ids.length > 0) {
+        if (!ids.some((id) => !disabledUserIds.has(id))) continue;
+      }
+      if (users.length <= 1) {
+        // 0 or 1 assignees → no expansion needed.
+        out.push(ev);
+        continue;
+      }
+      // Multiple assignees → one virtual card per user. Hide the ones
+      // whose user is disabled via the admin user-filter.
+      for (const u of users) {
+        if (adminRole && disabledUserIds.has(u.id)) continue;
+        out.push({
+          ...ev,
+          id: `${ev.id}::u:${u.id}`,
+          assigned_user_ids: [u.id],
+          assigned_users: [u],
+        });
+      }
+    }
+    return out;
   }, [events, disabledUserIds, me?.role]);
 
   // Range to fetch
@@ -314,14 +337,29 @@ export default function CalendarScreen() {
   }, [view, anchor]);
 
   const moveEvent = async (ev: EventT, newStart: Date, newEnd: Date) => {
-    // Optimistic update
-    setEvents((arr) => arr.map((e) => e.id === ev.id ? { ...e, start_at: newStart.toISOString(), end_at: newEnd.toISOString() } : e));
+    // Strip any virtual suffixes (":recurrence-date" and/or "::u:<userId>")
+    // to get the real MongoDB id.
+    const baseId = String(ev.id).split("::u:")[0].split(":")[0];
+    // Optimistic update — also update any other virtual copies of the same
+    // base event so all per-technician cards move together on screen.
+    setEvents((arr) => arr.map((e) => {
+      const eBase = String(e.id).split("::u:")[0].split(":")[0];
+      return eBase === baseId ? { ...e, start_at: newStart.toISOString(), end_at: newEnd.toISOString() } : e;
+    }));
     try {
-      await api.updateEvent(ev.id, { start_at: newStart.toISOString(), end_at: newEnd.toISOString() });
+      await api.updateEvent(baseId, { start_at: newStart.toISOString(), end_at: newEnd.toISOString() });
     } catch (e: any) {
       Alert.alert("Error", e.message);
       load();
     }
+  };
+
+  // When a per-technician virtual card is tapped, resolve the real event
+  // from the underlying events[] so the modal edits the correct row.
+  const openTappedEvent = (ev: EventT) => {
+    const baseId = String(ev.id).split("::u:")[0].split(":")[0];
+    const real = events.find((e) => String(e.id).split(":")[0] === baseId) || ev;
+    setOpenEvent(real);
   };
 
   return (
@@ -444,7 +482,7 @@ export default function CalendarScreen() {
           isAdmin={isAdmin}
           isToday={sameDay(anchor, now)}
           onCreate={(startMin, endMin) => setCreateRange({ day: anchor, startMin, endMin })}
-          onTapEvent={setOpenEvent}
+          onTapEvent={openTappedEvent}
           onMoveEvent={moveEvent}
         />
       ) : (
@@ -454,7 +492,7 @@ export default function CalendarScreen() {
           isAdmin={isAdmin}
           now={now}
           onCreate={(day, startMin, endMin) => setCreateRange({ day, startMin, endMin })}
-          onTapEvent={setOpenEvent}
+          onTapEvent={openTappedEvent}
           onMoveEvent={moveEvent}
           onSelectDay={(d) => { setAnchor(d); setView("day"); }}
         />
@@ -1572,9 +1610,11 @@ function EventDetailsModal({
   const [managerId, setManagerId] = useState<string | null>(event.manager_id || null);
   const [managers, setManagers] = useState<Technician[]>([]);
   const [showManagerList, setShowManagerList] = useState(false);
-  // Assigned technicians (multi-select) — now editable post-creation.
+  // Assigned technicians (multi-select) — editable post-creation. Uses a
+  // dropdown toggle, matching the "Gestor del proyecto" UX.
   const [assignedIds, setAssignedIds] = useState<string[]>(event.assigned_user_ids || []);
   const [techs, setTechs] = useState<Technician[]>([]);
+  const [showTechList, setShowTechList] = useState(false);
   // Work-status selector (completed / pending_completion / in_progress)
   // and technician's observations ("seguimiento"). Stored on the event
   // itself; when changed, the backend notifies the event's manager.
@@ -1891,40 +1931,101 @@ function EventDetailsModal({
                 </View>
               </View>
             )}
-            {/* Técnicos asignados — editable por admin, read-only para resto */}
+            {/* Técnicos asignados — editable por admin, read-only para resto.
+                Usa un dropdown idéntico al de "Gestor del proyecto" para
+                mantener coherencia visual. Permite seleccionar varios. */}
             <Text style={s.mLabel}>Asignado a</Text>
             {editing && isAdmin ? (
               <>
-                <Text style={{ fontSize: 11, color: COLORS.textSecondary, marginBottom: 6 }}>
-                  {assignedIds.length === 0
-                    ? "Si no seleccionas nadie, solo lo verán los admins"
-                    : `${assignedIds.length} seleccionado${assignedIds.length !== 1 ? "s" : ""}`}
-                </Text>
-                <View style={{ gap: 6 }}>
-                  {techs.length === 0 ? (
-                    <Text style={{ color: COLORS.textDisabled, fontStyle: "italic" }}>
-                      Cargando técnicos...
-                    </Text>
-                  ) : techs.map((t) => {
-                    const on = assignedIds.includes(t.id);
-                    return (
-                      <TouchableOpacity
-                        key={t.id}
-                        testID={`assign-edit-${t.id}`}
-                        style={[s.techRow, on && { backgroundColor: COLORS.highlightBg, borderColor: COLORS.primary }]}
-                        onPress={() => toggleAssign(t.id)}
-                      >
-                        <View style={[s.checkBox, on && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}>
-                          {on && <Ionicons name="checkmark" size={16} color="#fff" />}
+                <TouchableOpacity
+                  testID="btn-pick-techs-edit"
+                  style={s.pickMatBtn}
+                  onPress={() => setShowTechList((v) => !v)}
+                >
+                  <Ionicons name="people-outline" size={20} color={COLORS.primary} />
+                  <Text
+                    style={{
+                      color: assignedIds.length > 0 ? COLORS.navy : COLORS.primary,
+                      fontWeight: "700",
+                      flex: 1,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {assignedIds.length === 0
+                      ? "Seleccionar técnicos"
+                      : assignedIds.length === 1
+                        ? (techs.find((t) => t.id === assignedIds[0])?.name
+                            || event.assigned_users?.find((u) => u.id === assignedIds[0])?.name
+                            || event.assigned_users?.find((u) => u.id === assignedIds[0])?.email
+                            || "1 técnico")
+                        : `${assignedIds.length} técnicos seleccionados`}
+                  </Text>
+                  <Ionicons name={showTechList ? "chevron-up" : "chevron-down"} size={18} color={COLORS.primary} />
+                </TouchableOpacity>
+                {showTechList && (
+                  <View style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, marginTop: 6, overflow: "hidden" }}>
+                    {techs.length === 0 ? (
+                      <View style={{ padding: 12 }}>
+                        <Text style={{ color: COLORS.textSecondary, fontStyle: "italic" }}>
+                          Cargando técnicos...
+                        </Text>
+                      </View>
+                    ) : techs.map((t, idx) => {
+                      const on = assignedIds.includes(t.id);
+                      return (
+                        <TouchableOpacity
+                          key={t.id}
+                          testID={`assign-edit-${t.id}`}
+                          style={[
+                            s.techRow,
+                            {
+                              borderRadius: 0,
+                              borderWidth: 0,
+                              borderBottomWidth: idx === techs.length - 1 ? 0 : 1,
+                              borderBottomColor: COLORS.border,
+                            },
+                            on && { backgroundColor: COLORS.highlightBg },
+                          ]}
+                          onPress={() => toggleAssign(t.id)}
+                        >
+                          <View style={[s.checkBox, on && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}>
+                            {on && <Ionicons name="checkmark" size={16} color="#fff" />}
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={s.techName}>{t.name}</Text>
+                            <Text style={s.techEmail}>{t.email}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+                {/* Chips summary for the selected techs, shown below the
+                    dropdown so the admin has a clear glance of selections. */}
+                {assignedIds.length > 0 && (
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                    {assignedIds.map((id) => {
+                      const t = techs.find((x) => x.id === id)
+                        || event.assigned_users?.find((u) => u.id === id);
+                      if (!t) return null;
+                      return (
+                        <View key={id} style={s.techChip}>
+                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: (t as any).color || COLORS.primary }} />
+                          <Text style={s.techChipText} numberOfLines={1}>
+                            {(t as any).name || (t as any).email}
+                          </Text>
+                          <TouchableOpacity
+                            hitSlop={8}
+                            onPress={() => toggleAssign(id)}
+                            testID={`assign-chip-remove-${id}`}
+                          >
+                            <Ionicons name="close" size={14} color={COLORS.textSecondary} />
+                          </TouchableOpacity>
                         </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={s.techName}>{t.name}</Text>
-                          <Text style={s.techEmail}>{t.email}</Text>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                      );
+                    })}
+                  </View>
+                )}
               </>
             ) : (
               event.assigned_users && event.assigned_users.length > 0 ? (
@@ -2464,6 +2565,13 @@ const s = StyleSheet.create({
     flexDirection: "row", alignItems: "center", gap: 8,
     padding: 8, backgroundColor: COLORS.bg, borderRadius: 8,
   },
+  techChip: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14,
+    backgroundColor: COLORS.primarySoft,
+    borderWidth: 1, borderColor: COLORS.primary,
+  },
+  techChipText: { fontSize: 12, fontWeight: "700", color: COLORS.navy, maxWidth: 140 },
   dtRow: { marginTop: 8 },
   dtDouble: { flexDirection: "row", gap: 8 },
   dtBtn: {
