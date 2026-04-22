@@ -328,11 +328,11 @@ backend_managers_tasks:
 
   - task: "Events CRUD with manager_id field"
     implemented: true
-    working: false
+    working: true
     file: "/app/backend/server.py"
-    stuck_count: 1
+    stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
         -working: false
         -agent: "testing"
@@ -368,6 +368,27 @@ backend_managers_tasks:
             Suggested fix: use `payload.dict(exclude_unset=True)` and only
             skip keys NOT present in the request; or special-case manager_id.
             Cleanup executed (all test events/users/budgets deleted).
+        -working: true
+        -agent: "testing"
+        -comment: |
+          RETEST PASS (24/24 assertions) via /app/backend_test_patch_clear.py
+          against http://localhost:8001/api after main applied the
+          `payload.dict(exclude_unset=True)` fix in update_event() (server.py
+          ~line 971). Verified the exact scenarios from the review:
+          1. PATCH {"manager_id": null} → 200; response.manager_id=null and
+             response.manager=null; GET /api/events re-read confirms the
+             event persists with manager_id=null and manager=null.
+          2. PATCH {"description": null} → 200 and response.description=null
+             (same mechanism works for any Optional field).
+          3. PATCH {} → 400 with detail "Nada que actualizar" (preserved).
+          4. PATCH {"title": "nuevo"} → 200 and title updated as expected.
+          5. PATCH {"assigned_user_ids": []} → 200; both response.assigned_user_ids
+             and response.assigned_users are []; non-admin users now see no
+             occurrences (admins-only visibility).
+          6. PATCH {"recurrence": null} → 200; response.recurrence=null and
+             GET over a 60-day window returns exactly 1 occurrence (no
+             expansion anymore).
+          Cleanup executed (6 test events deleted).
 
 agent_communication:
     -agent: "main"

@@ -967,10 +967,13 @@ async def update_event(eid: str, payload: EventPatch, admin: dict = Depends(curr
     # Strip virtual-occurrence suffix if present
     real_id = eid.split(":")[0]
     upd: dict = {}
-    for k, v in payload.dict().items():
-        if v is None: continue
+    # Use exclude_unset so explicit nulls ARE applied (to clear optional fields).
+    data = payload.dict(exclude_unset=True)
+    for k, v in data.items():
         if k == "recurrence":
-            upd["recurrence"] = v  # dict from pydantic
+            upd["recurrence"] = v  # dict from pydantic or None (clears)
+        elif k == "assigned_user_ids":
+            upd[k] = v or []
         else:
             upd[k] = v
     if not upd:
