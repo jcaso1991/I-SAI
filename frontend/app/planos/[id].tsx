@@ -407,7 +407,7 @@ export default function PlanEditor() {
     }
   };
 
-  const saveBackToEvent = async () => {
+  const saveBackToEvent = async (andGoBack?: boolean) => {
     if (!sourceEventId || !sourceAttachmentId) return;
     try {
       setSelectedId(null);
@@ -439,6 +439,9 @@ export default function PlanEditor() {
         finalFilename = baseName.endsWith(".pdf") ? baseName : `${baseName}.pdf`;
       }
 
+      // Save shapes state to the plan first (autosave)
+      try { await api.updatePlan(id, { data: { shapes, ...(background ? { background } : {}) } } as any); } catch {}
+
       // 3) Delete old attachment
       await api.deleteEventAttachment(sourceEventId, sourceAttachmentId);
       // 4) Upload new attachment
@@ -451,7 +454,12 @@ export default function PlanEditor() {
       await api.updatePlan(id, { source_attachment_id: newAtt.id } as any);
       setSourceAttachmentId(newAtt.id);
 
-      Alert.alert("✅ Guardado", `El adjunto "${finalFilename}" se ha actualizado en el evento.`);
+      if (andGoBack) {
+        // Navigate back to calendar
+        router.replace(`/calendario?openEvent=${sourceEventId}`);
+      } else {
+        Alert.alert("✅ Guardado", `El adjunto "${finalFilename}" se ha actualizado en el evento.`);
+      }
     } catch (e: any) {
       Alert.alert("Error", e.message || "No se pudo guardar en el evento");
     }
@@ -487,13 +495,23 @@ export default function PlanEditor() {
           <Ionicons name="document-outline" size={22} color={COLORS.navy} />
         </TouchableOpacity>
         {sourceEventId && sourceAttachmentId && (
-          <TouchableOpacity
-            testID="btn-save-to-event"
-            style={[s.iconBtn, { backgroundColor: COLORS.primary }]}
-            onPress={saveBackToEvent}
-          >
-            <Ionicons name="cloud-upload-outline" size={22} color="#fff" />
-          </TouchableOpacity>
+          <>
+            <TouchableOpacity
+              testID="btn-save-to-event"
+              style={[s.iconBtn, { backgroundColor: COLORS.bg, borderWidth: 2, borderColor: COLORS.primary }]}
+              onPress={() => saveBackToEvent(false)}
+            >
+              <Ionicons name="cloud-upload-outline" size={22} color={COLORS.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              testID="btn-save-and-back"
+              style={[s.saveBackBtn]}
+              onPress={() => saveBackToEvent(true)}
+            >
+              <Ionicons name="checkmark-circle" size={18} color="#fff" />
+              <Text style={s.saveBackBtnTxt}>Guardar y volver</Text>
+            </TouchableOpacity>
+          </>
         )}
       </View>
 
@@ -983,7 +1001,13 @@ const s = StyleSheet.create({
     paddingHorizontal: 4, paddingVertical: 8, backgroundColor: COLORS.surface,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
-  iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 10 },
+  saveBackBtn: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: 12, height: 40, borderRadius: 10,
+    backgroundColor: COLORS.primary, marginLeft: 4,
+  },
+  saveBackBtnTxt: { color: "#fff", fontWeight: "800", fontSize: 13, letterSpacing: 0.3 },
   headerTitle: { fontSize: 16, fontWeight: "800", color: COLORS.text },
   headerSub: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
   toolbar: {

@@ -5,7 +5,7 @@ import {
   FlatList, KeyboardAvoidingView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../src/api";
 import BottomNav from "../src/BottomNav";
@@ -96,6 +96,7 @@ function yFromDate(d: Date): number {
 export default function CalendarScreen() {
   const router = useRouter();
   const { isWide } = useBreakpoint();
+  const params = useLocalSearchParams<{ openEvent?: string }>();
   const [me, setMe] = useState<any>(null);
   const [view, setView] = useState<ViewMode>("week");
   const [anchor, setAnchor] = useState<Date>(new Date());
@@ -151,6 +152,18 @@ export default function CalendarScreen() {
     else if (view === "week") setAnchor(addDays(anchor, 7));
     else setAnchor(addMonths(anchor, 1));
   };
+
+  // If we arrived with ?openEvent=..., open that event's modal automatically
+  useEffect(() => {
+    if (!params.openEvent || events.length === 0) return;
+    // Find the base event (strip any :date suffix)
+    const targetId = String(params.openEvent).split(":")[0];
+    const match = events.find((e) => (e.id.split(":")[0] === targetId));
+    if (match) setOpenEvent(match);
+    // Clean the param after using it
+    // @ts-ignore: setParams may not exist in older versions
+    router.setParams?.({ openEvent: undefined });
+  }, [params.openEvent, events]);
 
   // Keyboard shortcuts on web (arrow keys + D/S/M + T for today)
   useEffect(() => {
