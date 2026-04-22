@@ -1572,6 +1572,9 @@ function EventDetailsModal({
   const [managerId, setManagerId] = useState<string | null>(event.manager_id || null);
   const [managers, setManagers] = useState<Technician[]>([]);
   const [showManagerList, setShowManagerList] = useState(false);
+  // Assigned technicians (multi-select) — now editable post-creation.
+  const [assignedIds, setAssignedIds] = useState<string[]>(event.assigned_user_ids || []);
+  const [techs, setTechs] = useState<Technician[]>([]);
   // Work-status selector (completed / pending_completion / in_progress)
   // and technician's observations ("seguimiento"). Stored on the event
   // itself; when changed, the backend notifies the event's manager.
@@ -1583,8 +1586,13 @@ function EventDetailsModal({
   useEffect(() => {
     if (isAdmin) {
       api.listManagers().then(setManagers).catch(() => {});
+      api.listTechnicians().then(setTechs).catch(() => {});
     }
   }, [isAdmin]);
+
+  const toggleAssign = (id: string) => {
+    setAssignedIds((arr) => arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]);
+  };
 
   const doDelete = () => {
     Alert.alert("Eliminar evento", "¿Seguro?", [
@@ -1609,6 +1617,7 @@ function EventDetailsModal({
         start_at: start.toISOString(),
         end_at: end.toISOString(),
         manager_id: managerId ?? null,
+        assigned_user_ids: assignedIds,
         status,
         seguimiento: seguimiento || undefined,
       } as any);
@@ -1882,9 +1891,43 @@ function EventDetailsModal({
                 </View>
               </View>
             )}
-            {event.assigned_users && event.assigned_users.length > 0 && (
+            {/* Técnicos asignados — editable por admin, read-only para resto */}
+            <Text style={s.mLabel}>Asignado a</Text>
+            {editing && isAdmin ? (
               <>
-                <Text style={s.mLabel}>Asignado a</Text>
+                <Text style={{ fontSize: 11, color: COLORS.textSecondary, marginBottom: 6 }}>
+                  {assignedIds.length === 0
+                    ? "Si no seleccionas nadie, solo lo verán los admins"
+                    : `${assignedIds.length} seleccionado${assignedIds.length !== 1 ? "s" : ""}`}
+                </Text>
+                <View style={{ gap: 6 }}>
+                  {techs.length === 0 ? (
+                    <Text style={{ color: COLORS.textDisabled, fontStyle: "italic" }}>
+                      Cargando técnicos...
+                    </Text>
+                  ) : techs.map((t) => {
+                    const on = assignedIds.includes(t.id);
+                    return (
+                      <TouchableOpacity
+                        key={t.id}
+                        testID={`assign-edit-${t.id}`}
+                        style={[s.techRow, on && { backgroundColor: COLORS.highlightBg, borderColor: COLORS.primary }]}
+                        onPress={() => toggleAssign(t.id)}
+                      >
+                        <View style={[s.checkBox, on && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}>
+                          {on && <Ionicons name="checkmark" size={16} color="#fff" />}
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.techName}>{t.name}</Text>
+                          <Text style={s.techEmail}>{t.email}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            ) : (
+              event.assigned_users && event.assigned_users.length > 0 ? (
                 <View style={{ gap: 4 }}>
                   {event.assigned_users.map((u) => (
                     <View key={u.id} style={s.assignedRow}>
@@ -1893,7 +1936,9 @@ function EventDetailsModal({
                     </View>
                   ))}
                 </View>
-              </>
+              ) : (
+                <Text style={[s.descText, { color: COLORS.textDisabled }]}>Sin técnicos asignados</Text>
+              )
             )}
 
             {/* Gestor del proyecto */}
