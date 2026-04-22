@@ -25,6 +25,9 @@ export default function BudgetEditor() {
   const [saving, setSaving] = useState(false);
   const [budgetId, setBudgetId] = useState<string | null>(isNew ? null : String(params.id));
   const [defaultEquipos, setDefaultEquipos] = useState<string[]>([]);
+  // Track which equipo row has its combo dropdown open, so we can lift
+  // its zIndex above the following rows and it doesn't get hidden.
+  const [openEqIdx, setOpenEqIdx] = useState<number | null>(null);
 
   // Form state
   const [f, setF] = useState<any>({
@@ -241,22 +244,31 @@ export default function BudgetEditor() {
             <Text style={[s.eqHeaderTxt, { flex: 1.5 }]}>OBSERV.</Text>
             <View style={{ width: 28 }} />
           </View>
-          {f.equipos.map((e: Equipo, i: number) => (
-            <View key={i} style={s.eqRow}>
-              <ElementoCombo
-                value={e.elemento}
-                onChange={(v) => setEq(i, "elemento", v)}
-                suggestions={defaultEquipos}
-                style={{ flex: 2 }}
-              />
-              <TextInput value={e.cantidad} onChangeText={(v) => setEq(i, "cantidad", v)} style={[s.eqInp, { flex: 0.6 }]} placeholder="0" placeholderTextColor={COLORS.textDisabled} keyboardType="number-pad" />
-              <TextInput value={e.ubicacion} onChangeText={(v) => setEq(i, "ubicacion", v)} style={[s.eqInp, { flex: 1.2 }]} placeholder="—" placeholderTextColor={COLORS.textDisabled} />
-              <TextInput value={e.observaciones} onChangeText={(v) => setEq(i, "observaciones", v)} style={[s.eqInp, { flex: 1.5 }]} placeholder="—" placeholderTextColor={COLORS.textDisabled} />
-              <TouchableOpacity onPress={() => delEq(i)} style={{ width: 28, alignItems: "center" }}>
-                <Ionicons name="close" size={18} color={COLORS.errorText} />
-              </TouchableOpacity>
-            </View>
-          ))}
+          {f.equipos.map((e: Equipo, i: number) => {
+            const isOpen = openEqIdx === i;
+            // Total rows so we can compute decreasing zIndex (each row higher than the next).
+            // When a row's combo is open, we temporarily promote it to the top.
+            const baseZ = (f.equipos.length - i) + 1;
+            const rowZ = isOpen ? 1000 : baseZ;
+            return (
+              <View key={i} style={[s.eqRow, { zIndex: rowZ, position: "relative" }]}>
+                <ElementoCombo
+                  value={e.elemento}
+                  onChange={(v) => setEq(i, "elemento", v)}
+                  suggestions={defaultEquipos}
+                  isOpen={isOpen}
+                  onOpenChange={(v) => setOpenEqIdx(v ? i : (openEqIdx === i ? null : openEqIdx))}
+                  style={{ flex: 2 }}
+                />
+                <TextInput value={e.cantidad} onChangeText={(v) => setEq(i, "cantidad", v)} style={[s.eqInp, { flex: 0.6 }]} placeholder="0" placeholderTextColor={COLORS.textDisabled} keyboardType="number-pad" />
+                <TextInput value={e.ubicacion} onChangeText={(v) => setEq(i, "ubicacion", v)} style={[s.eqInp, { flex: 1.2 }]} placeholder="—" placeholderTextColor={COLORS.textDisabled} />
+                <TextInput value={e.observaciones} onChangeText={(v) => setEq(i, "observaciones", v)} style={[s.eqInp, { flex: 1.5 }]} placeholder="—" placeholderTextColor={COLORS.textDisabled} />
+                <TouchableOpacity onPress={() => delEq(i)} style={{ width: 28, alignItems: "center" }}>
+                  <Ionicons name="close" size={18} color={COLORS.errorText} />
+                </TouchableOpacity>
+              </View>
+            );
+          })}
           <TouchableOpacity style={s.addRow} onPress={addEq}>
             <Ionicons name="add" size={18} color={COLORS.primary} />
             <Text style={s.addRowTxt}>Añadir fila</Text>
@@ -329,28 +341,29 @@ function Check({ label, value, onChange }: any) {
  * Combobox editable: texto libre + botón desplegable con sugerencias.
  * El usuario puede escribir manualmente o elegir uno de los preestablecidos.
  */
-function ElementoCombo({ value, onChange, suggestions, style }: {
+function ElementoCombo({ value, onChange, suggestions, style, isOpen, onOpenChange }: {
   value: string;
   onChange: (v: string) => void;
   suggestions: string[];
   style?: any;
+  isOpen: boolean;
+  onOpenChange: (v: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
   const q = (value || "").toLowerCase().trim();
   const filtered = q
     ? suggestions.filter((it) => it.toLowerCase().includes(q))
     : suggestions;
-  const showList = open && filtered.length > 0;
+  const showList = isOpen && filtered.length > 0;
 
   return (
-    <View style={[{ position: "relative", zIndex: open ? 50 : 1 }, style]}>
+    <View style={[{ position: "relative", zIndex: isOpen ? 50 : 1 }, style]}>
       <View style={{ flexDirection: "row", alignItems: "center" }}>
         <TextInput
           testID="elemento-input"
           value={value}
-          onChangeText={(v) => { onChange(v); if (v.length > 0 && !open) setOpen(true); }}
-          onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 200)}
+          onChangeText={(v) => { onChange(v); if (v.length > 0 && !isOpen) onOpenChange(true); }}
+          onFocus={() => onOpenChange(true)}
+          onBlur={() => setTimeout(() => onOpenChange(false), 200)}
           style={[s.eqInp, { flex: 1, paddingRight: 28 }]}
           placeholder="Elemento (escribir o elegir…)"
           placeholderTextColor={COLORS.textDisabled}
@@ -358,9 +371,9 @@ function ElementoCombo({ value, onChange, suggestions, style }: {
         <TouchableOpacity
           testID="elemento-dropdown"
           style={{ position: "absolute", right: 2, padding: 4 }}
-          onPress={() => setOpen((v) => !v)}
+          onPress={() => onOpenChange(!isOpen)}
         >
-          <Ionicons name={open ? "chevron-up" : "chevron-down"} size={18} color={COLORS.primary} />
+          <Ionicons name={isOpen ? "chevron-up" : "chevron-down"} size={18} color={COLORS.primary} />
         </TouchableOpacity>
       </View>
       {showList && (
@@ -374,7 +387,7 @@ function ElementoCombo({ value, onChange, suggestions, style }: {
               <TouchableOpacity
                 key={idx}
                 style={s.comboItem}
-                onPress={() => { onChange(it); setOpen(false); }}
+                onPress={() => { onChange(it); onOpenChange(false); }}
               >
                 <Text style={s.comboItemTxt}>{it}</Text>
               </TouchableOpacity>
@@ -473,7 +486,7 @@ const s = StyleSheet.create({
   headerTitle: { flex: 1, fontSize: 17, fontWeight: "800", color: COLORS.text },
   iconBtn: { width: 40, height: 40, borderRadius: 10, backgroundColor: COLORS.bg, alignItems: "center", justifyContent: "center" },
   scroll: { padding: 16, paddingBottom: 40, gap: 16 },
-  section: { backgroundColor: COLORS.surface, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, gap: 10 },
+  section: { backgroundColor: COLORS.surface, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, gap: 10, overflow: "visible" },
   sectionTitle: { fontSize: 12, fontWeight: "900", color: COLORS.primary, letterSpacing: 1.5 },
   lbl: { fontSize: 11, fontWeight: "800", color: COLORS.textSecondary, letterSpacing: 0.8 },
   inp: {
