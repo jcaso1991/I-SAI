@@ -668,6 +668,7 @@ function DraggableEvent({
     document.addEventListener("mouseup", upHandler);
   };
 
+  // BOTTOM resize (moves endMin; keeps startMin)
   const panResize = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => isAdmin,
     onStartShouldSetPanResponderCapture: () => isAdmin,
@@ -689,6 +690,75 @@ function DraggableEvent({
     },
     onPanResponderTerminate: () => { setHeight(baseRef.current.height); setMode("idle"); },
   }), [isAdmin, top, height, event, day, onMoveEvent]);
+
+  // TOP resize (moves startMin; keeps endMin)
+  const panResizeTop = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => isAdmin,
+    onStartShouldSetPanResponderCapture: () => isAdmin,
+    onMoveShouldSetPanResponder: () => isAdmin,
+    onMoveShouldSetPanResponderCapture: () => isAdmin,
+    onPanResponderGrant: () => { baseRef.current = { top, height }; setMode("resize"); },
+    onPanResponderMove: (_, g) => {
+      const snap = Math.round(g.dy / (HOUR_H / 4)) * (HOUR_H / 4);
+      const baseBottom = baseRef.current.top + baseRef.current.height;
+      const nt = Math.max(0, Math.min(baseBottom - HOUR_H / 4, baseRef.current.top + snap));
+      const nh = baseBottom - nt;
+      setTop(nt); setHeight(nh);
+    },
+    onPanResponderRelease: async () => {
+      const startMin = Math.round((top / HOUR_H) * 60 / 15) * 15;
+      const durMin = Math.max(15, Math.round((height / HOUR_H) * 60 / 15) * 15);
+      const newStart = dateAt(day, startMin);
+      const newEnd = new Date(newStart.getTime() + durMin * 60000);
+      await onMoveEvent(event, newStart, newEnd);
+      setMode("idle");
+    },
+    onPanResponderTerminate: () => { setTop(baseRef.current.top); setHeight(baseRef.current.height); setMode("idle"); },
+  }), [isAdmin, top, height, event, day, onMoveEvent]);
+
+  // Keep a ref of top/height so mouseup can read the latest state at submit time
+  const resizeStateRef = useRef({ top, height });
+  useEffect(() => { resizeStateRef.current = { top, height }; }, [top, height]);
+
+  // Web-only resize helpers (mouse-based, reliable on Chrome)
+  const onWebResizeDown = (edge: "top" | "bottom") => (e: any) => {
+    if (Platform.OS !== "web" || !isAdmin) return;
+    e.stopPropagation?.(); e.preventDefault?.();
+    const startY = e.clientY;
+    const baseTop = top;
+    const baseHeight = height;
+    setMode("resize");
+    const moveHandler = (ev: any) => {
+      const dy = ev.clientY - startY;
+      const snap = Math.round(dy / (HOUR_H / 4)) * (HOUR_H / 4);
+      if (edge === "bottom") {
+        const nh = Math.max(HOUR_H / 4, Math.min(HOURS * HOUR_H - baseTop, baseHeight + snap));
+        setHeight(nh);
+      } else {
+        const baseBottom = baseTop + baseHeight;
+        const nt = Math.max(0, Math.min(baseBottom - HOUR_H / 4, baseTop + snap));
+        setTop(nt); setHeight(baseBottom - nt);
+      }
+    };
+    const upHandler = async () => {
+      // @ts-ignore
+      document.removeEventListener("mousemove", moveHandler);
+      // @ts-ignore
+      document.removeEventListener("mouseup", upHandler);
+      const curTop = resizeStateRef.current.top;
+      const curHeight = resizeStateRef.current.height;
+      const startMin = Math.round((curTop / HOUR_H) * 60 / 15) * 15;
+      const durMin = Math.max(15, Math.round((curHeight / HOUR_H) * 60 / 15) * 15);
+      const newStart = dateAt(day, startMin);
+      const newEnd = new Date(newStart.getTime() + durMin * 60000);
+      await onMoveEvent(event, newStart, newEnd);
+      setMode("idle");
+    };
+    // @ts-ignore
+    document.addEventListener("mousemove", moveHandler);
+    // @ts-ignore
+    document.addEventListener("mouseup", upHandler);
+  };
 
   const hasMaterial = !!event.material_id;
   const isRecurring = event.recurrence && event.recurrence.type !== "none";
@@ -739,9 +809,24 @@ function DraggableEvent({
         </TouchableOpacity>
       )}
       {isAdmin && (
-        <View style={s.resizeHandle} {...panResize.panHandlers}>
-          <View style={s.resizeBar} />
-        </View>
+        <>
+          {/* Top resize handle */}
+          <View
+            style={s.resizeHandleTop}
+            {...(Platform.OS !== "web" ? panResizeTop.panHandlers : {})}
+            {...(Platform.OS === "web" ? { onMouseDown: onWebResizeDown("top") } as any : {})}
+          >
+            <View style={s.resizeBar} />
+          </View>
+          {/* Bottom resize handle */}
+          <View
+            style={s.resizeHandle}
+            {...(Platform.OS !== "web" ? panResize.panHandlers : {})}
+            {...(Platform.OS === "web" ? { onMouseDown: onWebResizeDown("bottom") } as any : {})}
+          >
+            <View style={s.resizeBar} />
+          </View>
+        </>
       )}
     </View>
   );
@@ -1382,6 +1467,14 @@ const s = StyleSheet.create({
   resizeHandle: {
     position: "absolute", bottom: 0, left: 0, right: 0, height: 14,
     alignItems: "center", justifyContent: "center",
+    // @ts-ignore web cursor
+    cursor: "ns-resize",
+  },
+  resizeHandleTop: {
+    position: "absolute", top: 0, left: 0, right: 0, height: 14,
+    alignItems: "center", justifyContent: "center",
+    // @ts-ignore web cursor
+    cursor: "ns-resize",
   },
   resizeBar: { width: 28, height: 4, borderRadius: 2, backgroundColor: COLORS.primary, opacity: 0.6 },
   dragPreview: {
