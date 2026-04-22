@@ -8,6 +8,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { api, clearToken, COLORS } from "../src/api";
 import ResponsiveLayout from "../src/ResponsiveLayout";
 import { useBreakpoint } from "../src/useBreakpoint";
+import NotificationsBell from "../src/NotificationsBell";
 
 function greetingForNow(): string {
   const h = new Date().getHours();
@@ -90,13 +91,22 @@ export default function HomeScreen() {
             <Text style={s.greetingSmall}>{greetingForNow()}</Text>
             <Text style={s.helloSmall}>{firstName || "Bienvenido"} 👋</Text>
           </View>
+          <NotificationsBell />
           <TouchableOpacity
             testID="btn-logout"
-            style={s.logoutBtn}
+            style={[s.logoutBtn, { marginLeft: 8 }]}
             onPress={logout}
           >
             <Ionicons name="log-out-outline" size={20} color={COLORS.text} />
           </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Desktop notifications bell — anchored to the top-right corner of the
+          content area (above the hero). Keeps the sidebar untouched. */}
+      {isWide && (
+        <View style={s.deskTopRight}>
+          <NotificationsBell />
         </View>
       )}
 
@@ -185,6 +195,11 @@ const s = StyleSheet.create({
     width: 40, height: 40, borderRadius: 12, backgroundColor: COLORS.bg,
     alignItems: "center", justifyContent: "center",
     borderWidth: 1, borderColor: COLORS.border,
+  },
+  deskTopRight: {
+    position: "absolute",
+    top: 28, right: 32,
+    zIndex: 10,
   },
 
   center: { flex: 1, alignItems: "center", justifyContent: "center" },

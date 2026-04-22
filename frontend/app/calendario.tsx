@@ -11,6 +11,7 @@ import { api, COLORS } from "../src/api";
 import ResponsiveLayout from "../src/ResponsiveLayout";
 import { useBreakpoint } from "../src/useBreakpoint";
 import DateTimeField from "../src/DateTimeField";
+import NotificationsBell from "../src/NotificationsBell";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -298,22 +299,8 @@ export default function CalendarScreen() {
         <TouchableOpacity style={s.iconBtn} onPress={() => setAnchor(new Date())}>
           <Ionicons name="today-outline" size={22} color={COLORS.navy} />
         </TouchableOpacity>
-        {/* Notifications bell — visible to every user. The badge shows the
-            number of unread notifications addressed to this user.
-            For an event manager this is how they learn that a technician
-            just marked one of their events as completed or pending. */}
-        <TouchableOpacity
-          testID="btn-notifications"
-          style={s.iconBtn}
-          onPress={() => setShowNotifications(true)}
-        >
-          <Ionicons name="notifications-outline" size={22} color={COLORS.navy} />
-          {unreadCount > 0 && (
-            <View style={s.bellBadge}>
-              <Text style={s.bellBadgeText}>{unreadCount > 9 ? "9+" : unreadCount}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+        {/* Shared bell (header) — same behaviour as the one in Inicio. */}
+        <NotificationsBell style={{ marginLeft: 4 }} />
       </View>
 
       {/* View selector */}
