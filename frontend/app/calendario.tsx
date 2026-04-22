@@ -988,10 +988,14 @@ function DraggableEvent({
   const baseColor = userColor || (hasMaterial ? COLORS.primary : "#6366F1");
   // Compute a light tint from the user color (use 22 alpha hex = ~13% opacity)
   const bgTint = baseColor + "33";
-  // Horizontal overlap layout (side-by-side when overlapping)
-  const colInfo = layout || { col: 0, total: 1 };
-  const gapPct = colInfo.total > 1 ? 1 : 0; // small gap between columns (%)
-  const widthPct = (100 / colInfo.total) - gapPct;
+  // Horizontal overlap layout (side-by-side + expand-to-fill + right gap).
+  // Leave ~22% empty on the right of the RIGHTMOST event of each cluster so
+  // the user can easily click&drag there to create a new overlapping event.
+  const colInfo = layout || { col: 0, total: 1, span: 1 };
+  const isRightmost = colInfo.col + colInfo.span >= colInfo.total;
+  const rightReservePct = isRightmost ? 22 : 0;
+  const gapPct = colInfo.total > 1 ? 0.6 : 0;
+  const widthPct = ((100 / colInfo.total) * colInfo.span) - gapPct - rightReservePct;
   const leftPct = colInfo.col * (100 / colInfo.total);
 
   return (
@@ -1487,26 +1491,56 @@ function EventDetailsModal({
     try {
       const data = await api.getEventAttachment(event.id, aid);
       if (Platform.OS === "web") {
-        // Open in new tab via data URL
-        const a = document.createElement("a");
-        a.href = `data:${data.mime_type};base64,${data.base64}`;
-        a.download = data.filename || "archivo";
-        a.target = "_blank";
-        a.rel = "noopener";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        // Preview: open in a new tab without forcing download.
+        const win = window.open();
+        if (win) {
+          win.document.write(`<iframe src="data:${data.mime_type};base64,${data.base64}" style="border:0;width:100%;height:100%"></iframe>`);
+          win.document.title = data.filename || "archivo";
+        } else {
+          // Popup blocked — fall back to download
+          const a = document.createElement("a");
+          a.href = `data:${data.mime_type};base64,${data.base64}`;
+          a.download = data.filename || "archivo";
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        }
       } else {
-        // Save to cache and open
         const ext = (data.filename || "").split(".").pop() || (data.mime_type.includes("pdf") ? "pdf" : "jpg");
         const path = `${FileSystem.cacheDirectory}${aid}.${ext}`;
         await FileSystem.writeAsStringAsync(path, data.base64, { encoding: FileSystem.EncodingType.Base64 });
-        // Use Linking or Sharing — simplest: try Linking
         const Linking = require("react-native").Linking;
         await Linking.openURL(path);
       }
     } catch (e: any) {
       Alert.alert("Error", e.message || "No se pudo abrir el archivo");
+    }
+  };
+
+  /** Force download/export the attachment to the user's device. */
+  const downloadAttachment = async (aid: string) => {
+    try {
+      const data = await api.getEventAttachment(event.id, aid);
+      if (Platform.OS === "web") {
+        const a = document.createElement("a");
+        a.href = `data:${data.mime_type};base64,${data.base64}`;
+        a.download = data.filename || "archivo";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      } else {
+        const ext = (data.filename || "").split(".").pop()
+          || (data.mime_type.includes("pdf") ? "pdf" : (data.mime_type.startsWith("image/") ? data.mime_type.split("/")[1] : "bin"));
+        const path = `${FileSystem.cacheDirectory}${(data.filename || aid).replace(/[^\w.-]+/g, "_")}${ext.includes(".") ? "" : ""}`;
+        const finalPath = path.endsWith(`.${ext}`) ? path : `${path}.${ext}`;
+        await FileSystem.writeAsStringAsync(finalPath, data.base64, { encoding: FileSystem.EncodingType.Base64 });
+        const Sharing: any = await import("expo-sharing").catch(() => null);
+        if (Sharing?.isAvailableAsync && (await Sharing.isAvailableAsync())) {
+          await Sharing.shareAsync(finalPath, { mimeType: data.mime_type, dialogTitle: data.filename });
+        } else {
+          Alert.alert("Guardado", `Archivo en: ${finalPath}`);
+        }
+      }
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "No se pudo descargar el archivo");
     }
   };
 
@@ -1782,11 +1816,22 @@ function EventDetailsModal({
                         <Ionicons name="create-outline" size={20} color={COLORS.primary} />
                       </TouchableOpacity>
                     )}
-                    {isAdmin && (
-                      <TouchableOpacity hitSlop={10} style={{ padding: 4 }} onPress={() => deleteAttachment(a.id, a.filename)}>
-                        <Ionicons name="trash-outline" size={18} color={COLORS.errorText} />
-                      </TouchableOpacity>
-                    )}
+                    <TouchableOpacity
+                      testID={`attachment-download-${a.id}`}
+                      hitSlop={8}
+                      style={{ padding: 4 }}
+                      onPress={() => downloadAttachment(a.id)}
+                    >
+                      <Ionicons name="download-outline" size={20} color={COLORS.primary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      testID={`attachment-delete-${a.id}`}
+                      hitSlop={10}
+                      style={{ padding: 4 }}
+                      onPress={() => deleteAttachment(a.id, a.filename)}
+                    >
+                      <Ionicons name="trash-outline" size={18} color={COLORS.errorText} />
+                    </TouchableOpacity>
                   </View>
                   );
                 })}
