@@ -1198,11 +1198,16 @@ function DraggableEvent({
   // Leave ~22% empty on the right of the RIGHTMOST event of each cluster so
   // the user can easily click&drag there to create a new overlapping event.
   const colInfo = layout || { col: 0, total: 1, span: 1 };
-  const isRightmost = colInfo.col + colInfo.span >= colInfo.total;
-  const rightReservePct = isRightmost ? 22 : 0;
+  // Column layout → equal-width slices of the day column so multi-assignee
+  // events ALWAYS look the same size, regardless of how many columns the
+  // day has. We still reserve a bit of room on the right of the day column
+  // (for scroll/gutter area) so single events match the previous look.
+  const RIGHT_RESERVE_PCT = 22;
+  const availWidth = 100 - RIGHT_RESERVE_PCT;
+  const perCol = availWidth / colInfo.total;
   const gapPct = colInfo.total > 1 ? 0.6 : 0;
-  const widthPct = ((100 / colInfo.total) * colInfo.span) - gapPct - rightReservePct;
-  const leftPct = colInfo.col * (100 / colInfo.total);
+  const widthPct = perCol * colInfo.span - gapPct;
+  const leftPct = colInfo.col * perCol;
 
   // Status-driven visual treatment:
   //   - completed           → dim the card (low opacity + grey overlay)
