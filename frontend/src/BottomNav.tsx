@@ -4,7 +4,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS } from "./api";
 
-export type BottomTab = "home" | "proyectos" | "calendario" | "planos" | "presupuestos" | "ajustes";
+export type BottomTab = "home" | "proyectos" | "calendario" | "planos" | "presupuestos" | "ajustes" | "sat";
 
 export default function BottomNav({ active, isAdmin }: { active: BottomTab; isAdmin?: boolean }) {
   const router = useRouter();

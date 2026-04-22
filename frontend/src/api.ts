@@ -113,6 +113,31 @@ export const api = {
   deleteAllNotifications: (onlyRead = false) =>
     request(`/notifications${onlyRead ? "?only_read=true" : ""}`, { method: "DELETE" }),
 
+  // CRM SAT — customer-facing public form + internal management
+  satCreatePublic: (body: {
+    cliente: string; direccion?: string; telefono?: string; observaciones: string;
+  }) => {
+    // Public endpoint: no auth header required. We still hit the /api prefix.
+    return fetch(`${BASE}/api/sat/public`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(async (res) => {
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+      return res.json();
+    });
+  },
+  satList: (status?: "pendiente" | "resuelta") =>
+    request(`/sat/incidents${status ? `?status=${status}` : ""}`),
+  satGet: (id: string) => request(`/sat/incidents/${id}`),
+  satUpdate: (id: string, body: any) =>
+    request(`/sat/incidents/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  satDelete: (id: string) =>
+    request(`/sat/incidents/${id}`, { method: "DELETE" }),
+
   // Budgets (presupuestos)
   listBudgets: () => request("/budgets"),
   getBudget: (id: string) => request(`/budgets/${id}`),

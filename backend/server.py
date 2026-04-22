@@ -1657,6 +1657,117 @@ async def seed_admin_user():
 async def root():
     return {"status": "ok", "service": "Materiales OneDrive App"}
 
+
+# ====================  CRM SAT — incidencias  ====================
+# Flujo:
+#   1) El cliente abre un enlace público (`/aviso-sat`), rellena un formulario
+#      y envía. Esto crea un registro en la colección `sat_incidents` vía
+#      POST /sat/public (SIN autenticación).
+#   2) El equipo SAT (usuarios autenticados) consulta la lista con
+#      GET /sat/incidents, añade comentarios internos y marca como
+#      "pendiente" o "resuelta" con PATCH /sat/incidents/{id}.
+
+class SATPublicIn(BaseModel):
+    cliente: str = Field(..., min_length=1, max_length=200)
+    direccion: str = Field("", max_length=400)
+    telefono: str = Field("", max_length=60)
+    observaciones: str = Field(..., min_length=1, max_length=4000)
+
+class SATUpdateIn(BaseModel):
+    cliente: Optional[str] = None
+    direccion: Optional[str] = None
+    telefono: Optional[str] = None
+    observaciones: Optional[str] = None
+    comentarios_sat: Optional[str] = None
+    status: Optional[str] = None  # "pendiente" | "resuelta"
+
+@api_router.post("/sat/public")
+async def sat_public_create(body: SATPublicIn):
+    """Endpoint PÚBLICO — no requiere login. Lo usa el enlace que se envía
+    al cliente para que abra la incidencia."""
+    now = datetime.now(timezone.utc)
+    doc = {
+        "id": str(uuid.uuid4()),
+        "cliente": body.cliente.strip(),
+        "direccion": (body.direccion or "").strip(),
+        "telefono": (body.telefono or "").strip(),
+        "observaciones": body.observaciones.strip(),
+        "comentarios_sat": "",
+        "status": "pendiente",
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+        "resolved_at": None,
+        "resolved_by": None,
+    }
+    await db.sat_incidents.insert_one(doc)
+    doc.pop("_id", None)
+    # Notificar a los administradores
+    admins = await db.users.find({"role": "admin"}, {"_id": 0, "id": 1}).to_list(500)
+    for a in admins:
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": a["id"],
+            "event_id": None,
+            "type": "sat_new",
+            "title": f"Nuevo aviso SAT: {doc['cliente']}",
+            "message": (doc["observaciones"][:160] + ("…" if len(doc["observaciones"]) > 160 else "")),
+            "read": False,
+            "created_at": now.isoformat(),
+            "from_user_id": None,
+            "from_user_name": doc["cliente"],
+            "link": f"/sat?openIncident={doc['id']}",
+        })
+    return {"ok": True, "id": doc["id"]}
+
+@api_router.get("/sat/incidents")
+async def sat_list(
+    user: dict = Depends(current_user),
+    status: Optional[str] = None,
+):
+    q: dict = {}
+    if status in {"pendiente", "resuelta"}:
+        q["status"] = status
+    rows = await db.sat_incidents.find(q, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return rows
+
+@api_router.get("/sat/incidents/{iid}")
+async def sat_get(iid: str, user: dict = Depends(current_user)):
+    doc = await db.sat_incidents.find_one({"id": iid}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Incidencia no encontrada")
+    return doc
+
+@api_router.patch("/sat/incidents/{iid}")
+async def sat_update(iid: str, body: SATUpdateIn, user: dict = Depends(current_user)):
+    existing = await db.sat_incidents.find_one({"id": iid})
+    if not existing:
+        raise HTTPException(404, "Incidencia no encontrada")
+    patch: dict = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    if body.cliente is not None: patch["cliente"] = body.cliente.strip()
+    if body.direccion is not None: patch["direccion"] = body.direccion.strip()
+    if body.telefono is not None: patch["telefono"] = body.telefono.strip()
+    if body.observaciones is not None: patch["observaciones"] = body.observaciones.strip()
+    if body.comentarios_sat is not None: patch["comentarios_sat"] = body.comentarios_sat
+    if body.status in {"pendiente", "resuelta"}:
+        patch["status"] = body.status
+        if body.status == "resuelta" and existing.get("status") != "resuelta":
+            patch["resolved_at"] = datetime.now(timezone.utc).isoformat()
+            patch["resolved_by"] = user.get("id")
+        elif body.status == "pendiente":
+            patch["resolved_at"] = None
+            patch["resolved_by"] = None
+    await db.sat_incidents.update_one({"id": iid}, {"$set": patch})
+    doc = await db.sat_incidents.find_one({"id": iid}, {"_id": 0})
+    return doc
+
+@api_router.delete("/sat/incidents/{iid}")
+async def sat_delete(iid: str, admin: dict = Depends(current_admin)):
+    res = await db.sat_incidents.delete_one({"id": iid})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Incidencia no encontrada")
+    return {"ok": True}
+
+
 app.include_router(api_router)
 
 app.add_middleware(

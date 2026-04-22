@@ -159,6 +159,13 @@ export default function HomeScreen() {
                   onPress={() => router.push("/presupuestos")}
                 />
               )}
+              <Tile
+                testID="circle-sat"
+                icon="headset"
+                title="CRM SAT"
+                accent="#EC4899"
+                onPress={() => router.push("/sat")}
+              />
             </View>
 
           </View>
@@ -235,11 +242,11 @@ const s = StyleSheet.create({
     ...shadowLight,
   },
   tileWide: {
-    // Two columns on desktop; 4 tiles → 2×2 square grid.
+    // Three columns on desktop: 5 tiles → first row of 3, second row of 2.
     // @ts-ignore — react-native-web accepts calc()
-    flexBasis: "calc(50% - 12px)",
-    maxWidth: "calc(50% - 12px)",
-    paddingVertical: 48,
+    flexBasis: "calc(33.333% - 16px)",
+    maxWidth: "calc(33.333% - 16px)",
+    paddingVertical: 36,
   },
   tileIcon: {
     width: 72, height: 72, borderRadius: 20,

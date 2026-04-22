@@ -73,6 +73,7 @@ export default function ResponsiveLayout({
         <SideLink active={active === "calendario"} label="Calendario" icon="calendar" to="/calendario" />
         <SideLink active={active === "planos"} label="Planos" icon="map" to="/planos" />
         <SideLink active={active === "presupuestos"} label="Presupuestos" icon="document-text" to="/presupuestos" />
+        <SideLink active={active === "sat"} label="CRM SAT" icon="headset" to="/sat" />
 
         {isAdmin && (
           <>

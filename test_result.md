@@ -1301,3 +1301,120 @@ agent_communication_round_16:
       normalization on line 905 (e.g. `if start.tzinfo is None: start =
       start.replace(tzinfo=timezone.utc)`). Affects calendar list view but
       does not affect the two new endpoints tested here.
+
+
+backend_sat_tasks:
+  - task: "CRM SAT — public form + internal management endpoints"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: |
+          Iteration 15: New CRM SAT flow.
+          - POST /api/sat/public (PUBLIC, no auth): {cliente, direccion,
+            telefono, observaciones} → creates sat_incidents document with
+            status="pendiente"; auto-creates a `sat_new` notification for
+            every admin user.
+          - GET /api/sat/incidents (auth): lists newest-first; supports
+            ?status=pendiente|resuelta filter.
+          - GET /api/sat/incidents/{id} (auth): single fetch, 404 on miss.
+          - PATCH /api/sat/incidents/{id} (auth): subset of
+            {cliente, direccion, telefono, observaciones, comentarios_sat,
+            status}. status="resuelta" fills resolved_at/resolved_by only
+            when the incident was not already resuelta; status="pendiente"
+            resets both to null.
+          - DELETE /api/sat/incidents/{id} (admin only).
+        -working: true
+        -agent: "testing"
+        -comment: |
+          PASS (68/68 assertions) via /app/backend_test_sat.py against
+          https://excel-form-sync-1.preview.emergentagent.com/api.
+
+          1) POST /api/sat/public (PUBLIC):
+             - Happy path WITHOUT Authorization header → 200 with
+               {ok:true, id:<uuid>}. Second incident also 200.
+             - Missing cliente → 422; missing observaciones → 422;
+               empty cliente → 422; empty observaciones → 422.
+             - Notification auto-creation: after each public POST, admin
+               GET /api/notifications shows a new `sat_new` entry with
+               read=false and title "Nuevo aviso SAT: <cliente>". Verified
+               for both incidents against the list of all admin users
+               (admin count = 2, each received notifications).
+
+          2) GET /api/sat/incidents:
+             - No token → 401.
+             - Admin → 200 list; both created incidents appear.
+             - Newest-first ordering: the later incident has a smaller
+               index than the earlier one; top-N results are monotonically
+               non-increasing by created_at.
+             - Default status on creation is "pendiente"; resolved_at and
+               resolved_by are null; cliente/observaciones persisted;
+               comentarios_sat defaults to "".
+             - ?status=pendiente returns only pendientes (all match);
+               ?status=resuelta returns only resueltas (empty at this
+               point); invalid status value is ignored (returns full list,
+               200).
+
+          3) GET /api/sat/incidents/{id}:
+             - Admin → 200 with correct shape; unknown id → 404; no token
+               → 401.
+
+          4) PATCH /api/sat/incidents/{id}:
+             - Subset patch {direccion, telefono, comentarios_sat} → 200
+               with those fields updated and cliente/status unchanged.
+             - {status:"resuelta"} → 200; resolved_at filled with ISO
+               datetime; resolved_by = admin id.
+             - Second {status:"resuelta"} when already resuelta → 200 and
+               resolved_at is UNCHANGED (spec-compliant: only fills on
+               transition).
+             - {status:"pendiente"} → 200; resolved_at and resolved_by
+               reset to null.
+             - No token → 401; unknown id → 404.
+
+          5) DELETE /api/sat/incidents/{id} (admin only):
+             - Created a temporary role=user via POST /api/users (verified
+               200). Non-admin token → DELETE returns 403. Non-admin can
+               still GET single → 200.
+             - No token → 401.
+             - Admin DELETE → 200 with {ok:true}.
+             - Repeat DELETE of same id → 404; ghost id → 404.
+
+          Cleanup executed: all SAT incidents deleted, all sat_new
+          notifications for admin deleted, temporary non-admin user
+          deleted. No residue.
+
+agent_communication_round_17:
+    -agent: "testing"
+    -message: |
+      Iteration 15 SAT backend tests COMPLETE. 68/68 assertions passed via
+      /app/backend_test_sat.py against
+      https://excel-form-sync-1.preview.emergentagent.com/api.
+
+      All five endpoints verified end-to-end:
+      1) POST /sat/public works WITHOUT Authorization, validates input
+         (422 on missing/empty cliente or observaciones), and auto-creates
+         `sat_new` notifications for every admin.
+      2) GET /sat/incidents enforces auth (401), returns newest-first,
+         and supports ?status=pendiente|resuelta filters. New incidents
+         default to status=pendiente with resolved_at/by=null.
+      3) GET /sat/incidents/{id} returns the single row with 404 on miss.
+      4) PATCH accepts any subset of the six editable fields; status
+         transition pendiente→resuelta fills resolved_at/by; second
+         "resuelta" PATCH does NOT re-fill (transition-only behavior);
+         switch back to pendiente resets both to null.
+      5) DELETE is admin-only: non-admin → 403; admin → 200 {ok:true};
+         404 on unknown id.
+
+      Cleanup complete: incidents, admin's sat_new notifications and the
+      temp non-admin test user all removed. No other tasks affected.
+
+      Pre-existing unrelated bug (already flagged in round 16 — NOT
+      re-triggered by these tests): GET /api/events?from=...&to=... can
+      still raise 500 from _expand_recurrence for tz-naive vs tz-aware
+      datetime comparison. Main agent: please fix when ready, it does
+      not block the SAT flow.
