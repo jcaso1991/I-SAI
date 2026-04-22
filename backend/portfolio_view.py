@@ -523,36 +523,71 @@ def build_portfolio_html() -> str:
 
       /* Print */
       @media print {
-        @page { size: A4; margin: 12mm; }
+        @page { size: A4; margin: 10mm; }
         html, body { background: #fff !important; }
         .no-print { display: none !important; }
-        .topbar { position: static !important; box-shadow: none; border: 0; }
-        section.section, .hero { padding: 24px 16px; page-break-inside: avoid; }
-        /* Stack module rows vertically so every module is predictably rendered */
+        .topbar { position: static !important; box-shadow: none; border: 0; padding: 8px 12px; }
+        .hero { padding: 12px 10px 18px; page-break-inside: avoid; }
+        .hero h1 { font-size: 28px !important; line-height: 1.15; }
+        .hero-lead { font-size: 13px !important; margin-top: 10px; }
+        .hero-img { padding: 4px; max-height: 220px; overflow: hidden; }
+        .hero-img img { max-height: 210px; object-fit: contain; }
+        section.section { padding: 14px 14px; page-break-inside: auto; }
+        section.section .section-title { font-size: 20px; }
+        section.section .section-lead { font-size: 12px; margin-top: 6px; }
+
+        /* Module rows: side-by-side, flow naturally, avoid splitting mid-module */
         .module-row, .module-row.flip {
-          display: block !important;
-          padding: 20px 0 !important;
-          page-break-before: always;
+          display: flex !important;
+          flex-direction: row !important;
+          gap: 18px !important;
+          padding: 10px 0 !important;
           page-break-inside: avoid;
+          break-inside: avoid;
+          align-items: flex-start;
         }
-        .module-row:first-of-type { page-break-before: auto; }
         .module-shot {
-          width: 100% !important;
-          max-width: 520px !important;
-          margin: 0 auto 18px !important;
-          padding: 6px !important;
+          flex: 0 0 42% !important;
+          max-width: 42% !important;
+          padding: 4px !important;
+          margin: 0 !important;
           break-inside: avoid;
         }
         .module-shot img {
-          max-height: 320px !important;
+          max-height: 240px !important;
           width: 100% !important;
           object-fit: contain;
         }
-        .module-text { width: 100% !important; }
-        .cases-grid .case-card, .roles-grid .role-card, .adv-grid .adv-card { page-break-inside: avoid; }
-        .cta { background: #EEF3FA !important; color: #0B2545 !important; }
-        .cta h2 { color: #0B2545 !important; }
-        .cta p { color: #475569 !important; }
+        .module-text { flex: 1 !important; min-width: 0 !important; }
+        .module-title { font-size: 18px !important; margin-top: 2px; }
+        .module-sub { font-size: 12px !important; }
+        .module-desc { font-size: 12px !important; line-height: 1.45; margin-bottom: 8px; }
+        .module-section-title { font-size: 9px !important; margin: 4px 0 4px; letter-spacing: 1px; }
+        .benefits li, .steps li { font-size: 11.5px !important; margin-bottom: 4px !important; line-height: 1.35; }
+        .module-icon { width: 40px !important; height: 40px !important; font-size: 20px !important; border-radius: 10px !important; }
+        .module-head { margin-bottom: 10px !important; gap: 10px !important; }
+        .steps .step-num { width: 18px !important; height: 18px !important; font-size: 10px !important; }
+
+        /* Grids compact */
+        .adv-grid, .roles-grid, .cases-grid, .tech-grid {
+          gap: 10px !important; margin-top: 14px !important;
+        }
+        .adv-card, .role-card, .case-card, .tech-card {
+          padding: 14px !important; page-break-inside: avoid;
+        }
+        .role-badge, .adv-icon, .case-icon {
+          width: 36px !important; height: 36px !important; font-size: 18px !important; margin-bottom: 8px !important;
+        }
+        .adv-card h3, .role-card h3, .case-card h3 { font-size: 14px !important; margin-bottom: 6px !important; }
+        .adv-card p { font-size: 12px !important; line-height: 1.4; }
+        .role-card li, .case-card li { font-size: 11.5px !important; margin-bottom: 4px !important; }
+        .tech-card h3 { font-size: 13px !important; }
+        .tech-card p { font-size: 11.5px !important; }
+
+        .cta { background: #EEF3FA !important; color: #0B2545 !important; margin: 16px 14px !important; padding: 18px !important; }
+        .cta h2 { color: #0B2545 !important; font-size: 18px; }
+        .cta p { color: #475569 !important; font-size: 12px; margin: 6px auto 12px; }
+        .footer { padding: 10px !important; }
       }
 
       /* Mobile */
