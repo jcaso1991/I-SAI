@@ -948,6 +948,47 @@ agent_communication_round_11:
       Backend UNCHANGED — no retest required.
 
             ↺ -15°, ↻ +15°, 90° step, Reset-0°, followed by size ± and
+
+agent_communication_round_12:
+    -agent: "main"
+    -message: |
+      ITERATION 12 (home simplification + stats moved to Proyectos):
+
+      User feedback: "la página de inicio no me gusta, tiene que ser más
+      sencilla e intuitiva, que entre en pantalla sin tener que arrastrar,
+      la información de proyectos sincronizados y pendientes debe estar
+      dentro de la pestaña proyectos".
+
+      Changes (frontend only):
+
+      1. /app/frontend/app/home.tsx — reduced to the essentials:
+         * Removed ScrollView. Body uses `flex: 1, justifyContent: "center"`
+           so the hero + tiles are always vertically centered and the
+           whole page fits in any viewport without scrolling. Verified:
+           `document.body.scrollHeight == window.innerHeight` (900 = 900).
+         * Removed the 3 stat cards entirely.
+         * Removed the long subtitles under each tile.
+         * Four large 2×2 square tiles (icon + title only), centered.
+         * Wider padding + bigger icons (72 × 72) + bolder title (18 px).
+         * On mobile the tiles switch to a 2×2 compact grid that still
+           fits inside the viewport above the BottomNav.
+
+      2. /app/frontend/app/materiales.tsx — now hosts the stats strip:
+         * Under the "Proyectos" header we render three compact cards:
+           Total (blue folder), Pendientes (orange clock), Sincronizados
+           (green check).
+         * The "Pendientes" card is *clickable* — tapping it toggles the
+           `pendingOnly` filter that already existed, giving the strip an
+           active state (orange background + border). This consolidates
+           the old filter icon with the metric card for a cleaner UX.
+         * Added a discreet subtitle "Base sincronizada con OneDrive"
+           below the title.
+
+      Verified via Playwright across Desktop-light, Desktop-dark, and
+      Mobile-390 viewports: home has no scroll, Proyectos shows the 3
+      elegant cards with the correct numbers (Total 986 · Pending 2 ·
+      Synced 984).
+
             the trash. Selection label also shows current angle ("· 90°").
       Backend change is static data only (BUILTIN_STAMPS list rebuilt);
       /api/stamps endpoint still returns the same shape — no retest needed.

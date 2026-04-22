@@ -108,13 +108,9 @@ export default function Materiales() {
     <ResponsiveLayout active="proyectos" isAdmin={isAdmin} onLogout={logout} userName={me?.name}>
       <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
       <View style={s.header}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={s.headerTitle}>Proyectos</Text>
-          {stats && (
-            <Text style={s.headerSub} testID="stats-text">
-              {stats.total} total · <Text style={{ color: stats.pending > 0 ? COLORS.pendingText : COLORS.syncedText, fontWeight: "700" }}>{stats.pending} pendiente{stats.pending !== 1 ? "s" : ""}</Text>
-            </Text>
-          )}
+          <Text style={s.headerSubHint}>Base sincronizada con OneDrive</Text>
         </View>
         {!isWide && (
           <View style={s.headerBtns}>
@@ -124,6 +120,44 @@ export default function Materiales() {
           </View>
         )}
       </View>
+
+      {/* Elegant stats strip — moved from home to keep it contextual. */}
+      {stats && (
+        <View style={s.statsStrip} testID="stats-strip">
+          <View style={s.statCard}>
+            <View style={[s.statIcon, { backgroundColor: COLORS.primary + "1A" }]}>
+              <Ionicons name="folder" size={18} color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.statVal}>{stats.total}</Text>
+              <Text style={s.statLbl}>Total</Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={[s.statCard, pendingOnly && { borderColor: "#F59E0B", backgroundColor: "#F59E0B1A" }]}
+            onPress={() => setPendingOnly(!pendingOnly)}
+            testID="stat-pending"
+            activeOpacity={0.75}
+          >
+            <View style={[s.statIcon, { backgroundColor: "#F59E0B1A" }]}>
+              <Ionicons name="time" size={18} color="#F59E0B" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.statVal}>{stats.pending}</Text>
+              <Text style={s.statLbl}>Pendientes</Text>
+            </View>
+          </TouchableOpacity>
+          <View style={s.statCard}>
+            <View style={[s.statIcon, { backgroundColor: "#10B9811A" }]}>
+              <Ionicons name="checkmark-circle" size={18} color="#10B981" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.statVal}>{stats.synced}</Text>
+              <Text style={s.statLbl}>Sincronizados</Text>
+            </View>
+          </View>
+        </View>
+      )}
 
       <View style={s.searchRow}>
         <View style={s.searchBox}>
@@ -197,6 +231,22 @@ const s = StyleSheet.create({
   },
   headerTitle: { fontSize: 26, fontWeight: "900", color: COLORS.text, letterSpacing: -0.5 },
   headerSub: { fontSize: 13, color: COLORS.textSecondary, marginTop: 2 },
+  headerSubHint: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2, fontWeight: "600" },
+  statsStrip: {
+    flexDirection: "row", gap: 10, paddingHorizontal: 16, paddingTop: 6, paddingBottom: 10,
+  },
+  statCard: {
+    flex: 1, flexDirection: "row", alignItems: "center", gap: 10,
+    paddingVertical: 10, paddingHorizontal: 12,
+    backgroundColor: COLORS.surface, borderRadius: 12,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  statIcon: {
+    width: 34, height: 34, borderRadius: 10,
+    alignItems: "center", justifyContent: "center",
+  },
+  statVal: { fontSize: 20, fontWeight: "900", color: COLORS.text, letterSpacing: -0.3, lineHeight: 22 },
+  statLbl: { fontSize: 10.5, fontWeight: "800", color: COLORS.textSecondary, letterSpacing: 0.5, textTransform: "uppercase", marginTop: 1 },
   headerBtns: { flexDirection: "row", gap: 8 },
   iconBtn: {
     width: 40, height: 40, borderRadius: 10, backgroundColor: COLORS.bg,
