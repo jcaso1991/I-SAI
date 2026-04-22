@@ -61,6 +61,10 @@ export default function PlanEditor() {
   const pinchRef = useRef<{ startDist: number; baseShape: Shape } | null>(null);
 
   // Load plan + stamps + me
+  const [sourceEventId, setSourceEventId] = useState<string | null>(null);
+  const [sourceAttachmentId, setSourceAttachmentId] = useState<string | null>(null);
+  const [sourceFilename, setSourceFilename] = useState<string>("plano");
+
   useEffect(() => {
     (async () => {
       try {
@@ -74,6 +78,11 @@ export default function PlanEditor() {
         if (plan.data?.background) setBackground(plan.data.background);
         setStamps(stampList);
         setMe(who);
+        if (plan.source_event_id) setSourceEventId(plan.source_event_id);
+        if (plan.source_attachment_id) setSourceAttachmentId(plan.source_attachment_id);
+        // Extract original filename from title pattern "📐 filename.pdf"
+        const m = (plan.title || "").match(/^📐\s*(.+)$/);
+        if (m) setSourceFilename(m[1]);
       } catch (e: any) {
         Alert.alert("Error", e.message);
         router.back();
@@ -398,6 +407,56 @@ export default function PlanEditor() {
     }
   };
 
+  const saveBackToEvent = async () => {
+    if (!sourceEventId || !sourceAttachmentId) return;
+    try {
+      setSelectedId(null);
+      await new Promise((r) => setTimeout(r, 100));
+      // 1) Capture canvas as JPG base64
+      const uri = await captureRef(canvasRef, {
+        format: "jpg",
+        quality: 0.95,
+        result: "tmpfile",
+      });
+      const jpgBase64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+
+      // 2) Generate a PDF with the JPG embedded
+      const baseName = safeFilename(sourceFilename || title);
+      const isPdf = (sourceFilename || "").toLowerCase().endsWith(".pdf");
+      let uploadBase64 = jpgBase64;
+      let mimeType = "image/jpeg";
+      let finalFilename = baseName.endsWith(".jpg") ? baseName : `${baseName}.jpg`;
+
+      if (isPdf) {
+        const html = `<html><head><title>${escapeHtml(title)}</title></head><body style="margin:0;padding:0"><img src="data:image/jpeg;base64,${jpgBase64}" style="width:100%;display:block"/></body></html>`;
+        const { uri: pdfUri } = await Print.printToFileAsync({ html, base64: true });
+        // @ts-ignore Print returns base64 when requested
+        uploadBase64 = (pdfUri as any).base64 || await FileSystem.readAsStringAsync(pdfUri, { encoding: FileSystem.EncodingType.Base64 });
+        if (typeof pdfUri === "string") {
+          uploadBase64 = await FileSystem.readAsStringAsync(pdfUri, { encoding: FileSystem.EncodingType.Base64 });
+        }
+        mimeType = "application/pdf";
+        finalFilename = baseName.endsWith(".pdf") ? baseName : `${baseName}.pdf`;
+      }
+
+      // 3) Delete old attachment
+      await api.deleteEventAttachment(sourceEventId, sourceAttachmentId);
+      // 4) Upload new attachment
+      const newAtt = await api.uploadEventAttachment(sourceEventId, {
+        filename: finalFilename,
+        mime_type: mimeType,
+        base64: uploadBase64,
+      });
+      // 5) Update plan source_attachment_id so subsequent saves replace the new one
+      await api.updatePlan(id, { source_attachment_id: newAtt.id } as any);
+      setSourceAttachmentId(newAtt.id);
+
+      Alert.alert("✅ Guardado", `El adjunto "${finalFilename}" se ha actualizado en el evento.`);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "No se pudo guardar en el evento");
+    }
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={s.root}>
@@ -427,6 +486,15 @@ export default function PlanEditor() {
         <TouchableOpacity style={s.iconBtn} onPress={() => exportAs("pdf")}>
           <Ionicons name="document-outline" size={22} color={COLORS.navy} />
         </TouchableOpacity>
+        {sourceEventId && sourceAttachmentId && (
+          <TouchableOpacity
+            testID="btn-save-to-event"
+            style={[s.iconBtn, { backgroundColor: COLORS.primary }]}
+            onPress={saveBackToEvent}
+          >
+            <Ionicons name="cloud-upload-outline" size={22} color="#fff" />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Toolbar */}

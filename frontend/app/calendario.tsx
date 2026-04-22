@@ -1172,6 +1172,31 @@ function EventDetailsModal({
     }
   };
 
+  const editWithPlanos = async (att: any) => {
+    try {
+      // Download the attachment
+      const data = await api.getEventAttachment(event.id, att.id);
+      // Create a plan linked back to this event + attachment
+      const plan = await api.createPlan({
+        title: `📐 ${att.filename}`,
+        source_event_id: event.id,
+        source_attachment_id: att.id,
+        material_id: event.material_id || undefined,
+      });
+      // Upload the attachment as the plan background (backend converts PDF→PNG)
+      await api.uploadBackground(plan.id, {
+        file_base64: data.base64,
+        mime_type: data.mime_type,
+      });
+      // Navigate to the plan editor
+      // @ts-ignore
+      const router = require("expo-router").router;
+      router.push(`/planos/${plan.id}`);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "No se pudo abrir en Planos");
+    }
+  };
+
   const deleteAttachment = (aid: string, name: string) => {
     Alert.alert("Eliminar adjunto", `¿Eliminar "${name}"?`, [
       { text: "Cancelar", style: "cancel" },
@@ -1326,26 +1351,40 @@ function EventDetailsModal({
               <Text style={[s.descText, { color: COLORS.textDisabled }]}>Sin archivos</Text>
             ) : (
               <View style={{ gap: 6 }}>
-                {attachments.map((a) => (
-                  <TouchableOpacity
-                    key={a.id}
-                    testID={`attachment-${a.id}`}
-                    style={s.attRow}
-                    onPress={() => openAttachment(a.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name={iconForMime(a.mime_type)} size={22} color={COLORS.primary} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.attName} numberOfLines={1}>{a.filename}</Text>
-                      <Text style={s.attMeta}>{fmtSize(a.size)} · {a.mime_type}</Text>
-                    </View>
+                {attachments.map((a) => {
+                  const canEditInPlanos = (a.mime_type || "").toLowerCase().includes("pdf") || (a.mime_type || "").toLowerCase().startsWith("image/");
+                  return (
+                  <View key={a.id} style={s.attRow}>
+                    <TouchableOpacity
+                      testID={`attachment-${a.id}`}
+                      style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10 }}
+                      onPress={() => openAttachment(a.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name={iconForMime(a.mime_type)} size={22} color={COLORS.primary} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.attName} numberOfLines={1}>{a.filename}</Text>
+                        <Text style={s.attMeta}>{fmtSize(a.size)} · {a.mime_type}</Text>
+                      </View>
+                    </TouchableOpacity>
+                    {canEditInPlanos && (
+                      <TouchableOpacity
+                        testID={`attachment-edit-${a.id}`}
+                        hitSlop={8}
+                        style={{ padding: 4 }}
+                        onPress={() => editWithPlanos(a)}
+                      >
+                        <Ionicons name="create-outline" size={20} color={COLORS.primary} />
+                      </TouchableOpacity>
+                    )}
                     {isAdmin && (
-                      <TouchableOpacity hitSlop={10} onPress={() => deleteAttachment(a.id, a.filename)}>
+                      <TouchableOpacity hitSlop={10} style={{ padding: 4 }} onPress={() => deleteAttachment(a.id, a.filename)}>
                         <Ionicons name="trash-outline" size={18} color={COLORS.errorText} />
                       </TouchableOpacity>
                     )}
-                  </TouchableOpacity>
-                ))}
+                  </View>
+                  );
+                })}
               </View>
             )}
             <TouchableOpacity

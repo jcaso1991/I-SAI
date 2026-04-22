@@ -67,9 +67,9 @@ export const api = {
   listTechnicians: () => request("/technicians"),
   // Plans
   listPlans: () => request("/plans"),
-  createPlan: (body: { title: string; data?: any }) => request("/plans", { method: "POST", body: JSON.stringify(body) }),
+  createPlan: (body: { title: string; data?: any; material_id?: string; source_event_id?: string; source_attachment_id?: string }) => request("/plans", { method: "POST", body: JSON.stringify(body) }),
   getPlan: (id: string) => request(`/plans/${id}`),
-  updatePlan: (id: string, body: { title?: string; data?: any }) =>
+  updatePlan: (id: string, body: { title?: string; data?: any; source_attachment_id?: string }) =>
     request(`/plans/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deletePlan: (id: string) => request(`/plans/${id}`, { method: "DELETE" }),
   uploadBackground: (id: string, body: { file_base64: string; mime_type: string }) =>

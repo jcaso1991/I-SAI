@@ -565,10 +565,14 @@ async def delete_user(uid: str, admin: dict = Depends(current_admin)):
 class PlanCreate(BaseModel):
     title: str
     data: Optional[dict] = None  # {shapes: [...]}
+    material_id: Optional[str] = None
+    source_event_id: Optional[str] = None
+    source_attachment_id: Optional[str] = None
 
 class PlanPatch(BaseModel):
     title: Optional[str] = None
     data: Optional[dict] = None
+    source_attachment_id: Optional[str] = None
 
 class PlanOut(BaseModel):
     id: str
@@ -577,6 +581,9 @@ class PlanOut(BaseModel):
     created_at: str
     updated_at: str
     created_by: str
+    material_id: Optional[str] = None
+    source_event_id: Optional[str] = None
+    source_attachment_id: Optional[str] = None
 
 class PlanListItem(BaseModel):
     id: str
@@ -628,6 +635,9 @@ async def create_plan(payload: PlanCreate, user: dict = Depends(current_user)):
         "id": str(uuid.uuid4()),
         "title": payload.title.strip() or "Plano sin título",
         "data": payload.data or {"shapes": []},
+        "material_id": payload.material_id,
+        "source_event_id": payload.source_event_id,
+        "source_attachment_id": payload.source_attachment_id,
         "created_at": now,
         "updated_at": now,
         "created_by": user["email"],
@@ -640,6 +650,10 @@ async def get_plan(pid: str, user: dict = Depends(current_user)):
     p = await db.plans.find_one({"id": pid}, {"_id": 0})
     if not p:
         raise HTTPException(404, "Plano no encontrado")
+    # Ensure optional fields are present in response
+    p.setdefault("material_id", None)
+    p.setdefault("source_event_id", None)
+    p.setdefault("source_attachment_id", None)
     return p
 
 @api_router.patch("/plans/{pid}", response_model=PlanOut)
