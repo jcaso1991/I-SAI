@@ -43,10 +43,9 @@ export default function BottomNav({ active, isAdmin }: { active: BottomTab; isAd
   };
 
   // Order (left → right): Ajustes, Proyectos, Inicio, Calendario, Planos, Presupuestos
-  // Ajustes only visible for admins
-  const tabs: BottomTab[] = isAdmin
-    ? ["ajustes", "proyectos", "home", "calendario", "planos", "presupuestos"]
-    : ["proyectos", "home", "calendario", "planos", "presupuestos"];
+  // "Ajustes" visible para todos (pueden cambiar el tema); el contenido
+  // sensible de OneDrive ya está restringido dentro de la página.
+  const tabs: BottomTab[] = ["ajustes", "proyectos", "home", "calendario", "planos", "presupuestos"];
 
   return (
     <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 6) }]}>

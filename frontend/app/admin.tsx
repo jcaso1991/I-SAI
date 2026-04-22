@@ -9,9 +9,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../src/api";
 import BottomNav from "../src/BottomNav";
 import ResponsiveLayout from "../src/ResponsiveLayout";
+import { useTheme } from "../src/theme";
 
 export default function Admin() {
   const router = useRouter();
+  const { theme, setTheme } = useTheme();
   const [status, setStatus] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -118,6 +120,49 @@ export default function Admin() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
+        {/* Selector de tema (visible para todos) */}
+        <View style={s.card}>
+          <View style={s.cardHeader}>
+            <View style={[s.iconCircle, { backgroundColor: COLORS.bg }]}>
+              <Ionicons
+                name={theme === "dark" ? "moon" : "sunny"}
+                size={22}
+                color={theme === "dark" ? "#60A5FA" : "#F59E0B"}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.cardTitle}>Apariencia</Text>
+              <Text style={s.cardSub}>Elige el tema de la aplicación</Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
+            <TouchableOpacity
+              testID="theme-light"
+              onPress={() => setTheme("light")}
+              style={[
+                s.themeOption,
+                theme === "light" && { borderColor: COLORS.primary, backgroundColor: "#EFF6FF" },
+              ]}
+            >
+              <Ionicons name="sunny" size={22} color={theme === "light" ? COLORS.primary : COLORS.textSecondary} />
+              <Text style={[s.themeOptionTxt, theme === "light" && { color: COLORS.primary, fontWeight: "800" }]}>Claro</Text>
+              {theme === "light" && <Ionicons name="checkmark-circle" size={18} color={COLORS.primary} style={{ position: "absolute", top: 6, right: 6 }} />}
+            </TouchableOpacity>
+            <TouchableOpacity
+              testID="theme-dark"
+              onPress={() => setTheme("dark")}
+              style={[
+                s.themeOption,
+                theme === "dark" && { borderColor: COLORS.primary, backgroundColor: "rgba(59, 130, 246, 0.15)" },
+              ]}
+            >
+              <Ionicons name="moon" size={22} color={theme === "dark" ? COLORS.primary : COLORS.textSecondary} />
+              <Text style={[s.themeOptionTxt, theme === "dark" && { color: COLORS.primary, fontWeight: "800" }]}>Oscuro</Text>
+              {theme === "dark" && <Ionicons name="checkmark-circle" size={18} color={COLORS.primary} style={{ position: "absolute", top: 6, right: 6 }} />}
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {!isAdmin && (
           <View style={[s.card, { backgroundColor: COLORS.pendingBg, borderColor: "#FDE68A" }]}>
             <Ionicons name="information-circle" size={22} color={COLORS.pendingText} />
@@ -264,6 +309,12 @@ const s = StyleSheet.create({
   iconCircle: {
     width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center",
   },
+  themeOption: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 8, paddingVertical: 14, borderRadius: 12, borderWidth: 2,
+    borderColor: COLORS.border, backgroundColor: COLORS.readonly, position: "relative",
+  },
+  themeOptionTxt: { fontSize: 14, fontWeight: "700", color: COLORS.textSecondary },
   cardTitle: { fontSize: 17, fontWeight: "800", color: COLORS.text },
   cardSub: { fontSize: 14, color: COLORS.textSecondary, marginTop: 2 },
   cardText: { flex: 1, fontSize: 14, fontWeight: "600" },
