@@ -181,7 +181,13 @@ export default function CalendarScreen() {
     const out: EventT[] = [];
     for (const ev of events) {
       const ids = ev.assigned_user_ids || [];
-      const users = ev.assigned_users || [];
+      // Defensive: if the backend didn't populate `assigned_users` for
+      // some reason (older client, stale cache, etc.) we rebuild a minimal
+      // user list from the ids so the visual split still happens.
+      let users = ev.assigned_users || [];
+      if (users.length === 0 && ids.length > 0) {
+        users = ids.map((id) => ({ id, email: id, name: undefined as any, color: undefined as any }));
+      }
       // Admin filter: hide events whose every assignee is disabled.
       if (adminRole && disabledUserIds.size > 0 && ids.length > 0) {
         if (!ids.some((id) => !disabledUserIds.has(id))) continue;
