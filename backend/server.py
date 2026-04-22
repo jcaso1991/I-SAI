@@ -440,6 +440,21 @@ async def list_technicians(user: dict = Depends(current_user)):
         ) for u in users
     ]
 
+@api_router.get("/managers", response_model=List[TechnicianOut])
+async def list_managers(user: dict = Depends(current_user)):
+    """List admin users (potential project managers / gestores)."""
+    users = await db.users.find({"role": "admin"}, {"_id": 0, "password": 0}).to_list(500)
+    users.sort(key=lambda u: (u.get("name") or u.get("email") or "").lower())
+    return [
+        TechnicianOut(
+            id=u["id"],
+            name=u.get("name") or u.get("email", ""),
+            email=u.get("email", ""),
+        ) for u in users
+    ]
+
+
+
 @api_router.get("/auth/me", response_model=UserOut)
 async def me(user: dict = Depends(current_user)):
     return UserOut(id=user["id"], email=user["email"], name=user.get("name"), role=user.get("role", "user"), color=user.get("color"))
@@ -747,6 +762,7 @@ class EventCreate(BaseModel):
     description: Optional[str] = None
     material_id: Optional[str] = None
     assigned_user_ids: List[str] = []
+    manager_id: Optional[str] = None  # gestor del proyecto (admin)
     recurrence: Optional[RecurrenceRule] = None
 
 class EventPatch(BaseModel):
@@ -756,6 +772,7 @@ class EventPatch(BaseModel):
     description: Optional[str] = None
     material_id: Optional[str] = None
     assigned_user_ids: Optional[List[str]] = None
+    manager_id: Optional[str] = None
     recurrence: Optional[RecurrenceRule] = None
 
 class EventOut(BaseModel):
@@ -768,6 +785,8 @@ class EventOut(BaseModel):
     material: Optional[dict] = None
     assigned_user_ids: List[str] = []
     assigned_users: List[dict] = []
+    manager_id: Optional[str] = None
+    manager: Optional[dict] = None
     recurrence: Optional[dict] = None
     attachments: List[dict] = []  # metadata only (no base64) for list views
     base_event_id: Optional[str] = None  # for expanded occurrences
@@ -815,6 +834,22 @@ async def _attach_users(ev: dict) -> dict:
         ]
     else:
         ev["assigned_users"] = []
+    # Attach manager (gestor)
+    mgr_id = ev.get("manager_id")
+    if mgr_id:
+        mgr = await db.users.find_one({"id": mgr_id}, {"_id": 0, "password": 0})
+        if mgr:
+            ev["manager"] = {
+                "id": mgr["id"],
+                "email": mgr["email"],
+                "name": mgr.get("name"),
+                "color": mgr.get("color"),
+                "role": mgr.get("role"),
+            }
+        else:
+            ev["manager"] = None
+    else:
+        ev["manager"] = None
     return ev
 
 def _expand_recurrence(ev: dict, from_dt: datetime, to_dt: datetime) -> List[dict]:
@@ -915,6 +950,7 @@ async def create_event(payload: EventCreate, admin: dict = Depends(current_admin
         "description": payload.description,
         "material_id": payload.material_id,
         "assigned_user_ids": payload.assigned_user_ids or [],
+        "manager_id": payload.manager_id,
         "recurrence": payload.recurrence.dict() if payload.recurrence else None,
         "attachments": [],
         "created_by": admin["email"],

@@ -39,6 +39,8 @@ type EventT = {
   material?: any;
   assigned_user_ids?: string[];
   assigned_users?: { id: string; name?: string; email: string; color?: string }[];
+  manager_id?: string | null;
+  manager?: { id: string; name?: string; email: string; color?: string } | null;
   recurrence?: { type: RecurrenceType; until?: string | null } | null;
   attachments?: Array<{ id: string; filename: string; mime_type: string; size: number; uploaded_at?: string; uploaded_by?: string }>;
   base_event_id?: string | null;
@@ -816,24 +818,46 @@ function DraggableEvent({
     >
       {isAdmin ? (
         <View pointerEvents="none" style={{ padding: 2 }}>
+          {/* Top: assigned user(s) */}
+          {event.assigned_users && event.assigned_users.length > 0 && (
+            <Text style={[s.eventAssignee, { color: baseColor }]} numberOfLines={1}>
+              👤 {event.assigned_users.map((u) => u.name || u.email.split("@")[0]).join(", ")}
+            </Text>
+          )}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
             {isRecurring && <Ionicons name="repeat" size={10} color={baseColor} />}
-            <Text style={[s.eventTitle, { color: baseColor }]} numberOfLines={compact ? 2 : 3}>{event.title}</Text>
+            <Text style={[s.eventTitle, { color: baseColor }]} numberOfLines={compact ? 1 : 2}>{event.title}</Text>
           </View>
           <Text style={s.eventTime}>{fmtTime(new Date(event.start_at))} - {fmtTime(new Date(event.end_at))}</Text>
           {!compact && event.material && (
             <Text style={s.eventMeta} numberOfLines={1}>📍 {event.material.ubicacion || ""}</Text>
           )}
+          {/* Bottom: manager (gestor) */}
+          {event.manager && (
+            <Text style={s.eventManager} numberOfLines={1}>
+              🧑‍💼 {event.manager.name || event.manager.email.split("@")[0]}
+            </Text>
+          )}
         </View>
       ) : (
         <TouchableOpacity onPress={onTap} activeOpacity={0.8} style={{ padding: 2 }}>
+          {event.assigned_users && event.assigned_users.length > 0 && (
+            <Text style={[s.eventAssignee, { color: baseColor }]} numberOfLines={1}>
+              👤 {event.assigned_users.map((u) => u.name || u.email.split("@")[0]).join(", ")}
+            </Text>
+          )}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
             {isRecurring && <Ionicons name="repeat" size={10} color={baseColor} />}
-            <Text style={[s.eventTitle, { color: baseColor }]} numberOfLines={compact ? 2 : 3}>{event.title}</Text>
+            <Text style={[s.eventTitle, { color: baseColor }]} numberOfLines={compact ? 1 : 2}>{event.title}</Text>
           </View>
           <Text style={s.eventTime}>{fmtTime(new Date(event.start_at))} - {fmtTime(new Date(event.end_at))}</Text>
           {!compact && event.material && (
             <Text style={s.eventMeta} numberOfLines={1}>📍 {event.material.ubicacion || ""}</Text>
+          )}
+          {event.manager && (
+            <Text style={s.eventManager} numberOfLines={1}>
+              🧑‍💼 {event.manager.name || event.manager.email.split("@")[0]}
+            </Text>
           )}
         </TouchableOpacity>
       )}
@@ -881,7 +905,10 @@ function CreateEventModal({
   const [showMatList, setShowMatList] = useState(false);
   const [saving, setSaving] = useState(false);
   const [techs, setTechs] = useState<Technician[]>([]);
+  const [managers, setManagers] = useState<Technician[]>([]);
   const [assignedIds, setAssignedIds] = useState<string[]>([]);
+  const [managerId, setManagerId] = useState<string | null>(null);
+  const [showManagerList, setShowManagerList] = useState(false);
   const [recurrence, setRecurrence] = useState<RecurrenceType>("none");
   const [until, setUntil] = useState<string>("");
 
@@ -892,9 +919,11 @@ function CreateEventModal({
     if (visible) {
       setMode("texto"); setTitle(""); setDescription("");
       setMaterialId(null); setMaterialObj(null); setShowMatList(false);
-      setAssignedIds([]); setRecurrence("none"); setUntil("");
+      setAssignedIds([]); setManagerId(null); setShowManagerList(false);
+      setRecurrence("none"); setUntil("");
       (async () => {
         try { setTechs(await api.listTechnicians()); } catch {}
+        try { setManagers(await api.listManagers()); } catch {}
       })();
     }
   }, [visible]);
@@ -930,6 +959,7 @@ function CreateEventModal({
         description: description || undefined,
         material_id: materialId || undefined,
         assigned_user_ids: assignedIds,
+        manager_id: managerId || undefined,
         recurrence: recurrence !== "none" ? { type: recurrence, until: until || null } : undefined,
       } as any);
       onDone();
@@ -1057,6 +1087,58 @@ function CreateEventModal({
                 })}
               </View>
 
+              <Text style={s.mLabel}>Gestor del proyecto</Text>
+              <TouchableOpacity
+                testID="btn-pick-manager"
+                style={s.pickMatBtn}
+                onPress={() => setShowManagerList((v) => !v)}
+              >
+                <Ionicons name="person-circle-outline" size={20} color={COLORS.primary} />
+                <Text style={{ color: managerId ? COLORS.navy : COLORS.primary, fontWeight: "700", flex: 1 }} numberOfLines={1}>
+                  {managerId
+                    ? (managers.find((m) => m.id === managerId)?.name || "Gestor seleccionado")
+                    : "Seleccionar gestor (admin)"}
+                </Text>
+                <Ionicons name={showManagerList ? "chevron-up" : "chevron-down"} size={18} color={COLORS.primary} />
+              </TouchableOpacity>
+              {showManagerList && (
+                <View style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, marginTop: 6, overflow: "hidden" }}>
+                  <TouchableOpacity
+                    testID="manager-none"
+                    style={[s.techRow, { borderRadius: 0, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: COLORS.border }]}
+                    onPress={() => { setManagerId(null); setShowManagerList(false); }}
+                  >
+                    <View style={[s.checkBox, !managerId && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}>
+                      {!managerId && <Ionicons name="checkmark" size={16} color="#fff" />}
+                    </View>
+                    <Text style={[s.techName, { color: COLORS.textSecondary, fontStyle: "italic" }]}>— Sin gestor —</Text>
+                  </TouchableOpacity>
+                  {managers.length === 0 ? (
+                    <View style={{ padding: 12 }}>
+                      <Text style={{ color: COLORS.textSecondary, fontStyle: "italic" }}>No hay administradores disponibles</Text>
+                    </View>
+                  ) : managers.map((m) => {
+                    const on = managerId === m.id;
+                    return (
+                      <TouchableOpacity
+                        key={m.id}
+                        testID={`manager-${m.id}`}
+                        style={[s.techRow, { borderRadius: 0, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: COLORS.border }, on && { backgroundColor: "#DBEAFE" }]}
+                        onPress={() => { setManagerId(m.id); setShowManagerList(false); }}
+                      >
+                        <View style={[s.checkBox, on && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}>
+                          {on && <Ionicons name="checkmark" size={16} color="#fff" />}
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.techName}>{m.name}</Text>
+                          <Text style={s.techEmail}>{m.email}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
               <Text style={s.mLabel}>Repetir</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
                 {([["none", "Una vez"], ["daily", "Cada día"], ["weekly", "Cada semana"], ["monthly", "Cada mes"]] as [RecurrenceType, string][]).map(([v, l]) => (
@@ -1107,8 +1189,17 @@ function EventDetailsModal({
   const [editing, setEditing] = useState(false);
   const [attachments, setAttachments] = useState<any[]>(event.attachments || []);
   const [uploading, setUploading] = useState(false);
+  const [managerId, setManagerId] = useState<string | null>(event.manager_id || null);
+  const [managers, setManagers] = useState<Technician[]>([]);
+  const [showManagerList, setShowManagerList] = useState(false);
 
   const m = event.material;
+
+  useEffect(() => {
+    if (isAdmin) {
+      api.listManagers().then(setManagers).catch(() => {});
+    }
+  }, [isAdmin]);
 
   const doDelete = () => {
     Alert.alert("Eliminar evento", "¿Seguro?", [
@@ -1132,7 +1223,8 @@ function EventDetailsModal({
         description: description || undefined,
         start_at: start.toISOString(),
         end_at: end.toISOString(),
-      });
+        manager_id: managerId ?? null,
+      } as any);
       onChanged();
     } catch (e: any) { Alert.alert("Error", e.message); }
     finally { setSaving(false); }
@@ -1362,6 +1454,73 @@ function EventDetailsModal({
                 </View>
               </>
             )}
+
+            {/* Gestor del proyecto */}
+            <Text style={s.mLabel}>Gestor del proyecto</Text>
+            {editing ? (
+              <>
+                <TouchableOpacity
+                  testID="btn-pick-manager-edit"
+                  style={s.pickMatBtn}
+                  onPress={() => setShowManagerList((v) => !v)}
+                >
+                  <Ionicons name="person-circle-outline" size={20} color={COLORS.primary} />
+                  <Text style={{ color: managerId ? COLORS.navy : COLORS.primary, fontWeight: "700", flex: 1 }} numberOfLines={1}>
+                    {managerId
+                      ? (managers.find((m) => m.id === managerId)?.name || event.manager?.name || "Gestor")
+                      : "Seleccionar gestor (admin)"}
+                  </Text>
+                  <Ionicons name={showManagerList ? "chevron-up" : "chevron-down"} size={18} color={COLORS.primary} />
+                </TouchableOpacity>
+                {showManagerList && (
+                  <View style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, marginTop: 6, overflow: "hidden" }}>
+                    <TouchableOpacity
+                      testID="manager-edit-none"
+                      style={[s.techRow, { borderRadius: 0, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: COLORS.border }]}
+                      onPress={() => { setManagerId(null); setShowManagerList(false); }}
+                    >
+                      <View style={[s.checkBox, !managerId && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}>
+                        {!managerId && <Ionicons name="checkmark" size={16} color="#fff" />}
+                      </View>
+                      <Text style={[s.techName, { color: COLORS.textSecondary, fontStyle: "italic" }]}>— Sin gestor —</Text>
+                    </TouchableOpacity>
+                    {managers.length === 0 ? (
+                      <View style={{ padding: 12 }}>
+                        <Text style={{ color: COLORS.textSecondary, fontStyle: "italic" }}>No hay administradores disponibles</Text>
+                      </View>
+                    ) : managers.map((mgr) => {
+                      const on = managerId === mgr.id;
+                      return (
+                        <TouchableOpacity
+                          key={mgr.id}
+                          testID={`manager-edit-${mgr.id}`}
+                          style={[s.techRow, { borderRadius: 0, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: COLORS.border }, on && { backgroundColor: "#DBEAFE" }]}
+                          onPress={() => { setManagerId(mgr.id); setShowManagerList(false); }}
+                        >
+                          <View style={[s.checkBox, on && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}>
+                            {on && <Ionicons name="checkmark" size={16} color="#fff" />}
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={s.techName}>{mgr.name}</Text>
+                            <Text style={s.techEmail}>{mgr.email}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+              </>
+            ) : (
+              event.manager ? (
+                <View style={s.assignedRow}>
+                  <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: event.manager.color || COLORS.primary }} />
+                  <Text style={s.descText}>🧑‍💼 {event.manager.name || event.manager.email}</Text>
+                </View>
+              ) : (
+                <Text style={[s.descText, { color: COLORS.textDisabled }]}>Sin gestor asignado</Text>
+              )
+            )}
+
             {event.recurrence && event.recurrence.type !== "none" && (
               <>
                 <Text style={s.mLabel}>Repetición</Text>
@@ -1552,6 +1711,8 @@ const s = StyleSheet.create({
   eventTitle: { fontSize: 11, fontWeight: "800", color: COLORS.navy },
   eventTime: { fontSize: 10, color: COLORS.textSecondary, marginTop: 1 },
   eventMeta: { fontSize: 10, color: COLORS.textSecondary, marginTop: 1 },
+  eventAssignee: { fontSize: 10, fontWeight: "700", marginBottom: 1 },
+  eventManager: { fontSize: 10, fontWeight: "600", color: COLORS.textSecondary, marginTop: 2, fontStyle: "italic" },
   resizeHandle: {
     position: "absolute", bottom: 0, left: 0, right: 0, height: 14,
     alignItems: "center", justifyContent: "center",

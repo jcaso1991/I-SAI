@@ -296,10 +296,78 @@ metadata:
   run_ui: false
 
 test_plan:
-  current_focus: []
+  current_focus:
+    - "GET /api/managers lists admin users"
+    - "Events CRUD with manager_id field"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
+
+backend_managers_tasks:
+  - task: "GET /api/managers lists admin users"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "testing"
+        -comment: |
+          PASS (13/13 assertions in /app/backend_test_managers.py targeting
+          http://localhost:8001/api).
+          - No token → 401.
+          - Admin token → 200, list items shape {id, name, email} (extras ignored).
+          - Any logged-in user (including role=user) → 200 (auth required, not admin-only).
+          - Created a 2nd admin (POST /api/users role=admin) → appears in
+            /api/managers.
+          - Created a comercial (role=comercial) and a regular user (role=user) →
+            NEITHER appears in /api/managers (role="admin" filter correct).
+          - List is sorted by (name||email).lower() ascending.
+
+  - task: "Events CRUD with manager_id field"
+    implemented: true
+    working: false
+    file: "/app/backend/server.py"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: false
+        -agent: "testing"
+        -comment: |
+          26/27 assertions PASS; 1 FAIL.
+          PASS:
+          - POST /api/events with manager_id=<valid admin id> → 200, response has
+            manager_id populated AND manager object with {id, email, name, color,
+            role="admin"}.
+          - POST /api/events WITHOUT manager_id → manager_id=null, manager=null.
+          - POST /api/events with bogus UUID as manager_id → event is created,
+            manager_id stored as-is, manager=null (no crash, graceful).
+          - PATCH /api/events/{id} setting manager_id to a valid admin → response
+            manager_id set and manager object populated.
+          - GET /api/events list: every event (incl. non-recurring, bogus-mgr,
+            no-mgr) includes manager_id + manager keys.
+          - Recurrence expansion (weekly): 3 virtual occurrences all preserve
+            manager_id and populated manager object.
+          - Regression: event attachments POST/GET/DELETE and budget endpoints
+            (POST /budgets, GET /budgets/{id}/pdf, POST /budgets/pdf-preview)
+            still work (200, "%PDF-" header, sizes ~324KB).
+          FAIL (CRITICAL for spec compliance):
+          - PATCH /api/events/{id} with body {"manager_id": null} → 400 "Nada
+            que actualizar". The review request explicitly states this should
+            clear manager (manager_id=null, manager=null). Root cause in
+            server.py update_event():
+                for k, v in payload.dict().items():
+                    if v is None: continue
+                    ...
+            This skips any field whose value is None, so manager_id cannot be
+            cleared via PATCH. Same bug affects other optional fields
+            (description, material_id, recurrence, assigned_user_ids).
+            Suggested fix: use `payload.dict(exclude_unset=True)` and only
+            skip keys NOT present in the request; or special-case manager_id.
+            Cleanup executed (all test events/users/budgets deleted).
 
 agent_communication:
     -agent: "main"

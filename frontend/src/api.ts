@@ -65,6 +65,7 @@ export const api = {
     request(`/users/${id}/reset-password`, { method: "POST", body: JSON.stringify({ password }) }),
   deleteUser: (id: string) => request(`/users/${id}`, { method: "DELETE" }),
   listTechnicians: () => request("/technicians"),
+  listManagers: () => request("/managers"),
   // Plans
   listPlans: () => request("/plans"),
   createPlan: (body: { title: string; data?: any; material_id?: string; source_event_id?: string; source_attachment_id?: string }) => request("/plans", { method: "POST", body: JSON.stringify(body) }),
