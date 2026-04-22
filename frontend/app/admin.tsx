@@ -49,6 +49,24 @@ export default function Admin() {
     }
   };
 
+  /** Abre el portfolio público (presentación para clientes) en el navegador. */
+  const openPortfolio = async () => {
+    try {
+      const base = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/+$/, "");
+      const url = base ? `${base}/portfolio` : "/portfolio";
+      // En web abrimos en pestaña nueva; en iOS/Android usamos Linking.
+      // @ts-ignore
+      if (typeof window !== "undefined" && window.open) {
+        // @ts-ignore
+        window.open(url, "_blank");
+      } else {
+        await Linking.openURL(url);
+      }
+    } catch (e: any) {
+      Alert.alert("Error", e?.message || "No se pudo abrir la presentación");
+    }
+  };
+
   const disconnect = async () => {
     Alert.alert("Desconectar OneDrive", "¿Seguro?", [
       { text: "Cancelar", style: "cancel" },
@@ -161,6 +179,29 @@ export default function Admin() {
               {theme === "dark" && <Ionicons name="checkmark-circle" size={18} color={COLORS.primary} style={{ position: "absolute", top: 6, right: 6 }} />}
             </TouchableOpacity>
           </View>
+        </View>
+
+        {/* Presentación pública para clientes */}
+        <View style={s.card} testID="portfolio-card">
+          <View style={s.cardHeader}>
+            <View style={[s.iconCircle, { backgroundColor: "#DBEAFE" }]}>
+              <Ionicons name="albums" size={22} color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.cardTitle}>Presentación para clientes</Text>
+              <Text style={s.cardSub}>
+                Portfolio gráfico con capturas, beneficios y PDF descargable. Ideal para enseñar la app a un cliente.
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            testID="btn-open-portfolio"
+            style={[s.btnPrimary, { marginTop: 12 }]}
+            onPress={openPortfolio}
+          >
+            <Ionicons name="open-outline" size={20} color="#fff" />
+            <Text style={s.btnPrimaryText}>VER PRESENTACIÓN</Text>
+          </TouchableOpacity>
         </View>
 
         {!isAdmin && (
