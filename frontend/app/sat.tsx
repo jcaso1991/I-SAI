@@ -323,26 +323,32 @@ export default function SATScreen() {
         {view === "incidencias" && (
           <>
             <View style={s.tabsRow}>
-              <TabPill
-                label="Avisos recibidos" count={pendingCount}
-                active={tab === "pendiente"} onPress={() => setTab("pendiente")}
-                testID="tab-pendientes"
-              />
-              <TabPill
-                label="Agendadas" count={scheduledCount}
-                active={tab === "agendada"} onPress={() => setTab("agendada")}
-                testID="tab-agendadas"
-              />
-              <TabPill
-                label="Resueltas" count={resolvedCount}
-                active={tab === "resuelta"} onPress={() => setTab("resuelta")}
-                testID="tab-resueltas"
-              />
-              <View style={{ flex: 1 }} />
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 8, alignItems: "center", paddingRight: 8 }}
+                style={{ flex: 1 }}
+              >
+                <TabPill
+                  label="Avisos recibidos" count={pendingCount}
+                  active={tab === "pendiente"} onPress={() => setTab("pendiente")}
+                  testID="tab-pendientes"
+                />
+                <TabPill
+                  label="Agendadas" count={scheduledCount}
+                  active={tab === "agendada"} onPress={() => setTab("agendada")}
+                  testID="tab-agendadas"
+                />
+                <TabPill
+                  label="Resueltas" count={resolvedCount}
+                  active={tab === "resuelta"} onPress={() => setTab("resuelta")}
+                  testID="tab-resueltas"
+                />
+              </ScrollView>
               {isAdmin && (
                 <TouchableOpacity
                   testID="btn-new-incident"
-                  style={s.addBtn}
+                  style={[s.addBtn, { flexShrink: 0 }]}
                   onPress={() => setCreatingIncident({
                     cliente: "", direccion: "", telefono: "", observaciones: "",
                     comentarios_sat: "", status: "pendiente",
@@ -1360,7 +1366,7 @@ const s = StyleSheet.create({
   viewMenuSub: { fontSize: 11.5, color: COLORS.textSecondary, fontWeight: "600", marginTop: 2 },
 
   tabsRow: {
-    flexDirection: "row", gap: 8, alignItems: "center",
+    flexDirection: "row", gap: 8, alignItems: "center", flexWrap: "wrap",
     paddingHorizontal: 16, paddingVertical: 12,
     backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },

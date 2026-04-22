@@ -1700,6 +1700,14 @@ async def sat_public_create(body: SATPublicIn):
         "resolved_at": None,
         "resolved_by": None,
     }
+    # Auto-link to catalog client if the name matches an existing client.
+    if doc["cliente"]:
+        matched = await db.sat_clients.find_one(
+            {"cliente": {"$regex": f"^{re.escape(doc['cliente'])}$", "$options": "i"}},
+            {"_id": 0, "id": 1},
+        )
+        if matched:
+            doc["client_id"] = matched["id"]
     await db.sat_incidents.insert_one(doc)
     doc.pop("_id", None)
     # Notificar a los administradores
@@ -1734,7 +1742,17 @@ async def sat_list(
     if status in {"pendiente", "resuelta", "agendada"}:
         q["status"] = status
     if client_id:
-        q["client_id"] = client_id
+        # Match by client_id OR by cliente name (case-insensitive) for incidents
+        # submitted via the public form that didn't have client_id linked.
+        client_doc = await db.sat_clients.find_one({"id": client_id}, {"_id": 0})
+        client_name = (client_doc or {}).get("cliente", "")
+        if client_name:
+            q["$or"] = [
+                {"client_id": client_id},
+                {"cliente": {"$regex": f"^{re.escape(client_name)}$", "$options": "i"}},
+            ]
+        else:
+            q["client_id"] = client_id
     rows = await db.sat_incidents.find(q, {"_id": 0}).sort("created_at", -1).to_list(2000)
     return rows
 
