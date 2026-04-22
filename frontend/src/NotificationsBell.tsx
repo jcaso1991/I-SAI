@@ -19,10 +19,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView, Platform, Alert,
+  useWindowDimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "./api";
+import { useBreakpoint } from "./useBreakpoint";
 
 type Notif = {
   id: string;
@@ -60,6 +62,12 @@ export default function NotificationsBell({
   style?: any;
 }) {
   const router = useRouter();
+  const { isWide } = useBreakpoint();
+  const { width: winW } = useWindowDimensions();
+  // Re-check isWide against live window width (the hook's state can lag on
+  // fast resizes in web previews). This keeps the dropdown correctly sized
+  // whether the user is on desktop, tablet or phone.
+  const wide = isWide && winW >= 768;
   const [items, setItems] = useState<Notif[]>([]);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
@@ -169,11 +177,10 @@ export default function NotificationsBell({
       <Modal
         visible={open}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setOpen(false)}
       >
-        {/* Backdrop — tapping it closes the sheet. Using Pressable ensures
-            the press event is consumed before bubbling into child views. */}
+        {/* Backdrop — tapping outside the panel closes it. */}
         <View style={s.sheetRoot}>
           <TouchableOpacity
             testID="notif-backdrop"
@@ -181,16 +188,10 @@ export default function NotificationsBell({
             style={StyleSheet.absoluteFill}
             onPress={() => setOpen(false)}
           />
-          <View style={s.sheet}>
-            {/* Grab handle (visual + tappable) */}
-            <TouchableOpacity
-              testID="btn-close-notif-handle"
-              onPress={() => setOpen(false)}
-              activeOpacity={0.6}
-              style={s.handleWrap}
-            >
-              <View style={s.handle} />
-            </TouchableOpacity>
+          {/* Top-anchored panel (dropdown style). It grows with content up to
+              a max height; when content exceeds that, the inner ScrollView
+              shows a vertical scrollbar on the right. */}
+          <View style={[s.sheet, wide ? s.sheetWide : s.sheetNarrow]}>
             {/* Header */}
             <View style={s.hdr}>
               <View style={{ flex: 1 }}>
@@ -301,7 +302,11 @@ export default function NotificationsBell({
                 </Text>
               </View>
             ) : (
-              <ScrollView style={{ maxHeight: 520 }} contentContainerStyle={{ padding: 12, gap: 8 }}>
+              <ScrollView
+                style={{ flexGrow: 0, flexShrink: 1 }}
+                contentContainerStyle={{ padding: 12, gap: 8 }}
+                showsVerticalScrollIndicator
+              >
                 {items.map((n) => {
                   const isCompleted = n.type === "event_completed";
                   const isPending = n.type === "event_pending_completion";
@@ -387,22 +392,35 @@ const s = StyleSheet.create({
   },
   badgeText: { color: "#fff", fontSize: 10, fontWeight: "900" },
 
-  // Sheet
-  sheetRoot: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
+  // Top-anchored dropdown panel (opens from the top-right, near the bell).
+  // Grows with content; inner ScrollView shows a scrollbar when there are
+  // many notifications.
+  sheetRoot: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.35)",
+  },
   sheet: {
-    backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    maxHeight: "82%",
+    position: "absolute",
+    top: Platform.OS === "web" ? 70 : 60,
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    borderWidth: 1, borderColor: COLORS.border,
+    // Grow with content up to ~80% of the viewport; inner list scrolls.
+    maxHeight: Platform.OS === "web" ? ("80vh" as any) : ("82%" as any),
+    overflow: "hidden",
     ...Platform.select<any>({
-      web: { boxShadow: "0 -8px 32px rgba(15,23,42,0.18)" },
-      default: { shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 16, shadowOffset: { width: 0, height: -8 } },
+      web: { boxShadow: "0 16px 48px rgba(15,23,42,0.22)" },
+      default: { shadowColor: "#000", shadowOpacity: 0.22, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 12 },
     }),
   },
-  handleWrap: {
-    alignItems: "center", paddingTop: 10, paddingBottom: 4,
+  // Desktop / tablet: fixed width anchored to top-right.
+  sheetWide: {
+    right: 20,
+    width: 420,
   },
-  handle: {
-    width: 44, height: 5, borderRadius: 3,
-    backgroundColor: COLORS.border,
+  // Phones: stretch across the screen with small side margins.
+  sheetNarrow: {
+    left: 12,
+    right: 12,
   },
   closeBtn: {
     width: 36, height: 36, borderRadius: 18,
