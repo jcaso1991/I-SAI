@@ -9,7 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../src/api";
 
 type User = { id: string; email: string; name?: string; role: string; color?: string; created_at?: string };
-type Role = "admin" | "user";
+type Role = "admin" | "user" | "comercial";
 
 const USER_COLOR_PALETTE = [
   "#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6",
@@ -118,9 +118,9 @@ export default function Users() {
                   {u.name || u.email} {isMe && <Text style={s.youBadge}>(tú)</Text>}
                 </Text>
                 <Text style={s.userEmail} numberOfLines={1}>{u.email}</Text>
-                <View style={[s.roleBadge, u.role === "admin" ? s.roleAdmin : s.roleUser]}>
-                  <Text style={[s.roleBadgeText, u.role === "admin" && { color: COLORS.primary }]}>
-                    {u.role === "admin" ? "ADMIN" : "TÉCNICO"}
+                <View style={[s.roleBadge, u.role === "admin" ? s.roleAdmin : u.role === "comercial" ? { backgroundColor: "#EDE9FE" } : s.roleUser]}>
+                  <Text style={[s.roleBadgeText, u.role === "admin" && { color: COLORS.primary }, u.role === "comercial" && { color: "#6D28D9" }]}>
+                    {u.role === "admin" ? "ADMIN" : u.role === "comercial" ? "COMERCIAL" : "TÉCNICO"}
                   </Text>
                 </View>
               </View>
@@ -338,6 +338,13 @@ function EditUserModal({ user, onClose, onDone }: { user: User | null; onClose: 
               >
                 <Ionicons name="person" size={18} color={role === "user" ? "#fff" : COLORS.navy} />
                 <Text style={[s.roleChipText, role === "user" && { color: "#fff" }]}>Técnico</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.roleChip, role === "comercial" && s.roleChipActive]}
+                onPress={() => setRole("comercial")}
+              >
+                <Ionicons name="briefcase" size={18} color={role === "comercial" ? "#fff" : COLORS.navy} />
+                <Text style={[s.roleChipText, role === "comercial" && { color: "#fff" }]}>Comercial</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[s.roleChip, role === "admin" && s.roleChipActive]}

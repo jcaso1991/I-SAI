@@ -447,12 +447,12 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     name: Optional[str] = None
-    role: Literal["admin", "user"] = "user"
+    role: Literal["admin", "user", "comercial"] = "user"
     color: Optional[str] = None
 
 class UserPatch(BaseModel):
     name: Optional[str] = None
-    role: Optional[Literal["admin", "user"]] = None
+    role: Optional[Literal["admin", "user", "comercial"]] = None
     color: Optional[str] = None
 
 class PasswordReset(BaseModel):
@@ -1200,6 +1200,114 @@ async def stats(user: dict = Depends(current_user)):
     total = await db.materiales.count_documents({})
     pending = await db.materiales.count_documents({"sync_status": "pending"})
     return {"total": total, "pending": pending, "synced": total - pending}
+
+# ---------------- Budgets (Presupuestos) ----------------
+async def current_admin_or_comercial(user: dict = Depends(current_user)):
+    if user.get("role") not in ("admin", "comercial"):
+        raise HTTPException(403, "Requiere rol admin o comercial")
+    return user
+
+class EquipmentRow(BaseModel):
+    elemento: str = ""
+    cantidad: Optional[str] = ""
+    ubicacion: Optional[str] = ""
+    observaciones: Optional[str] = ""
+
+class BudgetCreate(BaseModel):
+    # general
+    n_proyecto: Optional[str] = ""
+    cliente: Optional[str] = ""
+    nombre_instalacion: Optional[str] = ""
+    direccion: Optional[str] = ""
+    contacto_1: Optional[str] = ""
+    contacto_2: Optional[str] = ""
+    observaciones_presupuesto: Optional[str] = ""
+    fecha_inicio: Optional[str] = ""
+    fecha_fin: Optional[str] = ""
+    observaciones_ejecucion: Optional[str] = ""
+    # equipos
+    equipos: List[EquipmentRow] = []
+    # deliveries
+    entrega_tarjeta_mantenimiento: bool = False
+    entrega_llave_salto: bool = False
+    entrega_eps100: bool = False
+    # signatures (base64 PNG)
+    firma_isai: Optional[str] = ""
+    nombre_isai: Optional[str] = ""
+    cargo_isai: Optional[str] = ""
+    firma_cliente: Optional[str] = ""
+    nombre_cliente: Optional[str] = ""
+    cargo_cliente: Optional[str] = ""
+    # link to existing material (proyecto)
+    material_id: Optional[str] = None
+
+class BudgetPatch(BudgetCreate):
+    pass
+
+@api_router.post("/budgets")
+async def create_budget(payload: BudgetCreate, user: dict = Depends(current_admin_or_comercial)):
+    now = datetime.now(timezone.utc).isoformat()
+    doc = payload.dict()
+    doc["equipos"] = [e if isinstance(e, dict) else e.dict() for e in (payload.equipos or [])]
+    doc.update({
+        "id": str(uuid.uuid4()),
+        "created_at": now,
+        "updated_at": now,
+        "created_by": user["email"],
+    })
+    await db.budgets.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api_router.get("/budgets")
+async def list_budgets(user: dict = Depends(current_admin_or_comercial)):
+    items = await db.budgets.find({}, {"_id": 0, "firma_isai": 0, "firma_cliente": 0}).sort("updated_at", -1).to_list(500)
+    return items
+
+@api_router.get("/budgets/{bid}")
+async def get_budget(bid: str, user: dict = Depends(current_admin_or_comercial)):
+    b = await db.budgets.find_one({"id": bid}, {"_id": 0})
+    if not b:
+        raise HTTPException(404, "Presupuesto no encontrado")
+    return b
+
+@api_router.patch("/budgets/{bid}")
+async def update_budget(bid: str, payload: BudgetPatch, user: dict = Depends(current_admin_or_comercial)):
+    upd = {k: v for k, v in payload.dict().items() if v is not None}
+    if "equipos" in upd:
+        upd["equipos"] = [e if isinstance(e, dict) else (e.dict() if hasattr(e, "dict") else e) for e in upd["equipos"]]
+    upd["updated_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.budgets.update_one({"id": bid}, {"$set": upd})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Presupuesto no encontrado")
+    b = await db.budgets.find_one({"id": bid}, {"_id": 0})
+    return b
+
+@api_router.delete("/budgets/{bid}")
+async def delete_budget(bid: str, user: dict = Depends(current_admin_or_comercial)):
+    res = await db.budgets.delete_one({"id": bid})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Presupuesto no encontrado")
+    return {"ok": True}
+
+DEFAULT_EQUIPMENT_LIST = [
+    "Cilindro electrónico Salto XS4",
+    "Lector de muro Salto XS4",
+    "Cerradura electrónica Salto XS4",
+    "Escudo electrónico Salto XS4",
+    "Mini cilindro Salto",
+    "Tarjeta MIFARE 1K",
+    "Llavero MIFARE",
+    "Portal encodificador HAMS",
+    "PPD (Portable Programming Device)",
+    "Controlador Salto CU5000",
+    "Fuente de alimentación 12V",
+    "Cableado estructurado",
+]
+
+@api_router.get("/budgets-defaults/equipos")
+async def budgets_default_equipos(user: dict = Depends(current_admin_or_comercial)):
+    return {"items": DEFAULT_EQUIPMENT_LIST}
 
 # ---------------- Seed ----------------
 async def seed_initial_data():

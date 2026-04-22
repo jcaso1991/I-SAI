@@ -125,6 +125,16 @@ export default function HomeScreen() {
                 onPress={() => router.push("/planos")}
                 big={isWide}
               />
+              {(isAdmin || me?.role === "comercial") && (
+                <Circle
+                  testID="circle-presupuestos"
+                  icon="document-text"
+                  label="Presupuestos"
+                  color="#8B5CF6"
+                  onPress={() => router.push("/presupuestos")}
+                  big={isWide}
+                />
+              )}
             </View>
 
             {stats && (

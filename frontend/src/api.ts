@@ -97,6 +97,14 @@ export const api = {
     request(`/events/${encodeURIComponent(eid)}/attachments/${aid}`),
   deleteEventAttachment: (eid: string, aid: string) =>
     request(`/events/${encodeURIComponent(eid)}/attachments/${aid}`, { method: "DELETE" }),
+
+  // Budgets (presupuestos)
+  listBudgets: () => request("/budgets"),
+  getBudget: (id: string) => request(`/budgets/${id}`),
+  createBudget: (body: any) => request("/budgets", { method: "POST", body: JSON.stringify(body) }),
+  updateBudget: (id: string, body: any) => request(`/budgets/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteBudget: (id: string) => request(`/budgets/${id}`, { method: "DELETE" }),
+  budgetsDefaultEquipos: () => request("/budgets-defaults/equipos"),
   // Stamps
   listStamps: () => request("/stamps"),
   createStamp: (body: { name: string; image_base64: string }) =>
