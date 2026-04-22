@@ -873,8 +873,16 @@ function DayColumn({
   const [dragEvent, setDragEvent] = useState<{ id: string; top: number; height: number } | null>(null);
 
   const pan = useMemo(() => PanResponder.create({
+    // On iOS the parent ScrollView competes for vertical gestures, which
+    // prevents the admin "press-and-drag" to create events. We let the
+    // ScrollView start the touch but capture the gesture as soon as the
+    // admin's finger moves more than a few pixels vertically.
     onStartShouldSetPanResponder: () => isAdmin,
     onMoveShouldSetPanResponder: () => isAdmin,
+    onStartShouldSetPanResponderCapture: () => false,
+    onMoveShouldSetPanResponderCapture: (_, g) =>
+      isAdmin && Math.abs(g.dy) > 4 && Math.abs(g.dy) > Math.abs(g.dx),
+    onPanResponderTerminationRequest: () => false,
     onPanResponderGrant: (evt) => {
       const y = evt.nativeEvent.locationY;
       const m = minutesFromTop(y);
