@@ -1,14 +1,16 @@
 import { useCallback, useState } from "react";
 import {
-  View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform,
+  View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { api, clearToken, COLORS } from "../src/api";
+import { api, clearToken } from "../src/api";
 import ResponsiveLayout from "../src/ResponsiveLayout";
 import { useBreakpoint } from "../src/useBreakpoint";
 import NotificationsBell from "../src/NotificationsBell";
+import { ios } from "../src/ui/iosTheme";
+import IOSHeader from "../src/ui/IOSHeader";
 
 function greetingForNow(): string {
   const h = new Date().getHours();
@@ -59,6 +61,7 @@ export default function HomeScreen() {
   const firstName = me?.name ? me.name.split(" ")[0] : "";
   const showPresupuestos = isAdmin || me?.role === "comercial";
 
+  /** iOS-style tile (rounded square + icon + title). */
   const Tile = ({
     testID, icon, iconFamily = "ion", title, accent, onPress,
   }: {
@@ -69,107 +72,105 @@ export default function HomeScreen() {
       testID={testID}
       style={[s.tile, isWide && s.tileWide]}
       onPress={onPress}
-      activeOpacity={0.85}
+      activeOpacity={0.7}
     >
-      <View style={[s.tileIcon, { backgroundColor: accent + "1A", borderColor: accent + "33" }]}>
+      <View style={[s.tileIcon, { backgroundColor: accent }]}>
         {iconFamily === "ion" ? (
-          <Ionicons name={icon as any} size={isWide ? 36 : 30} color={accent} />
+          <Ionicons name={icon as any} size={32} color="#fff" />
         ) : (
-          <MaterialCommunityIcons name={icon as any} size={isWide ? 40 : 32} color={accent} />
+          <MaterialCommunityIcons name={icon as any} size={34} color="#fff" />
         )}
       </View>
-      <Text style={[s.tileTitle, !isWide && { fontSize: 15 }]}>{title}</Text>
+      <Text style={s.tileTitle} numberOfLines={1}>{title}</Text>
     </TouchableOpacity>
   );
 
   const content = (
     <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
-      {/* Mobile compact header */}
-      {!isWide && (
-        <View style={s.header}>
-          <View style={{ flex: 1 }}>
-            <Text style={s.greetingSmall}>{greetingForNow()}</Text>
-            <Text style={s.helloSmall}>{firstName || "Bienvenido"} 👋</Text>
-          </View>
-          <NotificationsBell />
-          <TouchableOpacity
-            testID="btn-logout"
-            style={[s.logoutBtn, { marginLeft: 8 }]}
-            onPress={logout}
-          >
-            <Ionicons name="log-out-outline" size={20} color={COLORS.text} />
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Desktop notifications bell — anchored to the top-right corner of the
-          content area (above the hero). Keeps the sidebar untouched. */}
-      {isWide && (
+      {!isWide ? (
+        // Mobile: iOS large-title header
+        <IOSHeader
+          title={firstName ? `${greetingForNow()}, ${firstName}` : greetingForNow()}
+          subtitle={spanishToday()}
+          rightSlot={
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <NotificationsBell />
+              <TouchableOpacity
+                testID="btn-logout"
+                style={s.iconBtn}
+                onPress={logout}
+              >
+                <Ionicons name="log-out-outline" size={20} color={ios.colors.brand} />
+              </TouchableOpacity>
+            </View>
+          }
+        />
+      ) : (
         <View style={s.deskTopRight}>
           <NotificationsBell />
         </View>
       )}
 
       {loading ? (
-        <View style={s.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>
-      ) : (
-        // No ScrollView: the layout is designed to fit any desktop or mobile
-        // viewport without scrolling. Content is centered vertically for a
-        // more premium, uncluttered feel.
-        <View style={[s.body, isWide && s.bodyWide]}>
-          <View style={isWide ? s.wideWrap : s.mobileWrap}>
-
-            {isWide && (
-              <View style={s.hero}>
-                <Text style={s.heroGreet}>{greetingForNow()},</Text>
-                <Text style={s.heroName}>{firstName || "Bienvenido"} 👋</Text>
-                <Text style={s.heroDate}>{spanishToday()}</Text>
-              </View>
-            )}
-
-            <View style={[s.tilesGrid, isWide && s.tilesGridWide]}>
-              <Tile
-                testID="circle-proyectos"
-                iconFamily="mat"
-                icon="set-square"
-                title="Proyectos"
-                accent={COLORS.primary}
-                onPress={() => router.push("/materiales")}
-              />
-              <Tile
-                testID="circle-calendario"
-                icon="calendar"
-                title="Calendario"
-                accent="#10B981"
-                onPress={() => router.push("/calendario")}
-              />
-              <Tile
-                testID="circle-planos"
-                icon="map"
-                title="Planos"
-                accent="#F59E0B"
-                onPress={() => router.push("/planos")}
-              />
-              {showPresupuestos && (
-                <Tile
-                  testID="circle-presupuestos"
-                  icon="document-text"
-                  title="Presupuestos"
-                  accent="#8B5CF6"
-                  onPress={() => router.push("/presupuestos")}
-                />
-              )}
-              <Tile
-                testID="circle-sat"
-                icon="headset"
-                title="CRM SAT"
-                accent="#EC4899"
-                onPress={() => router.push("/sat")}
-              />
-            </View>
-
-          </View>
+        <View style={s.center}>
+          <ActivityIndicator size="large" color={ios.colors.brand} />
         </View>
+      ) : (
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={[s.scroll, isWide && s.scrollWide]}
+          showsVerticalScrollIndicator={false}
+        >
+          {isWide && (
+            <View style={s.hero}>
+              <Text style={s.heroGreet}>{greetingForNow()},</Text>
+              <Text style={s.heroName}>{firstName || "Bienvenido"}</Text>
+              <Text style={s.heroDate}>{spanishToday()}</Text>
+            </View>
+          )}
+
+          <Text style={s.sectionTitle}>Módulos</Text>
+          <View style={[s.tilesGrid, isWide && s.tilesGridWide]}>
+            <Tile
+              testID="circle-proyectos"
+              iconFamily="mat"
+              icon="set-square"
+              title="Proyectos"
+              accent={ios.colors.brand}
+              onPress={() => router.push("/materiales")}
+            />
+            <Tile
+              testID="circle-calendario"
+              icon="calendar"
+              title="Calendario"
+              accent={ios.colors.green}
+              onPress={() => router.push("/calendario")}
+            />
+            <Tile
+              testID="circle-planos"
+              icon="map"
+              title="Planos"
+              accent={ios.colors.orange}
+              onPress={() => router.push("/planos")}
+            />
+            {showPresupuestos && (
+              <Tile
+                testID="circle-presupuestos"
+                icon="document-text"
+                title="Presupuestos"
+                accent={ios.colors.purple}
+                onPress={() => router.push("/presupuestos")}
+              />
+            )}
+            <Tile
+              testID="circle-sat"
+              icon="headset"
+              title="CRM SAT"
+              accent={ios.colors.pink}
+              onPress={() => router.push("/sat")}
+            />
+          </View>
+        </ScrollView>
       )}
     </SafeAreaView>
   );
@@ -181,80 +182,75 @@ export default function HomeScreen() {
   );
 }
 
-const shadowLight = Platform.select<any>({
-  web: { boxShadow: "0 2px 16px rgba(15, 23, 42, 0.08)" },
-  default: { shadowColor: "#0F172A", shadowOpacity: 0.08, shadowRadius: 14, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
-});
-
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.bg },
+  root: { flex: 1, backgroundColor: ios.colors.bgGrouped },
 
-  // Mobile header
-  header: {
-    flexDirection: "row", alignItems: "center",
-    paddingHorizontal: 20, paddingVertical: 14,
-    backgroundColor: COLORS.surface,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
-  },
-  greetingSmall: { fontSize: 12, color: COLORS.textSecondary, fontWeight: "700", letterSpacing: 0.3 },
-  helloSmall: { fontSize: 20, fontWeight: "900", color: COLORS.text, letterSpacing: -0.4 },
-  logoutBtn: {
-    width: 40, height: 40, borderRadius: 12, backgroundColor: COLORS.bg,
+  iconBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: ios.colors.surface,
     alignItems: "center", justifyContent: "center",
-    borderWidth: 1, borderColor: COLORS.border,
+    ...ios.shadow.card,
   },
-  deskTopRight: {
-    position: "absolute",
-    top: 28, right: 32,
-    zIndex: 10,
-  },
-
+  deskTopRight: { position: "absolute", top: 24, right: 32, zIndex: 10 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
 
-  // Body container (no scroll)
-  body: { flex: 1, padding: 20, justifyContent: "center" },
-  bodyWide: { padding: 48 },
-  wideWrap: { maxWidth: 960, width: "100%", alignSelf: "center" },
-  mobileWrap: { flex: 1, justifyContent: "center" },
+  scroll: { padding: 16, paddingBottom: 40 },
+  scrollWide: { padding: 48, paddingBottom: 80, maxWidth: 1100, alignSelf: "center", width: "100%" },
 
-  // Hero
-  hero: { marginBottom: 40, alignItems: "center" },
-  heroGreet: { fontSize: 16, color: COLORS.textSecondary, fontWeight: "700", letterSpacing: 0.2 },
+  // Wide-screen hero
+  hero: { marginBottom: 32, paddingHorizontal: 4 },
+  heroGreet: {
+    fontFamily: ios.font.family,
+    fontSize: 17, color: ios.colors.textSub, fontWeight: "500",
+  },
   heroName: {
-    fontSize: 42, fontWeight: "900", color: COLORS.text,
-    letterSpacing: -1, marginTop: 4,
+    fontFamily: ios.font.family,
+    fontSize: 38, fontWeight: "700", color: ios.colors.text,
+    letterSpacing: -0.8, marginTop: 4,
   },
-  heroDate: { fontSize: 13, color: COLORS.textSecondary, fontWeight: "600", marginTop: 8, letterSpacing: 0.2 },
+  heroDate: {
+    fontFamily: ios.font.family,
+    fontSize: 15, color: ios.colors.textSub, fontWeight: "500",
+    marginTop: 6,
+  },
 
-  // Tiles grid
-  tilesGrid: {
-    flexDirection: "row", flexWrap: "wrap", gap: 14,
-    justifyContent: "center",
+  sectionTitle: {
+    fontFamily: ios.font.family,
+    fontSize: 13, color: ios.colors.sectionHeader,
+    textTransform: "uppercase", letterSpacing: 0.5,
+    marginBottom: 8, marginLeft: 16,
   },
-  tilesGridWide: { gap: 24 },
+
+  tilesGrid: {
+    flexDirection: "row", flexWrap: "wrap", gap: 12,
+    justifyContent: "flex-start",
+  },
+  tilesGridWide: { gap: 18 },
   tile: {
-    flexBasis: "47%",
-    maxWidth: "47%",
-    backgroundColor: COLORS.surface, borderRadius: 20,
-    borderWidth: 1, borderColor: COLORS.border,
-    paddingVertical: 28, paddingHorizontal: 20,
-    alignItems: "center",
-    ...shadowLight,
+    flexBasis: "48%", maxWidth: "48%",
+    backgroundColor: ios.colors.surface,
+    borderRadius: ios.radius.card,
+    paddingVertical: 22, paddingHorizontal: 16,
+    alignItems: "center", justifyContent: "center",
+    minHeight: 140,
+    ...ios.shadow.card,
   },
   tileWide: {
-    // Three columns on desktop: 5 tiles → first row of 3, second row of 2.
+    // Three columns on desktop
     // @ts-ignore — react-native-web accepts calc()
-    flexBasis: "calc(33.333% - 16px)",
-    maxWidth: "calc(33.333% - 16px)",
-    paddingVertical: 36,
+    flexBasis: "calc(33.333% - 12px)",
+    maxWidth: "calc(33.333% - 12px)",
+    paddingVertical: 32,
+    minHeight: 170,
   },
   tileIcon: {
-    width: 72, height: 72, borderRadius: 20,
+    width: 56, height: 56, borderRadius: 14,
     alignItems: "center", justifyContent: "center",
-    borderWidth: 1, marginBottom: 14,
+    marginBottom: 12,
   },
   tileTitle: {
-    fontSize: 18, fontWeight: "900", color: COLORS.text,
-    letterSpacing: -0.3,
+    fontFamily: ios.font.family,
+    fontSize: 15, fontWeight: "600", color: ios.colors.text,
+    letterSpacing: -0.2,
   },
 });
