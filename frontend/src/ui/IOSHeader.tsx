@@ -7,6 +7,7 @@
 import React from "react";
 import { View, Text, StyleSheet, Platform } from "react-native";
 import { ios } from "./iosTheme";
+import { COLORS } from "../api";
 
 export default function IOSHeader({
   title,
@@ -45,7 +46,7 @@ export default function IOSHeader({
 
 const s = StyleSheet.create({
   wrap: {
-    backgroundColor: ios.colors.bgGrouped,
+    backgroundColor: COLORS.bg,
     paddingTop: Platform.select({ ios: 6, default: 10 }) as number,
     paddingHorizontal: 20,
     paddingBottom: 10,
@@ -55,14 +56,14 @@ const s = StyleSheet.create({
     fontFamily: ios.font.family,
     fontSize: ios.font.largeTitle.size,
     fontWeight: "700",
-    color: ios.colors.text,
+    color: COLORS.text,
     letterSpacing: ios.font.largeTitle.letter,
     marginTop: 4,
   },
   subtitle: {
     fontFamily: ios.font.family,
     fontSize: ios.font.subhead.size,
-    color: ios.colors.textSub,
+    color: COLORS.textSecondary,
     marginTop: 4,
     fontWeight: "500",
   },
@@ -70,14 +71,14 @@ const s = StyleSheet.create({
   barRow: {
     flexDirection: "row", alignItems: "center",
     paddingHorizontal: 16, paddingVertical: 10,
-    backgroundColor: ios.colors.surface,
+    backgroundColor: COLORS.surface,
     borderBottomWidth: ios.hairline,
-    borderBottomColor: ios.colors.separator,
+    borderBottomColor: COLORS.border,
   },
   barTitle: {
     flex: 1, textAlign: "center",
     fontFamily: ios.font.family,
-    fontSize: 17, fontWeight: "600", color: ios.colors.text,
+    fontSize: 17, fontWeight: "600", color: COLORS.text,
     letterSpacing: -0.4,
   },
 });

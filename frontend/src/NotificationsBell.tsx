@@ -74,6 +74,9 @@ export default function NotificationsBell({
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const pollRef = useRef<any>(null);
+  // Inline confirmation banner (more reliable than Alert/confirm over an open Modal,
+  // which on iOS can be dismissed by the parent Modal and on web sometimes blocks).
+  const [confirmKind, setConfirmKind] = useState<null | "all" | "selected">(null);
 
   const load = useCallback(async () => {
     try {
@@ -133,12 +136,13 @@ export default function NotificationsBell({
 
   const deleteSelected = async () => {
     if (selected.size === 0) return;
-    const ok = await confirmAsync(
-      "Eliminar seleccionadas",
-      `¿Eliminar ${selected.size} notificación${selected.size !== 1 ? "es" : ""}?`,
-    );
-    if (!ok) return;
-    await Promise.all(Array.from(selected).map((id) => api.deleteNotification(id).catch(() => {})));
+    setConfirmKind("selected");
+  };
+
+  const performDeleteSelected = async () => {
+    const ids = Array.from(selected);
+    setConfirmKind(null);
+    await Promise.all(ids.map((id) => api.deleteNotification(id).catch(() => {})));
     setSelected(new Set());
     setSelectMode(false);
     load();
@@ -146,12 +150,17 @@ export default function NotificationsBell({
 
   const deleteAll = async () => {
     if (items.length === 0) return;
-    const ok = await confirmAsync(
-      "Eliminar todas",
-      `Se eliminarán ${items.length} notificación${items.length !== 1 ? "es" : ""}. Esta acción no se puede deshacer.`,
-    );
-    if (!ok) return;
-    try { await api.deleteAllNotifications(); } catch {}
+    setConfirmKind("all");
+  };
+
+  const performDeleteAll = async () => {
+    setConfirmKind(null);
+    try {
+      await api.deleteAllNotifications();
+    } catch (e: any) {
+      Alert.alert("Error", e?.message || "No se pudieron eliminar las notificaciones");
+      return;
+    }
     setSelected(new Set());
     setSelectMode(false);
     load();
@@ -211,6 +220,35 @@ export default function NotificationsBell({
                 <Ionicons name="close" size={22} color={COLORS.text} />
               </TouchableOpacity>
             </View>
+
+            {/* Inline confirmation banner */}
+            {confirmKind && (
+              <View style={s.confirmBanner}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.confirmTitle}>
+                    {confirmKind === "all"
+                      ? `¿Eliminar las ${items.length} notificaciones?`
+                      : `¿Eliminar ${selected.size} notificación${selected.size !== 1 ? "es" : ""}?`}
+                  </Text>
+                  <Text style={s.confirmSub}>Esta acción no se puede deshacer.</Text>
+                </View>
+                <TouchableOpacity
+                  testID="btn-confirm-cancel"
+                  style={[s.confirmBtn, s.confirmBtnGhost]}
+                  onPress={() => setConfirmKind(null)}
+                >
+                  <Text style={s.confirmBtnGhostTxt}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  testID="btn-confirm-delete"
+                  style={[s.confirmBtn, s.confirmBtnDanger]}
+                  onPress={() => confirmKind === "all" ? performDeleteAll() : performDeleteSelected()}
+                >
+                  <Ionicons name="trash" size={14} color="#fff" />
+                  <Text style={s.confirmBtnDangerTxt}>Eliminar</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* Action row */}
             {items.length > 0 && (
@@ -479,4 +517,22 @@ const s = StyleSheet.create({
   itemMsg: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2, lineHeight: 17 },
   itemDate: { fontSize: 10.5, color: COLORS.textDisabled, marginTop: 4, fontWeight: "700" },
   delBtn: { padding: 2 },
+
+  // Inline confirmation banner shown above the action row
+  confirmBanner: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingHorizontal: 14, paddingVertical: 12,
+    backgroundColor: "#FEF2F2",
+    borderBottomWidth: 1, borderBottomColor: "#FECACA",
+  },
+  confirmTitle: { fontSize: 13, fontWeight: "900", color: "#991B1B" },
+  confirmSub: { fontSize: 11, color: "#B91C1C", marginTop: 1, fontWeight: "600" },
+  confirmBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8,
+  },
+  confirmBtnGhost: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#FECACA" },
+  confirmBtnGhostTxt: { fontSize: 12, fontWeight: "800", color: "#991B1B" },
+  confirmBtnDanger: { backgroundColor: "#EF4444" },
+  confirmBtnDangerTxt: { fontSize: 12, fontWeight: "800", color: "#fff" },
 });

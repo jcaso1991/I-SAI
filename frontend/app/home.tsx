@@ -5,7 +5,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { api, clearToken } from "../src/api";
+import { api, clearToken, COLORS } from "../src/api";
 import ResponsiveLayout from "../src/ResponsiveLayout";
 import { useBreakpoint } from "../src/useBreakpoint";
 import NotificationsBell from "../src/NotificationsBell";
@@ -196,11 +196,11 @@ export default function HomeScreen() {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: ios.colors.bgGrouped },
+  root: { flex: 1, backgroundColor: COLORS.bg },
 
   iconBtn: {
     width: 36, height: 36, borderRadius: 18,
-    backgroundColor: ios.colors.surface,
+    backgroundColor: COLORS.surface,
     alignItems: "center", justifyContent: "center",
     ...ios.shadow.card,
   },
@@ -214,22 +214,22 @@ const s = StyleSheet.create({
   hero: { marginBottom: 32, paddingHorizontal: 4 },
   heroGreet: {
     fontFamily: ios.font.family,
-    fontSize: 17, color: ios.colors.textSub, fontWeight: "500",
+    fontSize: 17, color: COLORS.textSecondary, fontWeight: "500",
   },
   heroName: {
     fontFamily: ios.font.family,
-    fontSize: 38, fontWeight: "700", color: ios.colors.text,
+    fontSize: 38, fontWeight: "700", color: COLORS.text,
     letterSpacing: -0.8, marginTop: 4,
   },
   heroDate: {
     fontFamily: ios.font.family,
-    fontSize: 15, color: ios.colors.textSub, fontWeight: "500",
+    fontSize: 15, color: COLORS.textSecondary, fontWeight: "500",
     marginTop: 6,
   },
 
   sectionTitle: {
     fontFamily: ios.font.family,
-    fontSize: 13, color: ios.colors.sectionHeader,
+    fontSize: 13, color: COLORS.textSecondary,
     textTransform: "uppercase", letterSpacing: 0.5,
     marginBottom: 8, marginLeft: 16,
   },
@@ -241,7 +241,7 @@ const s = StyleSheet.create({
   tilesGridWide: { gap: 18 },
   tile: {
     flexBasis: "48%", maxWidth: "48%",
-    backgroundColor: ios.colors.surface,
+    backgroundColor: COLORS.surface,
     borderRadius: ios.radius.card,
     paddingVertical: 22, paddingHorizontal: 16,
     alignItems: "center", justifyContent: "center",
@@ -263,7 +263,7 @@ const s = StyleSheet.create({
   },
   tileTitle: {
     fontFamily: ios.font.family,
-    fontSize: 15, fontWeight: "600", color: ios.colors.text,
+    fontSize: 15, fontWeight: "600", color: COLORS.text,
     letterSpacing: -0.2,
   },
 });

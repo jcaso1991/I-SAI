@@ -10,7 +10,7 @@ import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ios } from "./iosTheme";
-import { api } from "../api";
+import { api, COLORS } from "../api";
 
 export type BottomTab =
   | "home" | "proyectos" | "calendario" | "planos"
@@ -97,9 +97,8 @@ export default function IOSTabBar({ active, isAdmin: _isAdmin }: { active: Botto
         return p === null || perms!.includes(p);
       });
 
-  // Order: ajustes | functional tabs (left of home) | home | functional tabs (right of home)
-  // Simpler: a fixed order subset by perms list.
-  const ORDER: BottomTab[] = ["ajustes", "proyectos", "calendario", "home", "planos", "presupuestos", "sat"];
+  // Order: functional tabs first, Home centered, Settings rightmost (iOS convention).
+  const ORDER: BottomTab[] = ["proyectos", "calendario", "home", "planos", "presupuestos", "sat", "ajustes"];
   const ordered = ORDER.filter((t) => visibleTabs.includes(t));
 
   return (
@@ -128,12 +127,9 @@ export default function IOSTabBar({ active, isAdmin: _isAdmin }: { active: Botto
 const styles = StyleSheet.create({
   wrap: {
     flexDirection: "row",
-    backgroundColor: Platform.select({
-      ios: "rgba(255,255,255,0.92)",
-      default: "#FFFFFF",
-    }),
+    backgroundColor: COLORS.surface,
     borderTopWidth: ios.hairline,
-    borderTopColor: ios.colors.separator,
+    borderTopColor: COLORS.border,
     paddingTop: 6,
     paddingHorizontal: 4,
     ...Platform.select({

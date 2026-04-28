@@ -46,10 +46,13 @@ export const BUILTIN_STAMPS: Record<string, BuiltinStamp> = {
     render: () => ({
       viewBox: "0 0 100 100",
       paths: [
-        { d: "M0 50 L20 50", stroke: S, strokeWidth: 4 },
-        { d: "M80 50 L100 50", stroke: S, strokeWidth: 4 },
-        { d: "M20 50 L20 10", stroke: S, strokeWidth: 3 },
-        { d: "M20 10 A40 40 0 0 1 60 50", stroke: S, fill: "none", strokeWidth: 1.5 },
+        // Walls — solid filled rectangles for clear CAD-style wall blocks
+        { d: "M0 44 L22 44 L22 56 L0 56 Z", stroke: S, fill: S, strokeWidth: 1 },
+        { d: "M78 44 L100 44 L100 56 L78 56 Z", stroke: S, fill: S, strokeWidth: 1 },
+        // Door panel (thicker rectangle) opening up-right
+        { d: "M19 10 L25 10 L25 50 L19 50 Z", stroke: S, fill: S, strokeWidth: 1 },
+        // Swing arc
+        { d: "M22 10 A38 38 0 0 1 60 50", stroke: S, fill: "none", strokeWidth: 2 },
       ],
     }),
   },
@@ -60,12 +63,15 @@ export const BUILTIN_STAMPS: Record<string, BuiltinStamp> = {
     render: () => ({
       viewBox: "0 0 100 100",
       paths: [
-        { d: "M0 50 L10 50", stroke: S, strokeWidth: 4 },
-        { d: "M90 50 L100 50", stroke: S, strokeWidth: 4 },
-        { d: "M10 50 L10 15", stroke: S, strokeWidth: 3 },
-        { d: "M10 15 A35 35 0 0 1 45 50", stroke: S, fill: "none", strokeWidth: 1.2 },
-        { d: "M90 50 L90 15", stroke: S, strokeWidth: 3 },
-        { d: "M90 15 A35 35 0 0 0 55 50", stroke: S, fill: "none", strokeWidth: 1.2 },
+        // Walls
+        { d: "M0 44 L12 44 L12 56 L0 56 Z", stroke: S, fill: S, strokeWidth: 1 },
+        { d: "M88 44 L100 44 L100 56 L88 56 Z", stroke: S, fill: S, strokeWidth: 1 },
+        // Left leaf
+        { d: "M9 14 L15 14 L15 50 L9 50 Z", stroke: S, fill: S, strokeWidth: 1 },
+        { d: "M12 14 A36 36 0 0 1 48 50", stroke: S, fill: "none", strokeWidth: 2 },
+        // Right leaf
+        { d: "M85 14 L91 14 L91 50 L85 50 Z", stroke: S, fill: S, strokeWidth: 1 },
+        { d: "M88 14 A36 36 0 0 0 52 50", stroke: S, fill: "none", strokeWidth: 2 },
       ],
     }),
   },
@@ -76,12 +82,16 @@ export const BUILTIN_STAMPS: Record<string, BuiltinStamp> = {
     render: () => ({
       viewBox: "0 0 100 100",
       paths: [
-        { d: "M0 40 L20 40 L20 60 L0 60 Z", stroke: S, fill: F, strokeWidth: 2 },
-        { d: "M80 40 L100 40 L100 60 L80 60 Z", stroke: S, fill: F, strokeWidth: 2 },
-        { d: "M20 48 L80 48", stroke: S, strokeWidth: 1 },
-        { d: "M20 52 L80 52", stroke: S, strokeWidth: 1 },
-        { d: "M22 44 L60 44 L60 56 L22 56 Z", stroke: S, fill: F, strokeWidth: 2 },
-        { d: "M65 50 L78 50 M75 46 L78 50 L75 54", stroke: S, fill: "none", strokeWidth: 2 },
+        // Walls
+        { d: "M0 38 L20 38 L20 62 L0 62 Z", stroke: S, fill: S, strokeWidth: 1 },
+        { d: "M80 38 L100 38 L100 62 L80 62 Z", stroke: S, fill: S, strokeWidth: 1 },
+        // Track
+        { d: "M20 47 L80 47", stroke: S, strokeWidth: 1.5 },
+        { d: "M20 53 L80 53", stroke: S, strokeWidth: 1.5 },
+        // Sliding panel
+        { d: "M22 42 L60 42 L60 58 L22 58 Z", stroke: S, fill: F, strokeWidth: 2 },
+        // Direction arrow
+        { d: "M64 50 L78 50 M73 45 L78 50 L73 55", stroke: S, fill: "none", strokeWidth: 2 },
       ],
     }),
   },
@@ -92,10 +102,15 @@ export const BUILTIN_STAMPS: Record<string, BuiltinStamp> = {
     render: () => ({
       viewBox: "0 0 100 100",
       paths: [
-        { d: "M0 42 L100 42", stroke: S, strokeWidth: 3 },
-        { d: "M0 58 L100 58", stroke: S, strokeWidth: 3 },
+        // Wall blocks at the two ends (left/right of the window opening)
+        { d: "M0 38 L8 38 L8 62 L0 62 Z", stroke: S, fill: S, strokeWidth: 1 },
+        { d: "M92 38 L100 38 L100 62 L92 62 Z", stroke: S, fill: S, strokeWidth: 1 },
+        // Window frame (double parallel lines)
+        { d: "M8 42 L92 42", stroke: S, strokeWidth: 2.5 },
+        { d: "M8 58 L92 58", stroke: S, strokeWidth: 2.5 },
         { d: "M8 42 L8 58 M92 42 L92 58", stroke: S, strokeWidth: 2 },
-        { d: "M10 50 L90 50", stroke: S, strokeWidth: 1.5 },
+        // Glass center line
+        { d: "M10 50 L90 50", stroke: S, strokeWidth: 1.2 },
       ],
     }),
   },
