@@ -111,6 +111,36 @@ user_problem_statement: |
   - Los usuarios NO admin solo ven sus eventos asignados
 
 backend:
+  - task: "Roles & Permissions system - CRUD for roles, permission catalog, dynamic ACL"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: |
+          Sistema de roles y permisos granular añadido (junio 2026):
+          - Catálogo de 13 permisos (proyectos.view/edit, calendario.view/edit, planos.view/edit,
+            presupuestos.view/edit, sat.view/edit, users.manage, roles.manage, onedrive.manage)
+          - 5 roles del sistema seed automáticos: admin (locked, todos), gestor (todo excepto users/roles.manage),
+            tecnico (proyectos+calendario+planos), comercial (presupuestos+proyectos.view), sat (solo CRM SAT)
+          - Endpoints: GET /api/permissions, GET /api/roles, POST/PATCH/DELETE /api/roles
+          - GET /api/auth/me ahora devuelve role_id, role_name y permissions[]
+          - Migración automática de usuarios legacy: role string → role_id correspondiente
+          - require_permission(perm) Depends factory reemplaza current_admin en endpoints funcionales:
+            calendario create/delete, planos stamps, onedrive *, sat client/incident edit, users CRUD
+          - Roles del sistema editables (excepto Administrador principal que está bloqueado)
+          - Custom roles eliminables; usuarios afectados pasan a Técnico automáticamente
+          
+          Verificación E2E vía curl:
+          - admin (todos los permisos) ✓ crea evento, gestiona roles
+          - sat user (sat.view+sat.edit solamente) ✓ crea cliente SAT, ✗ crea evento (403),
+            ✗ lista usuarios (403), ✗ crea rol (403)
+          - PATCH /api/roles funciona (Tecnico modificable)
+
   - task: "Events CRUD - Create with recurrence and assigned_user_ids"
     implemented: true
     working: true

@@ -1,48 +1,81 @@
 /**
  * IOSTabBar — Tab bar with iOS look-and-feel.
  *
- * Drop-in replacement for the existing BottomNav. Same API surface
- * (active prop + isAdmin) so the rest of the app keeps working.
+ * Tabs are filtered dynamically based on the current user's permissions
+ * (fetched on mount via /auth/me). Home and Ajustes are always visible.
  */
+import { useEffect, useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ios } from "./iosTheme";
+import { api } from "../api";
 
 export type BottomTab =
   | "home" | "proyectos" | "calendario" | "planos"
   | "presupuestos" | "ajustes" | "sat";
 
-export default function IOSTabBar({ active, isAdmin }: { active: BottomTab; isAdmin?: boolean }) {
+const TAB_PERM_MAP: Record<BottomTab, string | null> = {
+  home: null,                // always visible
+  proyectos: "proyectos.view",
+  calendario: "calendario.view",
+  planos: "planos.view",
+  presupuestos: "presupuestos.view",
+  sat: "sat.view",
+  ajustes: null,             // always visible
+};
+
+const TAB_ROUTES: Record<BottomTab, string> = {
+  home: "/home",
+  proyectos: "/materiales",
+  calendario: "/calendario",
+  planos: "/planos",
+  presupuestos: "/presupuestos",
+  sat: "/sat",
+  ajustes: "/admin",
+};
+
+const LABELS: Record<BottomTab, string> = {
+  home: "Inicio",
+  proyectos: "Proyectos",
+  calendario: "Calendario",
+  planos: "Planos",
+  presupuestos: "Presupuestos",
+  ajustes: "Ajustes",
+  sat: "CRM SAT",
+};
+
+// Cache permissions in module scope so all tab bars on the same screen
+// share the same list (and the next render is instant).
+let _cachedPerms: string[] | null = null;
+
+export default function IOSTabBar({ active, isAdmin: _isAdmin }: { active: BottomTab; isAdmin?: boolean }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const [perms, setPerms] = useState<string[] | null>(_cachedPerms);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const me = await api.me();
+        const p = (me?.permissions as string[]) || [];
+        _cachedPerms = p;
+        if (alive) setPerms(p);
+      } catch {
+        if (alive) setPerms([]);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const go = (tab: BottomTab) => {
     if (tab === active) return;
-    switch (tab) {
-      case "home": router.replace("/home"); break;
-      case "proyectos": router.replace("/materiales"); break;
-      case "calendario": router.replace("/calendario"); break;
-      case "planos": router.replace("/planos"); break;
-      case "presupuestos": router.replace("/presupuestos"); break;
-      case "ajustes": router.replace("/admin"); break;
-    }
+    router.replace(TAB_ROUTES[tab] as any);
   };
 
   const Icon = ({ tab, on }: { tab: BottomTab; on: boolean }) => {
-    const color = on ? ios.colors.brand : ios.colors.tabInactive;
-    const sz = 26;
-    if (tab === "home") return <Ionicons name={on ? "house.fill" as any : "house" as any} size={sz} color={color} />;
-    if (tab === "proyectos") return <MaterialCommunityIcons name="set-square" size={sz + 2} color={color} />;
-    if (tab === "calendario") return <Ionicons name={on ? "calendar" : "calendar-outline"} size={sz} color={color} />;
-    if (tab === "planos") return <Ionicons name={on ? "map" : "map-outline"} size={sz} color={color} />;
-    if (tab === "presupuestos") return <Ionicons name={on ? "document-text" : "document-text-outline"} size={sz} color={color} />;
-    return <Ionicons name={on ? "settings" : "settings-outline"} size={sz} color={color} />;
-  };
-
-  // Fallback for invalid SF Symbol names on web/RN
-  const SafeIcon = ({ tab, on }: { tab: BottomTab; on: boolean }) => {
     const color = on ? ios.colors.brand : ios.colors.tabInactive;
     const sz = 26;
     if (tab === "home") return <Ionicons name={on ? "home" : "home-outline"} size={sz} color={color} />;
@@ -50,24 +83,28 @@ export default function IOSTabBar({ active, isAdmin }: { active: BottomTab; isAd
     if (tab === "calendario") return <Ionicons name={on ? "calendar" : "calendar-outline"} size={sz} color={color} />;
     if (tab === "planos") return <Ionicons name={on ? "map" : "map-outline"} size={sz} color={color} />;
     if (tab === "presupuestos") return <Ionicons name={on ? "document-text" : "document-text-outline"} size={sz} color={color} />;
+    if (tab === "sat") return <Ionicons name={on ? "headset" : "headset-outline"} size={sz} color={color} />;
     return <Ionicons name={on ? "settings" : "settings-outline"} size={sz} color={color} />;
   };
 
-  const labels: Record<BottomTab, string> = {
-    home: "Inicio",
-    proyectos: "Proyectos",
-    calendario: "Calendario",
-    planos: "Planos",
-    presupuestos: "Presupuestos",
-    ajustes: "Ajustes",
-    sat: "CRM SAT",
-  };
+  // Determine which tabs to show. Until perms load, fall back to legacy (admin shows all).
+  const allTabs: BottomTab[] = ["ajustes", "proyectos", "home", "calendario", "planos", "presupuestos", "sat"];
+  const isReady = perms !== null;
+  const visibleTabs = !isReady
+    ? allTabs.filter((t) => t !== "sat") // legacy default until perms arrive
+    : allTabs.filter((t) => {
+        const p = TAB_PERM_MAP[t];
+        return p === null || perms!.includes(p);
+      });
 
-  const tabs: BottomTab[] = ["ajustes", "proyectos", "home", "calendario", "planos", "presupuestos"];
+  // Order: ajustes | functional tabs (left of home) | home | functional tabs (right of home)
+  // Simpler: a fixed order subset by perms list.
+  const ORDER: BottomTab[] = ["ajustes", "proyectos", "calendario", "home", "planos", "presupuestos", "sat"];
+  const ordered = ORDER.filter((t) => visibleTabs.includes(t));
 
   return (
     <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 4) }]}>
-      {tabs.map((tab) => {
+      {ordered.map((tab) => {
         const on = active === tab;
         return (
           <TouchableOpacity
@@ -77,8 +114,10 @@ export default function IOSTabBar({ active, isAdmin }: { active: BottomTab; isAd
             onPress={() => go(tab)}
             activeOpacity={0.6}
           >
-            <SafeIcon tab={tab} on={on} />
-            <Text style={[styles.label, on && { color: ios.colors.brand, fontWeight: "600" }]}>{labels[tab]}</Text>
+            <Icon tab={tab} on={on} />
+            <Text style={[styles.label, on && { color: ios.colors.brand, fontWeight: "600" }]} numberOfLines={1}>
+              {LABELS[tab]}
+            </Text>
           </TouchableOpacity>
         );
       })}

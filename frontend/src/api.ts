@@ -57,13 +57,21 @@ export const api = {
   syncPush: () => request("/sync/push-to-onedrive", { method: "POST" }),
   // Users mgmt
   listUsers: () => request("/users"),
-  createUser: (body: { email: string; password: string; name?: string; role: "admin" | "user" }) =>
+  createUser: (body: { email: string; password: string; name?: string; role_id?: string; role?: string; color?: string }) =>
     request("/users", { method: "POST", body: JSON.stringify(body) }),
-  updateUser: (id: string, body: { name?: string; role?: "admin" | "user" }) =>
+  updateUser: (id: string, body: { name?: string; role_id?: string; role?: string; color?: string }) =>
     request(`/users/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   resetPassword: (id: string, password: string) =>
     request(`/users/${id}/reset-password`, { method: "POST", body: JSON.stringify({ password }) }),
   deleteUser: (id: string) => request(`/users/${id}`, { method: "DELETE" }),
+  // Roles & Permissions
+  listRoles: () => request("/roles"),
+  createRole: (body: { name: string; permissions: string[] }) =>
+    request("/roles", { method: "POST", body: JSON.stringify(body) }),
+  updateRole: (id: string, body: { name?: string; permissions?: string[] }) =>
+    request(`/roles/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteRole: (id: string) => request(`/roles/${id}`, { method: "DELETE" }),
+  listPermissions: () => request("/permissions"),
   listTechnicians: () => request("/technicians"),
   listManagers: () => request("/managers"),
   // Plans
@@ -264,4 +272,9 @@ export const COLORS = {
   errorBg: "#FEE2E2",
   errorText: "#991B1B",
   navy: "#0F172A",
+  primarySoft: "#EFF6FF",
+  pillBlueBg: "#DBEAFE",
+  pillBlueText: "#1E40AF",
+  pillPurpleBg: "#EDE9FE",
+  pillPurpleText: "#5B21B6",
 };

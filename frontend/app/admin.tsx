@@ -124,6 +124,10 @@ export default function Admin() {
   }
 
   const isAdmin = user?.role === "admin";
+  const perms: string[] = (user?.permissions as string[]) || [];
+  const canManageUsers = perms.includes("users.manage");
+  const canManageRoles = perms.includes("roles.manage");
+  const canManageOnedrive = perms.includes("onedrive.manage");
   const connected = status?.connected;
 
   return (
@@ -204,7 +208,7 @@ export default function Admin() {
           </TouchableOpacity>
         </View>
 
-        {!isAdmin && (
+        {!canManageOnedrive && (
           <View style={[s.card, { backgroundColor: COLORS.pendingBg, borderColor: "#FDE68A" }]}>
             <Ionicons name="information-circle" size={22} color={COLORS.pendingText} />
             <Text style={[s.cardText, { color: COLORS.pendingText }]}>
@@ -252,7 +256,7 @@ export default function Admin() {
             </View>
           )}
 
-          {isAdmin && (
+          {canManageOnedrive && (
             <View style={{ gap: 10, marginTop: 12 }}>
               {!connected ? (
                 <TouchableOpacity
@@ -286,7 +290,7 @@ export default function Admin() {
           )}
         </View>
 
-        {connected && isAdmin && (
+        {connected && canManageOnedrive && (
           <View style={s.card}>
             <Text style={s.cardTitle}>Sincronización automática</Text>
             <Text style={s.cardSub}>
@@ -308,6 +312,7 @@ export default function Admin() {
           </View>
         )}
 
+        {canManageUsers && (
         <View style={s.card}>
           <Text style={s.cardTitle}>Usuarios</Text>
           <Text style={s.cardSub}>
@@ -322,6 +327,24 @@ export default function Admin() {
             <Text style={s.btnPrimaryText}>GESTIONAR USUARIOS</Text>
           </TouchableOpacity>
         </View>
+        )}
+
+        {canManageRoles && (
+        <View style={s.card}>
+          <Text style={s.cardTitle}>Roles y permisos</Text>
+          <Text style={s.cardSub}>
+            Crea tipos de usuario personalizados y configura qué pueden ver y editar (Proyectos, Calendario, Planos, Presupuestos, CRM SAT…).
+          </Text>
+          <TouchableOpacity
+            testID="btn-open-roles"
+            style={[s.btnPrimary, { marginTop: 12 }]}
+            onPress={() => router.push("/roles" as any)}
+          >
+            <Ionicons name="shield-checkmark" size={20} color="#fff" />
+            <Text style={s.btnPrimaryText}>GESTIONAR ROLES</Text>
+          </TouchableOpacity>
+        </View>
+        )}
 
         <View style={s.card}>
           <Text style={s.cardTitle}>Sesión</Text>

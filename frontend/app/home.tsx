@@ -11,7 +11,6 @@ import { useBreakpoint } from "../src/useBreakpoint";
 import NotificationsBell from "../src/NotificationsBell";
 import { ios } from "../src/ui/iosTheme";
 import IOSHeader from "../src/ui/IOSHeader";
-
 function greetingForNow(): string {
   const h = new Date().getHours();
   if (h < 6) return "Buenas noches";
@@ -59,7 +58,13 @@ export default function HomeScreen() {
   const isAdmin = me?.role === "admin";
   const logout = async () => { await clearToken(); router.replace("/login"); };
   const firstName = me?.name ? me.name.split(" ")[0] : "";
-  const showPresupuestos = isAdmin || me?.role === "comercial";
+  const perms: string[] = (me?.permissions as string[]) || [];
+  const has = (p: string) => perms.includes(p);
+  const showProyectos = has("proyectos.view");
+  const showCalendario = has("calendario.view");
+  const showPlanos = has("planos.view");
+  const showPresupuestos = has("presupuestos.view");
+  const showSat = has("sat.view");
 
   /** iOS-style tile (rounded square + icon + title). */
   const Tile = ({
@@ -131,28 +136,34 @@ export default function HomeScreen() {
 
           <Text style={s.sectionTitle}>Módulos</Text>
           <View style={[s.tilesGrid, isWide && s.tilesGridWide]}>
-            <Tile
-              testID="circle-proyectos"
-              iconFamily="mat"
-              icon="set-square"
-              title="Proyectos"
-              accent={ios.colors.brand}
-              onPress={() => router.push("/materiales")}
-            />
-            <Tile
-              testID="circle-calendario"
-              icon="calendar"
-              title="Calendario"
-              accent={ios.colors.green}
-              onPress={() => router.push("/calendario")}
-            />
-            <Tile
-              testID="circle-planos"
-              icon="map"
-              title="Planos"
-              accent={ios.colors.orange}
-              onPress={() => router.push("/planos")}
-            />
+            {showProyectos && (
+              <Tile
+                testID="circle-proyectos"
+                iconFamily="mat"
+                icon="set-square"
+                title="Proyectos"
+                accent={ios.colors.brand}
+                onPress={() => router.push("/materiales")}
+              />
+            )}
+            {showCalendario && (
+              <Tile
+                testID="circle-calendario"
+                icon="calendar"
+                title="Calendario"
+                accent={ios.colors.green}
+                onPress={() => router.push("/calendario")}
+              />
+            )}
+            {showPlanos && (
+              <Tile
+                testID="circle-planos"
+                icon="map"
+                title="Planos"
+                accent={ios.colors.orange}
+                onPress={() => router.push("/planos")}
+              />
+            )}
             {showPresupuestos && (
               <Tile
                 testID="circle-presupuestos"
@@ -162,13 +173,15 @@ export default function HomeScreen() {
                 onPress={() => router.push("/presupuestos")}
               />
             )}
-            <Tile
-              testID="circle-sat"
-              icon="headset"
-              title="CRM SAT"
-              accent={ios.colors.pink}
-              onPress={() => router.push("/sat")}
-            />
+            {showSat && (
+              <Tile
+                testID="circle-sat"
+                icon="headset"
+                title="CRM SAT"
+                accent={ios.colors.pink}
+                onPress={() => router.push("/sat")}
+              />
+            )}
           </View>
         </ScrollView>
       )}

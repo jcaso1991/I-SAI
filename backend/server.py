@@ -75,6 +75,9 @@ class UserOut(BaseModel):
     name: Optional[str] = None
     role: str = "user"
     color: Optional[str] = None
+    role_id: Optional[str] = None
+    role_name: Optional[str] = None
+    permissions: Optional[List[str]] = None
 
 class TokenOut(BaseModel):
     access_token: str
@@ -155,6 +158,149 @@ async def current_admin(user: dict = Depends(current_user)) -> dict:
     if user.get("role") != "admin":
         raise HTTPException(403, "Admin only")
     return user
+
+# ---------------- Roles & Permissions ----------------
+PERMISSIONS_CATALOG = [
+    {"key": "proyectos.view", "label": "Ver Proyectos", "module": "Proyectos"},
+    {"key": "proyectos.edit", "label": "Editar Proyectos", "module": "Proyectos"},
+    {"key": "calendario.view", "label": "Ver Calendario", "module": "Calendario"},
+    {"key": "calendario.edit", "label": "Crear/Editar eventos", "module": "Calendario"},
+    {"key": "planos.view", "label": "Ver Planos", "module": "Planos"},
+    {"key": "planos.edit", "label": "Editar Planos", "module": "Planos"},
+    {"key": "presupuestos.view", "label": "Ver Presupuestos", "module": "Presupuestos"},
+    {"key": "presupuestos.edit", "label": "Editar Presupuestos", "module": "Presupuestos"},
+    {"key": "sat.view", "label": "Ver CRM SAT", "module": "CRM SAT"},
+    {"key": "sat.edit", "label": "Gestionar incidencias SAT", "module": "CRM SAT"},
+    {"key": "users.manage", "label": "Gestionar usuarios", "module": "Administración"},
+    {"key": "roles.manage", "label": "Gestionar roles y permisos", "module": "Administración"},
+    {"key": "onedrive.manage", "label": "Conectar/Sincronizar OneDrive", "module": "Administración"},
+]
+ALL_PERMS = [p["key"] for p in PERMISSIONS_CATALOG]
+NON_ADMIN_PERMS = [p for p in ALL_PERMS if p not in ("users.manage", "roles.manage")]
+TECNICO_PERMS = ["proyectos.view", "proyectos.edit", "calendario.view", "calendario.edit", "planos.view", "planos.edit"]
+COMERCIAL_PERMS = ["presupuestos.view", "presupuestos.edit", "proyectos.view"]
+SAT_PERMS = ["sat.view", "sat.edit"]
+
+# System roles seeded on startup. Admin role can NEVER be modified or deleted.
+DEFAULT_ROLES = [
+    {"key": "admin", "name": "Administrador principal", "permissions": ALL_PERMS, "system": True, "locked": True},
+    {"key": "gestor", "name": "Gestor", "permissions": NON_ADMIN_PERMS, "system": True, "locked": False},
+    {"key": "tecnico", "name": "Técnico", "permissions": TECNICO_PERMS, "system": True, "locked": False},
+    {"key": "comercial", "name": "Comercial", "permissions": COMERCIAL_PERMS, "system": True, "locked": False},
+    {"key": "sat", "name": "SAT", "permissions": SAT_PERMS, "system": True, "locked": False},
+]
+
+# Map legacy `role` field -> new role key
+LEGACY_ROLE_MAP = {
+    "admin": "admin",
+    "user": "tecnico",
+    "comercial": "comercial",
+}
+
+
+class RoleOut(BaseModel):
+    id: str
+    key: str
+    name: str
+    permissions: List[str]
+    system: bool = False
+    locked: bool = False
+    created_at: Optional[str] = None
+
+
+class RoleCreate(BaseModel):
+    name: str
+    permissions: List[str] = []
+
+
+class RoleUpdate(BaseModel):
+    name: Optional[str] = None
+    permissions: Optional[List[str]] = None
+
+
+async def ensure_default_roles_and_migrate():
+    """Bootstrap default system roles and migrate legacy users to role_id."""
+    # 1. Seed system roles (idempotent by `key`)
+    for r in DEFAULT_ROLES:
+        existing = await db.roles.find_one({"key": r["key"]})
+        if not existing:
+            await db.roles.insert_one({
+                "id": str(uuid.uuid4()),
+                "key": r["key"],
+                "name": r["name"],
+                "permissions": r["permissions"],
+                "system": r["system"],
+                "locked": r.get("locked", False),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+        else:
+            # Always force admin role to have ALL permissions (locked, source of truth).
+            if r["key"] == "admin":
+                await db.roles.update_one(
+                    {"key": "admin"},
+                    {"$set": {"permissions": ALL_PERMS, "system": True, "locked": True, "name": existing.get("name") or r["name"]}},
+                )
+    # 2. Migrate users without role_id
+    users_no_role = await db.users.find(
+        {"$or": [{"role_id": {"$exists": False}}, {"role_id": None}]},
+        {"_id": 0, "id": 1, "role": 1},
+    ).to_list(5000)
+    for u in users_no_role:
+        legacy = (u.get("role") or "user").lower()
+        key = LEGACY_ROLE_MAP.get(legacy, "tecnico")
+        role = await db.roles.find_one({"key": key})
+        if role:
+            await db.users.update_one({"id": u["id"]}, {"$set": {"role_id": role["id"]}})
+
+
+async def get_user_permissions(user: dict) -> List[str]:
+    """Resolve permissions for a user via role_id; falls back to legacy `role` field."""
+    role_id = user.get("role_id")
+    role = None
+    if role_id:
+        role = await db.roles.find_one({"id": role_id})
+    if not role:
+        legacy = (user.get("role") or "user").lower()
+        key = LEGACY_ROLE_MAP.get(legacy, "tecnico")
+        role = await db.roles.find_one({"key": key})
+    return role.get("permissions", []) if role else []
+
+
+async def get_user_role_info(user: dict) -> dict:
+    """Return {role_id, role_name, permissions} for a user."""
+    role_id = user.get("role_id")
+    role = None
+    if role_id:
+        role = await db.roles.find_one({"id": role_id})
+    if not role:
+        legacy = (user.get("role") or "user").lower()
+        key = LEGACY_ROLE_MAP.get(legacy, "tecnico")
+        role = await db.roles.find_one({"key": key})
+    return {
+        "role_id": role.get("id") if role else None,
+        "role_name": role.get("name") if role else None,
+        "permissions": role.get("permissions", []) if role else [],
+    }
+
+
+def require_permission(perm: str):
+    """FastAPI dependency factory: ensures the current user has `perm`."""
+    async def _dep(user: dict = Depends(current_user)) -> dict:
+        perms = await get_user_permissions(user)
+        if perm not in perms:
+            raise HTTPException(403, f"No tienes permiso ({perm})")
+        return user
+    return _dep
+
+
+def require_any_permission(*perms: str):
+    """FastAPI dependency: passes if user has at least one of `perms`."""
+    async def _dep(user: dict = Depends(current_user)) -> dict:
+        user_perms = await get_user_permissions(user)
+        if not any(p in user_perms for p in perms):
+            raise HTTPException(403, "No tienes permiso para esta acción")
+        return user
+    return _dep
 
 def _clean(v):
     if v is None:
@@ -458,19 +604,26 @@ async def list_managers(user: dict = Depends(current_user)):
 
 @api_router.get("/auth/me", response_model=UserOut)
 async def me(user: dict = Depends(current_user)):
-    return UserOut(id=user["id"], email=user["email"], name=user.get("name"), role=user.get("role", "user"), color=user.get("color"))
+    info = await get_user_role_info(user)
+    return UserOut(
+        id=user["id"], email=user["email"], name=user.get("name"),
+        role=user.get("role", "user"), color=user.get("color"),
+        role_id=info["role_id"], role_name=info["role_name"], permissions=info["permissions"],
+    )
 
 # ---------------- User management (admin only) ----------------
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
     name: Optional[str] = None
-    role: Literal["admin", "user", "comercial"] = "user"
+    role: Optional[Literal["admin", "user", "comercial"]] = None  # legacy
+    role_id: Optional[str] = None
     color: Optional[str] = None
 
 class UserPatch(BaseModel):
     name: Optional[str] = None
-    role: Optional[Literal["admin", "user", "comercial"]] = None
+    role: Optional[Literal["admin", "user", "comercial"]] = None  # legacy
+    role_id: Optional[str] = None
     color: Optional[str] = None
 
 class PasswordReset(BaseModel):
@@ -481,6 +634,8 @@ class UserListItem(BaseModel):
     email: str
     name: Optional[str] = None
     role: str
+    role_id: Optional[str] = None
+    role_name: Optional[str] = None
     color: Optional[str] = None
     created_at: Optional[str] = None
 
@@ -506,56 +661,97 @@ def _next_default_color(existing_colors: List[str]) -> str:
     return DEFAULT_USER_COLORS[len(used) % len(DEFAULT_USER_COLORS)]
 
 @api_router.get("/users", response_model=List[UserListItem])
-async def list_users(admin: dict = Depends(current_admin)):
+async def list_users(admin: dict = Depends(require_permission("users.manage"))):
     users = await db.users.find({}, {"_id": 0, "password": 0}).to_list(1000)
     users.sort(key=lambda u: u.get("created_at", ""))
-    return users
+    # Enrich with role_name
+    role_ids = list({u.get("role_id") for u in users if u.get("role_id")})
+    role_map = {}
+    if role_ids:
+        async for r in db.roles.find({"id": {"$in": role_ids}}):
+            role_map[r["id"]] = r.get("name")
+    out = []
+    for u in users:
+        u["role_name"] = role_map.get(u.get("role_id"))
+        out.append(u)
+    return out
+
+async def _resolve_role_for_user(role_id: Optional[str], legacy_role: Optional[str]) -> dict:
+    """Return the role doc to assign. Prefers role_id; falls back to legacy mapping."""
+    role = None
+    if role_id:
+        role = await db.roles.find_one({"id": role_id})
+        if not role:
+            raise HTTPException(400, "Rol inválido")
+    elif legacy_role:
+        key = LEGACY_ROLE_MAP.get(legacy_role.lower(), "tecnico")
+        role = await db.roles.find_one({"key": key})
+    else:
+        role = await db.roles.find_one({"key": "tecnico"})
+    if not role:
+        raise HTTPException(500, "Roles del sistema no inicializados")
+    return role
 
 @api_router.post("/users", response_model=UserListItem)
-async def create_user(payload: UserCreate, admin: dict = Depends(current_admin)):
+async def create_user(payload: UserCreate, admin: dict = Depends(require_permission("users.manage"))):
     existing = await db.users.find_one({"email": payload.email.lower()})
     if existing:
         raise HTTPException(400, "Email ya registrado")
+    role = await _resolve_role_for_user(payload.role_id, payload.role)
     # Pick a unique default color if none provided
     if payload.color:
         color = payload.color
     else:
         existing_colors = [u.get("color") for u in await db.users.find({}, {"_id": 0, "color": 1}).to_list(1000)]
         color = _next_default_color([c for c in existing_colors if c])
+    # Legacy `role` field: gestor also marked as "admin" so it passes inline
+    # `role == "admin"` checks scattered in the codebase. The real ACL is on role_id.
+    legacy_role = "admin" if role["key"] in ("admin", "gestor") else ("comercial" if role["key"] == "comercial" else "user")
     user = {
         "id": str(uuid.uuid4()),
         "email": payload.email.lower(),
         "name": payload.name or payload.email.split("@")[0],
         "password": hash_password(payload.password),
-        "role": payload.role,
+        "role": legacy_role,
+        "role_id": role["id"],
         "color": color,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.users.insert_one(user)
     return UserListItem(
         id=user["id"], email=user["email"], name=user["name"],
-        role=user["role"], color=user["color"], created_at=user["created_at"],
+        role=user["role"], role_id=user["role_id"], role_name=role["name"],
+        color=user["color"], created_at=user["created_at"],
     )
 
 @api_router.patch("/users/{uid}", response_model=UserListItem)
-async def update_user(uid: str, payload: UserPatch, admin: dict = Depends(current_admin)):
+async def update_user(uid: str, payload: UserPatch, admin: dict = Depends(require_permission("users.manage"))):
     target = await db.users.find_one({"id": uid})
     if not target:
         raise HTTPException(404, "Usuario no encontrado")
-    upd = {k: v for k, v in payload.dict().items() if v is not None}
+    upd = {k: v for k, v in payload.dict().items() if v is not None and k != "role_id" and k != "role"}
+    new_role = None
+    if payload.role_id is not None or payload.role is not None:
+        new_role = await _resolve_role_for_user(payload.role_id, payload.role)
+        upd["role_id"] = new_role["id"]
+        upd["role"] = "admin" if new_role["key"] in ("admin", "gestor") else ("comercial" if new_role["key"] == "comercial" else "user")
     if not upd:
         raise HTTPException(400, "Nada que actualizar")
-    # Prevent removing last admin
-    if payload.role == "user" and target.get("role") == "admin":
-        remaining = await db.users.count_documents({"role": "admin", "id": {"$ne": uid}})
-        if remaining == 0:
-            raise HTTPException(400, "No puedes quitar el rol admin al último administrador")
+    # Prevent removing last admin (super)
+    if new_role and new_role["key"] != "admin":
+        if (target.get("role") == "admin") or (await db.roles.find_one({"id": target.get("role_id"), "key": "admin"})):
+            remaining = await db.users.count_documents({"role": "admin", "id": {"$ne": uid}})
+            if remaining == 0:
+                raise HTTPException(400, "No puedes quitar el rol Administrador principal al último administrador")
     await db.users.update_one({"id": uid}, {"$set": upd})
     updated = await db.users.find_one({"id": uid}, {"_id": 0, "password": 0})
+    if updated.get("role_id"):
+        rdoc = await db.roles.find_one({"id": updated["role_id"]})
+        updated["role_name"] = rdoc.get("name") if rdoc else None
     return updated
 
 @api_router.post("/users/{uid}/reset-password")
-async def reset_password(uid: str, payload: PasswordReset, admin: dict = Depends(current_admin)):
+async def reset_password(uid: str, payload: PasswordReset, admin: dict = Depends(require_permission("users.manage"))):
     target = await db.users.find_one({"id": uid})
     if not target:
         raise HTTPException(404, "Usuario no encontrado")
@@ -565,7 +761,7 @@ async def reset_password(uid: str, payload: PasswordReset, admin: dict = Depends
     return {"ok": True}
 
 @api_router.delete("/users/{uid}")
-async def delete_user(uid: str, admin: dict = Depends(current_admin)):
+async def delete_user(uid: str, admin: dict = Depends(require_permission("users.manage"))):
     if uid == admin["id"]:
         raise HTTPException(400, "No puedes eliminarte a ti mismo")
     target = await db.users.find_one({"id": uid})
@@ -577,6 +773,91 @@ async def delete_user(uid: str, admin: dict = Depends(current_admin)):
         if remaining == 0:
             raise HTTPException(400, "No puedes eliminar al último administrador")
     await db.users.delete_one({"id": uid})
+    return {"ok": True}
+
+# ---------------- Roles & Permissions API ----------------
+@api_router.get("/permissions")
+async def list_permissions(user: dict = Depends(current_user)):
+    """Public catalog of all permissions in the app, grouped by module."""
+    return {"permissions": PERMISSIONS_CATALOG}
+
+@api_router.get("/roles", response_model=List[RoleOut])
+async def list_roles(user: dict = Depends(current_user)):
+    """Anyone authenticated can see roles (used by user-edit dropdown)."""
+    roles = await db.roles.find({}, {"_id": 0}).to_list(200)
+    # Stable order: system first by key order, then customs by created_at
+    sys_order = {"admin": 0, "gestor": 1, "tecnico": 2, "comercial": 3, "sat": 4}
+    roles.sort(key=lambda r: (0 if r.get("system") else 1, sys_order.get(r.get("key"), 99), r.get("created_at", "")))
+    return roles
+
+@api_router.post("/roles", response_model=RoleOut)
+async def create_role(payload: RoleCreate, admin: dict = Depends(require_permission("roles.manage"))):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(400, "Nombre obligatorio")
+    # Validate permissions
+    bad = [p for p in payload.permissions if p not in ALL_PERMS]
+    if bad:
+        raise HTTPException(400, f"Permisos inválidos: {bad}")
+    # Generate unique key from name
+    base_key = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "role"
+    key = base_key
+    suffix = 1
+    while await db.roles.find_one({"key": key}):
+        suffix += 1
+        key = f"{base_key}_{suffix}"
+    role = {
+        "id": str(uuid.uuid4()),
+        "key": key,
+        "name": name,
+        "permissions": list(dict.fromkeys(payload.permissions)),
+        "system": False,
+        "locked": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.roles.insert_one(role)
+    return role
+
+@api_router.patch("/roles/{rid}", response_model=RoleOut)
+async def update_role(rid: str, payload: RoleUpdate, admin: dict = Depends(require_permission("roles.manage"))):
+    role = await db.roles.find_one({"id": rid})
+    if not role:
+        raise HTTPException(404, "Rol no encontrado")
+    if role.get("locked"):
+        raise HTTPException(400, "El rol Administrador principal no se puede modificar")
+    upd = {}
+    if payload.name is not None:
+        nm = payload.name.strip()
+        if not nm:
+            raise HTTPException(400, "Nombre vacío")
+        upd["name"] = nm
+    if payload.permissions is not None:
+        bad = [p for p in payload.permissions if p not in ALL_PERMS]
+        if bad:
+            raise HTTPException(400, f"Permisos inválidos: {bad}")
+        upd["permissions"] = list(dict.fromkeys(payload.permissions))
+    if not upd:
+        raise HTTPException(400, "Nada que actualizar")
+    await db.roles.update_one({"id": rid}, {"$set": upd})
+    updated = await db.roles.find_one({"id": rid}, {"_id": 0})
+    return updated
+
+@api_router.delete("/roles/{rid}")
+async def delete_role(rid: str, admin: dict = Depends(require_permission("roles.manage"))):
+    role = await db.roles.find_one({"id": rid})
+    if not role:
+        raise HTTPException(404, "Rol no encontrado")
+    if role.get("system"):
+        raise HTTPException(400, "No puedes eliminar un rol del sistema")
+    # Reassign any user using this role to "tecnico"
+    fallback = await db.roles.find_one({"key": "tecnico"})
+    fallback_id = fallback["id"] if fallback else None
+    if fallback_id:
+        await db.users.update_many(
+            {"role_id": rid},
+            {"$set": {"role_id": fallback_id, "role": "user"}},
+        )
+    await db.roles.delete_one({"id": rid})
     return {"ok": True}
 
 # ---------------- Plans & Stamps ----------------
@@ -993,7 +1274,7 @@ async def list_events(
     return out
 
 @api_router.post("/events", response_model=EventOut)
-async def create_event(payload: EventCreate, admin: dict = Depends(current_admin)):
+async def create_event(payload: EventCreate, admin: dict = Depends(require_permission("calendario.edit"))):
     if payload.end_at <= payload.start_at:
         raise HTTPException(400, "end_at debe ser posterior a start_at")
     doc = {
@@ -1093,7 +1374,7 @@ async def update_event(eid: str, payload: EventPatch, user: dict = Depends(curre
     return ev
 
 @api_router.delete("/events/{eid}")
-async def delete_event(eid: str, admin: dict = Depends(current_admin)):
+async def delete_event(eid: str, admin: dict = Depends(require_permission("calendario.edit"))):
     real_id = eid.split(":")[0]
     res = await db.events.delete_one({"id": real_id})
     if res.deleted_count == 0:
@@ -1263,7 +1544,7 @@ async def list_stamps(user: dict = Depends(current_user)):
     return out
 
 @api_router.post("/stamps", response_model=StampOut)
-async def create_stamp(payload: StampCreate, admin: dict = Depends(current_admin)):
+async def create_stamp(payload: StampCreate, admin: dict = Depends(require_permission("planos.edit"))):
     doc = {
         "id": str(uuid.uuid4()),
         "name": payload.name.strip() or "Sello personalizado",
@@ -1279,7 +1560,7 @@ async def create_stamp(payload: StampCreate, admin: dict = Depends(current_admin
     )
 
 @api_router.delete("/stamps/{sid}")
-async def delete_stamp(sid: str, admin: dict = Depends(current_admin)):
+async def delete_stamp(sid: str, admin: dict = Depends(require_permission("planos.edit"))):
     if sid.startswith("builtin_"):
         raise HTTPException(400, "No puedes eliminar sellos predefinidos")
     res = await db.stamps.delete_one({"id": sid})
@@ -1289,7 +1570,7 @@ async def delete_stamp(sid: str, admin: dict = Depends(current_admin)):
 
 # ---------------- OneDrive routes ----------------
 @api_router.get("/auth/onedrive/login")
-async def onedrive_login(user: dict = Depends(current_admin)):
+async def onedrive_login(user: dict = Depends(require_permission("onedrive.manage"))):
     app_msal = _msal_app()
     state = user["id"]
     auth_url = app_msal.get_authorization_request_url(
@@ -1350,18 +1631,18 @@ async def onedrive_status(user: dict = Depends(current_user)):
     )
 
 @api_router.post("/auth/onedrive/disconnect")
-async def onedrive_disconnect(user: dict = Depends(current_admin)):
+async def onedrive_disconnect(user: dict = Depends(require_permission("onedrive.manage"))):
     await db.onedrive_tokens.delete_one({"_id": "admin"})
     return {"ok": True}
 
 # ---------------- Sync routes (manual override — uses internal helpers) ----------------
 @api_router.post("/sync/import-from-onedrive")
-async def sync_import(user: dict = Depends(current_admin)):
+async def sync_import(user: dict = Depends(require_permission("onedrive.manage"))):
     n = await _do_import()
     return {"imported": n}
 
 @api_router.post("/sync/push-to-onedrive")
-async def sync_push(user: dict = Depends(current_admin)):
+async def sync_push(user: dict = Depends(require_permission("onedrive.manage"))):
     n = await _do_push()
     return {"pushed": n}
 
@@ -1416,8 +1697,10 @@ async def stats(user: dict = Depends(current_user)):
 
 # ---------------- Budgets (Presupuestos) ----------------
 async def current_admin_or_comercial(user: dict = Depends(current_user)):
-    if user.get("role") not in ("admin", "comercial"):
-        raise HTTPException(403, "Requiere rol admin o comercial")
+    """Backwards-compatible guard: now allows anyone with `presupuestos.view`."""
+    perms = await get_user_permissions(user)
+    if "presupuestos.view" not in perms and user.get("role") not in ("admin", "comercial"):
+        raise HTTPException(403, "Requiere permiso de Presupuestos")
     return user
 
 class EquipmentRow(BaseModel):
@@ -1829,7 +2112,7 @@ async def sat_update(iid: str, body: SATUpdateIn, user: dict = Depends(current_u
     return doc
 
 @api_router.delete("/sat/incidents/{iid}")
-async def sat_delete(iid: str, admin: dict = Depends(current_admin)):
+async def sat_delete(iid: str, admin: dict = Depends(require_permission("sat.edit"))):
     res = await db.sat_incidents.delete_one({"id": iid})
     if res.deleted_count == 0:
         raise HTTPException(404, "Incidencia no encontrada")
@@ -1977,7 +2260,7 @@ async def sat_client_get(cid: str, user: dict = Depends(current_user)):
     return doc
 
 @api_router.post("/sat/clients")
-async def sat_client_create(body: SATClientIn, admin: dict = Depends(current_admin)):
+async def sat_client_create(body: SATClientIn, admin: dict = Depends(require_permission("sat.edit"))):
     now = datetime.now(timezone.utc).isoformat()
     doc = {
         "id": str(uuid.uuid4()),
@@ -1993,7 +2276,7 @@ async def sat_client_create(body: SATClientIn, admin: dict = Depends(current_adm
     return doc
 
 @api_router.patch("/sat/clients/{cid}")
-async def sat_client_update(cid: str, body: SATClientIn, admin: dict = Depends(current_admin)):
+async def sat_client_update(cid: str, body: SATClientIn, admin: dict = Depends(require_permission("sat.edit"))):
     existing = await db.sat_clients.find_one({"id": cid})
     if not existing:
         raise HTTPException(404, "Cliente no encontrado")
@@ -2009,7 +2292,7 @@ async def sat_client_update(cid: str, body: SATClientIn, admin: dict = Depends(c
     return doc
 
 @api_router.delete("/sat/clients/{cid}")
-async def sat_client_delete(cid: str, admin: dict = Depends(current_admin)):
+async def sat_client_delete(cid: str, admin: dict = Depends(require_permission("sat.edit"))):
     res = await db.sat_clients.delete_one({"id": cid})
     if res.deleted_count == 0:
         raise HTTPException(404, "Cliente no encontrado")
@@ -2034,9 +2317,9 @@ def _match_header(headers: list, *needles: str) -> Optional[int]:
 async def sat_client_import(
     file: UploadFile = File(...),
     replace: bool = False,
-    admin: dict = Depends(current_admin),
+    admin: dict = Depends(require_permission("sat.edit")),
 ):
-    """Admin-only: import clients from an uploaded .xlsx/.xlsm file.
+    """Admin/SAT-only: import clients from an uploaded .xlsx/.xlsm file.
     - Auto-detects columns using keyword matching on headers (tolerant to
       typos like 'Responsablñe' in the real data).
     - `replace=true` wipes the collection before importing.
@@ -2185,6 +2468,7 @@ async def on_startup():
     await seed_admin_user()
     await seed_initial_data()
     await backfill_user_colors()
+    await ensure_default_roles_and_migrate()
 
 async def backfill_user_colors():
     """Assign a color to any user that doesn't have one."""

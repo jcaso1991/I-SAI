@@ -1,7 +1,8 @@
+import { useEffect, useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { COLORS } from "./api";
+import { COLORS, api } from "./api";
 import BottomNav, { BottomTab } from "./BottomNav";
 import { useBreakpoint } from "./useBreakpoint";
 
@@ -27,6 +28,28 @@ export default function ResponsiveLayout({
   userName?: string;
 }) {
   const { isWide } = useBreakpoint();
+  const [perms, setPerms] = useState<string[]>([]);
+  const [roleName, setRoleName] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const me = await api.me();
+        if (!alive) return;
+        setPerms((me?.permissions as string[]) || []);
+        setRoleName((me?.role_name as string) || null);
+      } catch {
+        if (alive) setPerms([]);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const has = (p: string) => perms.includes(p);
+  const canManageUsers = has("users.manage");
+  const canManageRoles = has("roles.manage");
+  const canOnedrive = has("onedrive.manage");
 
   if (!isWide) {
     // Mobile: content fills screen, BottomNav at bottom
@@ -62,25 +85,48 @@ export default function ResponsiveLayout({
             <Text style={s.userName} numberOfLines={1}>{userName || "Usuario"}</Text>
             <View style={s.roleChip}>
               <View style={s.roleDot} />
-              <Text style={s.userRole}>{isAdmin ? "Administrador" : "Técnico"}</Text>
+              <Text style={s.userRole}>{roleName || (isAdmin ? "Administrador" : "Usuario")}</Text>
             </View>
           </View>
         </View>
 
         <Text style={s.sectionLabel}>NAVEGACIÓN</Text>
         <SideLink active={active === "home"} label="Inicio" icon="home" to="/home" />
-        <SideLink active={active === "proyectos"} label="Proyectos" icon="set-square" to="/materiales" matIcon />
-        <SideLink active={active === "calendario"} label="Calendario" icon="calendar" to="/calendario" />
-        <SideLink active={active === "planos"} label="Planos" icon="map" to="/planos" />
-        <SideLink active={active === "presupuestos"} label="Presupuestos" icon="document-text" to="/presupuestos" />
-        <SideLink active={active === "sat"} label="CRM SAT" icon="headset" to="/sat" />
+        {has("proyectos.view") && (
+          <SideLink active={active === "proyectos"} label="Proyectos" icon="set-square" to="/materiales" matIcon />
+        )}
+        {has("calendario.view") && (
+          <SideLink active={active === "calendario"} label="Calendario" icon="calendar" to="/calendario" />
+        )}
+        {has("planos.view") && (
+          <SideLink active={active === "planos"} label="Planos" icon="map" to="/planos" />
+        )}
+        {has("presupuestos.view") && (
+          <SideLink active={active === "presupuestos"} label="Presupuestos" icon="document-text" to="/presupuestos" />
+        )}
+        {has("sat.view") && (
+          <SideLink active={active === "sat"} label="CRM SAT" icon="headset" to="/sat" />
+        )}
 
-        {isAdmin && (
+        {(canOnedrive || canManageUsers || canManageRoles) && (
           <>
             <Text style={s.sectionLabel}>ADMINISTRACIÓN</Text>
-            <SideLink active={active === "ajustes"} label="OneDrive" icon="cloud-outline" to="/admin" />
-            <SideLink active={false} label="Usuarios" icon="people-outline" to="/users" />
+            {canOnedrive && (
+              <SideLink active={active === "ajustes"} label="OneDrive" icon="cloud-outline" to="/admin" />
+            )}
+            {!canOnedrive && (
+              <SideLink active={active === "ajustes"} label="Ajustes" icon="settings-outline" to="/admin" />
+            )}
+            {canManageUsers && (
+              <SideLink active={false} label="Usuarios" icon="people-outline" to="/users" />
+            )}
+            {canManageRoles && (
+              <SideLink active={false} label="Roles y permisos" icon="shield-outline" to="/roles" />
+            )}
           </>
+        )}
+        {!canOnedrive && !canManageUsers && !canManageRoles && (
+          <SideLink active={active === "ajustes"} label="Ajustes" icon="settings-outline" to="/admin" />
         )}
 
         <View style={{ flex: 1 }} />

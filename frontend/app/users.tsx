@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Alert, Modal, KeyboardAvoidingView, Platform,
@@ -8,8 +8,8 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../src/api";
 
-type User = { id: string; email: string; name?: string; role: string; color?: string; created_at?: string };
-type Role = "admin" | "user" | "comercial";
+type Role = { id: string; key: string; name: string; permissions: string[]; system?: boolean; locked?: boolean };
+type User = { id: string; email: string; name?: string; role: string; role_id?: string | null; role_name?: string | null; color?: string; created_at?: string };
 
 const USER_COLOR_PALETTE = [
   "#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6",
@@ -20,6 +20,7 @@ const USER_COLOR_PALETTE = [
 export default function Users() {
   const router = useRouter();
   const [users, setUsers] = useState<User[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [me, setMe] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -28,12 +29,13 @@ export default function Users() {
 
   const load = async () => {
     try {
-      const [list, who] = await Promise.all([api.listUsers(), api.me()]);
+      const [list, who, rl] = await Promise.all([api.listUsers(), api.me(), api.listRoles()]);
       setUsers(list);
       setMe(who);
+      setRoles(rl);
     } catch (e: any) {
-      if (/403|Admin only/i.test(e.message)) {
-        Alert.alert("Acceso denegado", "Solo administradores pueden gestionar usuarios.");
+      if (/403|Admin only|users.manage/i.test(e.message)) {
+        Alert.alert("Acceso denegado", "Solo administradores con permiso de gestión pueden gestionar usuarios.");
         router.back();
         return;
       }
@@ -121,9 +123,9 @@ export default function Users() {
                   {u.name || u.email} {isMe && <Text style={s.youBadge}>(tú)</Text>}
                 </Text>
                 <Text style={s.userEmail} numberOfLines={1}>{u.email}</Text>
-                <View style={[s.roleBadge, u.role === "admin" ? s.roleAdmin : u.role === "comercial" ? { backgroundColor: COLORS.pillPurpleBg } : s.roleUser]}>
-                  <Text style={[s.roleBadgeText, u.role === "admin" && { color: COLORS.pillBlueText }, u.role === "comercial" && { color: COLORS.pillPurpleText }]}>
-                    {u.role === "admin" ? "ADMIN" : u.role === "comercial" ? "COMERCIAL" : "TÉCNICO"}
+                <View style={[s.roleBadge, s.roleAdmin]}>
+                  <Text style={[s.roleBadgeText, { color: COLORS.pillBlueText }]} numberOfLines={1}>
+                    {(u.role_name || (u.role === "admin" ? "ADMIN" : u.role === "comercial" ? "COMERCIAL" : "TÉCNICO")).toUpperCase()}
                   </Text>
                 </View>
               </View>
@@ -159,12 +161,14 @@ export default function Users() {
 
       <CreateUserModal
         visible={showCreate}
+        roles={roles}
         onClose={() => setShowCreate(false)}
         onDone={() => { setShowCreate(false); load(); }}
       />
 
       <EditUserModal
         user={editUser}
+        roles={roles}
         onClose={() => setEditUser(null)}
         onDone={() => { setEditUser(null); load(); }}
       />
@@ -179,22 +183,35 @@ export default function Users() {
 }
 
 // ---------------- Create ----------------
-function CreateUserModal({ visible, onClose, onDone }: { visible: boolean; onClose: () => void; onDone: () => void }) {
+function CreateUserModal({ visible, roles, onClose, onDone }: { visible: boolean; roles: Role[]; onClose: () => void; onDone: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [role, setRole] = useState<Role>("user");
+  const [roleId, setRoleId] = useState<string>("");
   const [saving, setSaving] = useState(false);
+
+  // Default to "tecnico" role when modal opens / roles list arrives
+  useEffect(() => {
+    if (!visible) return;
+    if (!roleId && roles.length > 0) {
+      const def = roles.find(r => r.key === "tecnico") || roles.find(r => !r.system) || roles[0];
+      setRoleId(def.id);
+    }
+  }, [visible, roles]);
 
   const submit = async () => {
     if (!email || !password) {
       Alert.alert("Error", "Email y contraseña son obligatorios");
       return;
     }
+    if (!roleId) {
+      Alert.alert("Error", "Selecciona un tipo de usuario");
+      return;
+    }
     setSaving(true);
     try {
-      await api.createUser({ email, password, name: name || undefined, role });
-      setEmail(""); setPassword(""); setName(""); setRole("user");
+      await api.createUser({ email, password, name: name || undefined, role_id: roleId });
+      setEmail(""); setPassword(""); setName(""); setRoleId("");
       onDone();
     } catch (e: any) {
       Alert.alert("Error", e.message);
@@ -247,24 +264,31 @@ function CreateUserModal({ visible, onClose, onDone }: { visible: boolean; onClo
               secureTextEntry
               placeholderTextColor={COLORS.textDisabled}
             />
-            <Text style={s.mLabel}>Rol</Text>
-            <View style={s.roleRow}>
-              <TouchableOpacity
-                testID="modal-role-user"
-                style={[s.roleChip, role === "user" && s.roleChipActive]}
-                onPress={() => setRole("user")}
-              >
-                <Ionicons name="person" size={18} color={role === "user" ? "#fff" : COLORS.navy} />
-                <Text style={[s.roleChipText, role === "user" && { color: "#fff" }]}>Técnico</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                testID="modal-role-admin"
-                style={[s.roleChip, role === "admin" && s.roleChipActive]}
-                onPress={() => setRole("admin")}
-              >
-                <Ionicons name="shield-checkmark" size={18} color={role === "admin" ? "#fff" : COLORS.navy} />
-                <Text style={[s.roleChipText, role === "admin" && { color: "#fff" }]}>Admin</Text>
-              </TouchableOpacity>
+            <Text style={s.mLabel}>Tipo de usuario</Text>
+            <View style={s.roleList}>
+              {roles.map((r) => {
+                const on = r.id === roleId;
+                return (
+                  <TouchableOpacity
+                    key={r.id}
+                    testID={`role-opt-${r.key}`}
+                    style={[s.roleListItem, on && s.roleListItemActive]}
+                    onPress={() => setRoleId(r.id)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[s.roleRadio, on && s.roleRadioActive]}>
+                      {on && <View style={s.roleRadioDot} />}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[s.roleListName, on && { color: COLORS.primary }]}>{r.name}</Text>
+                      <Text style={s.roleListSub} numberOfLines={1}>
+                        {r.permissions.length} permiso{r.permissions.length !== 1 ? "s" : ""}
+                      </Text>
+                    </View>
+                    {r.system && <Ionicons name="lock-closed" size={14} color={COLORS.textDisabled} />}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
             <TouchableOpacity
               testID="modal-submit"
@@ -282,24 +306,28 @@ function CreateUserModal({ visible, onClose, onDone }: { visible: boolean; onClo
 }
 
 // ---------------- Edit ----------------
-function EditUserModal({ user, onClose, onDone }: { user: User | null; onClose: () => void; onDone: () => void }) {
+function EditUserModal({ user, roles, onClose, onDone }: { user: User | null; roles: Role[]; onClose: () => void; onDone: () => void }) {
   const [name, setName] = useState(user?.name || "");
-  const [role, setRole] = useState<Role>((user?.role as Role) || "user");
+  const [roleId, setRoleId] = useState<string>(user?.role_id || "");
   const [color, setColor] = useState<string>(user?.color || USER_COLOR_PALETTE[0]);
   const [saving, setSaving] = useState(false);
 
   // reset state when user changes
   useFocusEffect(useCallback(() => {
     setName(user?.name || "");
-    setRole((user?.role as Role) || "user");
+    setRoleId(user?.role_id || "");
     setColor(user?.color || USER_COLOR_PALETTE[0]);
   }, [user?.id]));
 
   const submit = async () => {
     if (!user) return;
+    if (!roleId) {
+      Alert.alert("Error", "Selecciona un tipo de usuario");
+      return;
+    }
     setSaving(true);
     try {
-      await api.updateUser(user.id, { name: name || undefined, role, color });
+      await api.updateUser(user.id, { name: name || undefined, role_id: roleId, color });
       onDone();
     } catch (e: any) {
       Alert.alert("Error", e.message);
@@ -333,29 +361,31 @@ function EditUserModal({ user, onClose, onDone }: { user: User | null; onClose: 
               onChangeText={setName}
               placeholderTextColor={COLORS.textDisabled}
             />
-            <Text style={s.mLabel}>Rol</Text>
-            <View style={s.roleRow}>
-              <TouchableOpacity
-                style={[s.roleChip, role === "user" && s.roleChipActive]}
-                onPress={() => setRole("user")}
-              >
-                <Ionicons name="person" size={18} color={role === "user" ? "#fff" : COLORS.navy} />
-                <Text style={[s.roleChipText, role === "user" && { color: "#fff" }]}>Técnico</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.roleChip, role === "comercial" && s.roleChipActive]}
-                onPress={() => setRole("comercial")}
-              >
-                <Ionicons name="briefcase" size={18} color={role === "comercial" ? "#fff" : COLORS.navy} />
-                <Text style={[s.roleChipText, role === "comercial" && { color: "#fff" }]}>Comercial</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.roleChip, role === "admin" && s.roleChipActive]}
-                onPress={() => setRole("admin")}
-              >
-                <Ionicons name="shield-checkmark" size={18} color={role === "admin" ? "#fff" : COLORS.navy} />
-                <Text style={[s.roleChipText, role === "admin" && { color: "#fff" }]}>Admin</Text>
-              </TouchableOpacity>
+            <Text style={s.mLabel}>Tipo de usuario</Text>
+            <View style={s.roleList}>
+              {roles.map((r) => {
+                const on = r.id === roleId;
+                return (
+                  <TouchableOpacity
+                    key={r.id}
+                    testID={`role-opt-${r.key}`}
+                    style={[s.roleListItem, on && s.roleListItemActive]}
+                    onPress={() => setRoleId(r.id)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[s.roleRadio, on && s.roleRadioActive]}>
+                      {on && <View style={s.roleRadioDot} />}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[s.roleListName, on && { color: COLORS.primary }]}>{r.name}</Text>
+                      <Text style={s.roleListSub} numberOfLines={1}>
+                        {r.permissions.length} permiso{r.permissions.length !== 1 ? "s" : ""}
+                      </Text>
+                    </View>
+                    {r.system && <Ionicons name="lock-closed" size={14} color={COLORS.textDisabled} />}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
             <Text style={s.mLabel}>Color del usuario</Text>
             <Text style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 8 }}>
@@ -512,6 +542,28 @@ const s = StyleSheet.create({
   },
   roleChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   roleChipText: { fontSize: 14, fontWeight: "800", color: COLORS.navy },
+  roleList: { gap: 8 },
+  roleListItem: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    paddingVertical: 12, paddingHorizontal: 14,
+    borderRadius: 12, borderWidth: 2, borderColor: COLORS.borderInput,
+    backgroundColor: COLORS.bg,
+  },
+  roleListItemActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primarySoft,
+  },
+  roleRadio: {
+    width: 22, height: 22, borderRadius: 11, borderWidth: 2,
+    borderColor: COLORS.borderInput, backgroundColor: "#fff",
+    alignItems: "center", justifyContent: "center",
+  },
+  roleRadioActive: { borderColor: COLORS.primary },
+  roleRadioDot: {
+    width: 10, height: 10, borderRadius: 5, backgroundColor: COLORS.primary,
+  },
+  roleListName: { fontSize: 15, fontWeight: "700", color: COLORS.text },
+  roleListSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
   primary: {
     height: 52, borderRadius: 12, backgroundColor: COLORS.primary,
     alignItems: "center", justifyContent: "center", marginTop: 20,
