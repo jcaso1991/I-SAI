@@ -584,14 +584,37 @@ export default function PlanEditor() {
       .substring(0, 80) || "plano";
   };
 
+  /**
+   * Compute optimal capture dimensions to preserve original quality.
+   * - If a background image/PDF exists, capture at its native resolution
+   *   (capped at 3600px on the longest side to avoid memory issues).
+   * - Otherwise capture at the canvas display size.
+   * Shapes are vector and re-rasterise crisply at any size.
+   */
+  const computeCaptureSize = () => {
+    const MAX_DIM = 3600;
+    if (background?.width && background?.height) {
+      const ratio = canvasSize.w && canvasSize.h ? (canvasSize.w / canvasSize.h) : (background.width / background.height);
+      // Use the SAME aspect ratio as the canvas viewBox (so coordinates match),
+      // but scale up to match the background's longest side.
+      const maxSrc = Math.max(background.width, background.height);
+      const scale = Math.min(maxSrc, MAX_DIM) / Math.max(canvasSize.w, canvasSize.h);
+      if (scale > 1) {
+        return { w: Math.round(canvasSize.w * scale), h: Math.round(canvasSize.h * scale) };
+      }
+    }
+    return { w: canvasSize.w, h: canvasSize.h };
+  };
+
   const exportAs = async (format: "jpg" | "pdf") => {
     try {
       clearSelection();
       await new Promise((r) => setTimeout(r, 100));
+      const cap = computeCaptureSize();
       const jpgBase64 = await captureCanvasJpegBase64(canvasRef, {
-        quality: 0.95,
-        width: canvasSize.w,
-        height: canvasSize.h,
+        quality: 0.98,
+        width: cap.w,
+        height: cap.h,
       });
       const baseName = safeFilename(title);
       if (format === "jpg") {
@@ -612,11 +635,13 @@ export default function PlanEditor() {
       clearSelection();
       await new Promise((r) => setTimeout(r, 100));
 
-      // 1) Capture canvas as JPG base64 (cross-platform)
+      // 1) Capture canvas as JPG base64 (cross-platform) at original resolution
+      //    to preserve as much definition as possible.
+      const cap = computeCaptureSize();
       const jpgBase64 = await captureCanvasJpegBase64(canvasRef, {
-        quality: 0.95,
-        width: canvasSize.w,
-        height: canvasSize.h,
+        quality: 0.98,
+        width: cap.w,
+        height: cap.h,
       });
 
       // 2) If original was PDF, convert to PDF via backend. Otherwise keep JPEG.
@@ -1649,7 +1674,7 @@ const s = StyleSheet.create({
   sizeChipText: { fontSize: 12, fontWeight: "800", color: COLORS.navy },
   canvasWrap: { flex: 1, padding: 4, backgroundColor: COLORS.bg },
   canvasPaper: {
-    flex: 1, backgroundColor: "#fff",
+    flex: 1, backgroundColor: COLORS.canvasPaper,
     borderRadius: 4, borderWidth: 1, borderColor: COLORS.border,
     overflow: "hidden",
   },
@@ -1707,7 +1732,7 @@ const s = StyleSheet.create({
   },
   stampCellActive: { borderColor: COLORS.primary },
   stampPreview: {
-    width: 70, height: 70, backgroundColor: "#fff",
+    width: 70, height: 70, backgroundColor: COLORS.canvasPaper,
     alignItems: "center", justifyContent: "center", borderRadius: 8,
   },
   stampName: { fontSize: 12, fontWeight: "700", color: COLORS.text, textAlign: "center" },
@@ -1734,7 +1759,7 @@ const s = StyleSheet.create({
     padding: 10, backgroundColor: COLORS.bg, borderRadius: 10, marginBottom: 6,
   },
   stampPreviewSm: {
-    width: 50, height: 50, backgroundColor: "#fff", borderRadius: 8,
+    width: 50, height: 50, backgroundColor: COLORS.canvasPaper, borderRadius: 8,
     alignItems: "center", justifyContent: "center",
   },
 });

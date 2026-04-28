@@ -1881,8 +1881,9 @@ async def utils_image_to_pdf(body: ImageToPdfBody, user: dict = Depends(current_
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
         buf = io.BytesIO()
-        # Page size: match image aspect, cap dimensions to avoid huge PDFs
-        img.save(buf, format="PDF", resolution=150.0)
+        # Save high-DPI PDF (300 DPI) to preserve detail. PIL embeds the JPEG
+        # without re-compression so quality matches the source image.
+        img.save(buf, format="PDF", resolution=300.0)
         data = buf.getvalue()
     except Exception as e:
         logging.exception("image-to-pdf failed")
