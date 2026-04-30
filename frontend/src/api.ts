@@ -2,6 +2,20 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL;
 const TOKEN_KEY = "materiales_token";
+const NGROK_SKIP_HEADER = "ngrok-skip-browser-warning";
+
+function withBackendHeaders(headers: Record<string, string> = {}) {
+  if (BASE) {
+    try {
+      if (/ngrok(-free)?\.app$/i.test(new URL(BASE).hostname)) {
+        return { ...headers, [NGROK_SKIP_HEADER]: "1" };
+      }
+    } catch {
+      // Ignore invalid/relative base URLs; they do not need the ngrok header.
+    }
+  }
+  return headers;
+}
 
 export async function getToken(): Promise<string | null> {
   return AsyncStorage.getItem(TOKEN_KEY);
@@ -14,10 +28,10 @@ export async function clearToken() {
 }
 
 async function request(path: string, opts: RequestInit = {}, auth = true) {
-  const headers: Record<string, string> = {
+  const headers: Record<string, string> = withBackendHeaders({
     "Content-Type": "application/json",
     ...(opts.headers as Record<string, string> | undefined),
-  };
+  });
   if (auth) {
     const t = await getToken();
     if (t) headers["Authorization"] = `Bearer ${t}`;
@@ -128,7 +142,7 @@ export const api = {
     // Public endpoint: no auth header required. We still hit the /api prefix.
     return fetch(`${BASE}/api/sat/public`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: withBackendHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body),
     }).then(async (res) => {
       if (!res.ok) {
@@ -184,7 +198,7 @@ export const api = {
     const token = await getToken();
     const res = await fetch(`${BASE}/api/sat/clients/import?replace=${replace ? "true" : "false"}`, {
       method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: withBackendHeaders(token ? { Authorization: `Bearer ${token}` } : {}),
       body: form,
     });
     if (!res.ok) {
@@ -206,7 +220,7 @@ export const api = {
   getBudgetPdfBlob: async (id: string): Promise<Blob> => {
     const t = await getToken();
     const res = await fetch(`${BASE}/api/budgets/${id}/pdf`, {
-      headers: t ? { Authorization: `Bearer ${t}` } : {},
+      headers: withBackendHeaders(t ? { Authorization: `Bearer ${t}` } : {}),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.blob();
@@ -215,10 +229,10 @@ export const api = {
     const t = await getToken();
     const res = await fetch(`${BASE}/api/budgets/pdf-preview`, {
       method: "POST",
-      headers: {
+      headers: withBackendHeaders({
         "Content-Type": "application/json",
         ...(t ? { Authorization: `Bearer ${t}` } : {}),
-      },
+      }),
       body: JSON.stringify(body),
     });
     if (!res.ok) {
@@ -232,10 +246,10 @@ export const api = {
     const t = await getToken();
     const res = await fetch(`${BASE}/api/utils/image-to-pdf`, {
       method: "POST",
-      headers: {
+      headers: withBackendHeaders({
         "Content-Type": "application/json",
         ...(t ? { Authorization: `Bearer ${t}` } : {}),
-      },
+      }),
       body: JSON.stringify({ base64, mime_type }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
