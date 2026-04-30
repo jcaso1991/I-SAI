@@ -312,6 +312,30 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setThemeState(t);
     setThemeKey((k) => k + 1);
     AsyncStorage.setItem(KEY, t).catch(() => {});
+
+    // On native, RN's StyleSheet.create freezes hex values at module load
+    // time, so mutating the COLORS object does NOT retro-update existing
+    // styles. Web works because we inject CSS overrides (see injectThemeCSS).
+    // The simplest reliable fix on native is to reload the JS bundle so
+    // every module re-imports with the new persisted theme.
+    if (Platform.OS !== "web") {
+      setTimeout(() => {
+        try {
+          // Expo Go / dev builds: DevSettings.reload always works.
+          const RN = require("react-native");
+          const ds = RN?.DevSettings;
+          if (ds?.reload) {
+            ds.reload();
+            return;
+          }
+        } catch {}
+        try {
+          // Production builds: expo-updates if present.
+          const Updates = require("expo-updates");
+          if (Updates?.reloadAsync) Updates.reloadAsync();
+        } catch {}
+      }, 250);
+    }
   }, []);
 
   const toggle = useCallback(() => {
