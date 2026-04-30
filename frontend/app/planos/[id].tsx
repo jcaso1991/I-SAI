@@ -171,7 +171,7 @@ export default function PlanEditor() {
     saveTimer.current = setTimeout(async () => {
       try {
         setSaving(true);
-        await api.updatePlan(id, { data: { shapes } });
+        await api.updatePlan(id, { data: { shapes, background } });
         setDirty(false);
       } catch (e: any) {
         console.warn("Save failed:", e.message);
