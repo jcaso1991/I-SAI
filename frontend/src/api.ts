@@ -39,12 +39,13 @@ export const api = {
   register: (email: string, password: string, name?: string) =>
     request("/auth/register", { method: "POST", body: JSON.stringify({ email, password, name }) }, false),
   me: () => request("/auth/me"),
-  listMateriales: (q?: string, pendingOnly?: boolean, managerId?: string, unassigned?: boolean) => {
+  listMateriales: (q?: string, pendingOnly?: boolean, managerId?: string, unassigned?: boolean, projectStatus?: string) => {
     const p = new URLSearchParams();
     if (q) p.set("q", q);
     if (pendingOnly) p.set("pending_only", "true");
     if (managerId) p.set("manager_id", managerId);
     if (unassigned) p.set("unassigned", "true");
+    if (projectStatus) p.set("project_status", projectStatus);
     const qs = p.toString();
     return request(`/materiales${qs ? "?" + qs : ""}`);
   },

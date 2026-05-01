@@ -106,6 +106,8 @@ class Material(BaseModel):
     # manager assignment
     manager_id: Optional[str] = None
     manager_name: Optional[str] = None
+    # project status
+    project_status: Optional[str] = "pendiente"  # pendiente | a_facturar | anulado | planificado | terminado
     # meta
     sync_status: str = "synced"  # synced | pending | error
     updated_at: Optional[str] = None
@@ -118,6 +120,7 @@ class MaterialUpdate(BaseModel):
     tecnico: Optional[str] = None
     comentarios: Optional[str] = None
     manager_id: Optional[str] = None
+    project_status: Optional[str] = None
 
 class OneDriveStatus(BaseModel):
     connected: bool
@@ -1855,7 +1858,7 @@ async def sync_push(user: dict = Depends(require_permission("onedrive.manage")))
 
 # ---------------- Materials routes ----------------
 @api_router.get("/materiales", response_model=List[Material])
-async def list_materiales(user: dict = Depends(current_user), q: Optional[str] = None, pending_only: bool = False, limit: int = 2000, manager_id: Optional[str] = None, unassigned: bool = False):
+async def list_materiales(user: dict = Depends(current_user), q: Optional[str] = None, pending_only: bool = False, limit: int = 2000, manager_id: Optional[str] = None, unassigned: bool = False, project_status: Optional[str] = None):
     # fire-and-forget auto-import if stale
     await maybe_auto_import()
     query: dict = {}
@@ -1871,6 +1874,8 @@ async def list_materiales(user: dict = Depends(current_user), q: Optional[str] =
         query["manager_id"] = manager_id
     if unassigned:
         query["manager_id"] = {"$in": [None, ""]}
+    if project_status:
+        query["project_status"] = project_status
     items = await db.materiales.find(query, {"_id": 0}).limit(limit).to_list(limit)
     items.sort(key=lambda x: x.get("row_index", 0))
     # Enrich with manager names

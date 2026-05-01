@@ -94,8 +94,10 @@ export default function MaterialDetail() {
   const [techs, setTechs] = useState<{ id: string; name: string; email: string }[]>([]);
   const [managers, setManagers] = useState<{ id: string; name: string; email: string }[]>([]);
   const [managerId, setManagerId] = useState("");
+  const [projectStatus, setProjectStatus] = useState("pendiente");
   const [showTechPicker, setShowTechPicker] = useState(false);
   const [showManagerPicker, setShowManagerPicker] = useState(false);
+  const [showStatusPicker, setShowStatusPicker] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
@@ -113,6 +115,7 @@ export default function MaterialDetail() {
         setTecnico(data.tecnico || "");
         setComentarios(data.comentarios || "");
         setManagerId(data.manager_id || "");
+        setProjectStatus(data.project_status || "pendiente");
         setTechs(tlist);
         setManagers(mlist);
         // if fecha was empty, mark dirty so user sees the default today is pending save
@@ -135,6 +138,7 @@ export default function MaterialDetail() {
         tecnico: tecnico || null,
         comentarios: comentarios || null,
         manager_id: managerId || null,
+        project_status: projectStatus || null,
       });
       setM(updated);
       setDirty(false);
@@ -195,6 +199,26 @@ export default function MaterialDetail() {
 
           <View style={s.section}>
             <Text style={s.sectionTitle}>EDITABLE</Text>
+
+            <Text style={s.fieldLabel}>Estado</Text>
+            <TouchableOpacity
+              testID="picker-status"
+              style={s.picker}
+              onPress={() => setShowStatusPicker(true)}
+              activeOpacity={0.7}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                <Ionicons name="flag" size={20} color={COLORS.primary} />
+                <Text style={s.pickerText}>
+                  {projectStatus === "pendiente" ? "🟡 Pendiente"
+                    : projectStatus === "a_facturar" ? "🟣 A facturar"
+                    : projectStatus === "planificado" ? "🔵 Planificado"
+                    : projectStatus === "terminado" ? "🟢 Terminado"
+                    : projectStatus === "anulado" ? "🔴 Anulado"
+                    : "Selecciona estado..."}
+                </Text>
+              </View>
+            </TouchableOpacity>
 
             <Text style={s.fieldLabel}>Gestor asignado</Text>
             <TouchableOpacity
@@ -484,6 +508,55 @@ export default function MaterialDetail() {
                       <Text style={s.techEmail}>{mgr.email}</Text>
                     </View>
                     {active && <Ionicons name="checkmark-circle" size={22} color={COLORS.primary} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showStatusPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowStatusPicker(false)}
+      >
+        <View style={s.modalRoot}>
+          <View style={s.modalCard}>
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitle}>Estado del proyecto</Text>
+              <TouchableOpacity onPress={() => setShowStatusPicker(false)}>
+                <Ionicons name="close" size={26} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 400 }}>
+              {[
+                { key: "pendiente", label: "🟡 Pendiente", color: "#F59E0B" },
+                { key: "a_facturar", label: "🟣 A facturar", color: "#8B5CF6" },
+                { key: "planificado", label: "🔵 Planificado", color: "#3B82F6" },
+                { key: "terminado", label: "🟢 Terminado", color: "#10B981" },
+                { key: "anulado", label: "🔴 Anulado", color: "#EF4444" },
+              ].map((st) => {
+                const active = projectStatus === st.key;
+                return (
+                  <TouchableOpacity
+                    key={st.key}
+                    testID={`status-opt-${st.key}`}
+                    style={[s.techRow, active && { backgroundColor: st.color + "18" }]}
+                    onPress={() => {
+                      setProjectStatus(st.key);
+                      setDirty(true);
+                      setShowStatusPicker(false);
+                    }}
+                  >
+                    <View style={[s.techAvatar, active && { backgroundColor: st.color }]}>
+                      <Ionicons name="flag" size={18} color={active ? "#fff" : COLORS.textSecondary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.techName}>{st.label}</Text>
+                    </View>
+                    {active && <Ionicons name="checkmark-circle" size={22} color={st.color} />}
                   </TouchableOpacity>
                 );
               })}

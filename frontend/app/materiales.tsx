@@ -24,13 +24,24 @@ export default function Materiales() {
   const [managers, setManagers] = useState<any[]>([]);
   const [showManagerFilter, setShowManagerFilter] = useState(false);
   const [managerFilterIds, setManagerFilterIds] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [showStatusFilter, setShowStatusFilter] = useState(false);
+
+  const PROJECT_STATUSES = [
+    { key: "", label: "Todos" },
+    { key: "pendiente", label: "Pendiente", color: "#F59E0B" },
+    { key: "a_facturar", label: "A facturar", color: "#8B5CF6" },
+    { key: "planificado", label: "Planificado", color: "#3B82F6" },
+    { key: "terminado", label: "Terminado", color: "#10B981" },
+    { key: "anulado", label: "Anulado", color: "#EF4444" },
+  ];
 
   const load = async () => {
     try {
       const managerId = managerFilterIds.length === 1 ? managerFilterIds[0] : undefined;
       const unassigned = managerFilterIds.includes("__none__");
       const [list, st, u] = await Promise.all([
-        api.listMateriales(q || undefined, pendingOnly, managerId, unassigned),
+        api.listMateriales(q || undefined, pendingOnly, managerId, unassigned, statusFilter || undefined),
         api.stats(),
         me ? Promise.resolve(me) : api.me(),
       ]);
@@ -53,12 +64,12 @@ export default function Materiales() {
   useFocusEffect(useCallback(() => {
     load();
     api.listManagers().then(setManagers).catch(() => {});
-  }, [q, pendingOnly, managerFilterIds]));
+  }, [q, pendingOnly, managerFilterIds, statusFilter]));
 
   useEffect(() => {
     const t = setTimeout(load, 300);
     return () => clearTimeout(t);
-  }, [q, pendingOnly, managerFilterIds]);
+  }, [q, pendingOnly, managerFilterIds, statusFilter]);
 
   const toggleManagerFilter = (id: string) => {
     setManagerFilterIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
@@ -75,6 +86,13 @@ export default function Materiales() {
 
   const renderItem = ({ item }: any) => {
     const pending = item.sync_status === "pending";
+    const statusColors: Record<string, { bg: string; fg: string; label: string }> = {
+      a_facturar: { bg: "#EDE9FE", fg: "#5B21B6", label: "Facturar" },
+      planificado: { bg: "#DBEAFE", fg: "#1E40AF", label: "Planif." },
+      terminado: { bg: "#DCFCE7", fg: "#166534", label: "Terminado" },
+      anulado: { bg: "#FEE2E2", fg: "#991B1B", label: "Anulado" },
+    };
+    const st = item.project_status && item.project_status !== "pendiente" ? statusColors[item.project_status] : null;
     return (
       <TouchableOpacity
         testID={`material-item-${item.id}`}
@@ -84,15 +102,18 @@ export default function Materiales() {
       >
         <View style={s.cardTop}>
           <Text style={s.code}>{item.materiales || "—"}</Text>
-          <View style={[s.badge, pending ? s.badgePending : s.badgeSynced]}>
-            <Ionicons
-              name={pending ? "time-outline" : "checkmark-circle"}
-              size={12}
-              color={pending ? COLORS.pendingText : COLORS.syncedText}
-            />
-            <Text style={[s.badgeText, { color: pending ? COLORS.pendingText : COLORS.syncedText }]}>
-              {pending ? "PEND" : "SINC"}
-            </Text>
+          <View style={{ flexDirection: "row", gap: 4, alignItems: "center" }}>
+            {st && (
+              <View style={[s.statusBadge, { backgroundColor: st.bg }]}>
+                <Text style={[s.statusBadgeText, { color: st.fg }]}>{st.label}</Text>
+              </View>
+            )}
+            <View style={[s.badge, pending ? s.badgePending : s.badgeSynced]}>
+              <Ionicons name={pending ? "time-outline" : "checkmark-circle"} size={12} color={pending ? COLORS.pendingText : COLORS.syncedText} />
+              <Text style={[s.badgeText, { color: pending ? COLORS.pendingText : COLORS.syncedText }]}>
+                {pending ? "PEND" : "SINC"}
+              </Text>
+            </View>
           </View>
         </View>
         <Text style={s.cliente} numberOfLines={1}>{item.cliente || "Sin cliente"}</Text>
@@ -131,7 +152,7 @@ export default function Materiales() {
         <View style={{ flex: 1 }}>
           <Text style={s.headerTitle}>Proyectos</Text>
           <Text style={s.headerSubHint}>
-            {managerFilterIds.length > 0
+            {(managerFilterIds.length > 0 || statusFilter !== "")
               ? `${items.length} proyecto${items.length !== 1 ? "s" : ""} · ${items.reduce((sum: number, it: any) => sum + (parseFloat(it.horas_prev) || 0), 0)}h totales`
               : "Base sincronizada con OneDrive"}
           </Text>
@@ -210,14 +231,21 @@ export default function Materiales() {
         <TouchableOpacity
           testID="btn-filter-manager"
           style={[s.filterBtn, managerFilterIds.length > 0 && s.filterBtnActive]}
-          onPress={() => setShowManagerFilter((v) => !v)}
+          onPress={() => { setShowManagerFilter((v) => !v); setShowStatusFilter(false); }}
         >
           <Ionicons name="people" size={18} color={managerFilterIds.length > 0 ? "#fff" : COLORS.navy} />
         </TouchableOpacity>
-        {managerFilterIds.length > 0 && (
+        <TouchableOpacity
+          testID="btn-filter-status"
+          style={[s.filterBtn, statusFilter !== "" && s.filterBtnActive]}
+          onPress={() => { setShowStatusFilter((v) => !v); setShowManagerFilter(false); }}
+        >
+          <Ionicons name="flag" size={18} color={statusFilter !== "" ? "#fff" : COLORS.navy} />
+        </TouchableOpacity>
+        {(managerFilterIds.length > 0 || statusFilter !== "") && (
           <TouchableOpacity
             style={[s.filterBtn, { backgroundColor: COLORS.errorBg }]}
-            onPress={clearManagerFilter}
+            onPress={() => { clearManagerFilter(); setStatusFilter(""); }}
           >
             <Ionicons name="close" size={16} color={COLORS.errorText} />
           </TouchableOpacity>
@@ -243,6 +271,26 @@ export default function Materiales() {
                 >
                   <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: (mgr as any).color || COLORS.primary }} />
                   <Text style={[s.managerChipTxt, on && { color: COLORS.primary, fontWeight: "800" }]} numberOfLines={1}>{mgr.name || mgr.email}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
+
+      {showStatusFilter && (
+        <View style={{ paddingHorizontal: 12, paddingBottom: 8, gap: 6 }}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+            {PROJECT_STATUSES.map((st) => {
+              const on = statusFilter === st.key;
+              return (
+                <TouchableOpacity
+                  key={st.key}
+                  style={[s.managerChip, on && { backgroundColor: st.color + "22", borderColor: st.color }]}
+                  onPress={() => { setStatusFilter(st.key); setShowStatusFilter(false); }}
+                >
+                  {st.key !== "" && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: st.color }} />}
+                  <Text style={[s.managerChipTxt, on && { color: st.color, fontWeight: "800" }]}>{st.label}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -347,6 +395,11 @@ const s = StyleSheet.create({
   },
   infoLabel: { fontSize: 10, color: COLORS.textDisabled, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 },
   infoValue: { fontSize: 12, color: COLORS.text, fontWeight: "700", marginTop: 1 },
+  statusBadge: {
+    flexDirection: "row", alignItems: "center", gap: 3,
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4,
+  },
+  statusBadgeText: { fontSize: 9, fontWeight: "800", letterSpacing: 0.3 },
   badge: {
     flexDirection: "row", alignItems: "center", gap: 4,
     paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
