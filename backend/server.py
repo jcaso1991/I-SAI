@@ -2353,6 +2353,7 @@ async def sat_delete(iid: str, admin: dict = Depends(require_permission("sat.edi
 class SATStatusChangeIn(BaseModel):
     status: str  # "pendiente" | "resuelta"
     comment: str = Field("", max_length=4000)
+    facturable: Optional[bool] = None  # required when status == "resuelta"
 
 @api_router.post("/sat/incidents/{iid}/status")
 async def sat_change_status(iid: str, body: SATStatusChangeIn, user: dict = Depends(current_user)):
@@ -2364,6 +2365,8 @@ async def sat_change_status(iid: str, body: SATStatusChangeIn, user: dict = Depe
         raise HTTPException(404, "Incidencia no encontrada")
     if body.status not in {"pendiente", "resuelta"}:
         raise HTTPException(400, "Estado inválido")
+    if body.status == "resuelta" and body.facturable is None:
+        raise HTTPException(400, "Debes indicar si la incidencia es facturable o no")
 
     now = datetime.now(timezone.utc).isoformat()
     prev = existing.get("status") or "pendiente"
@@ -2373,6 +2376,7 @@ async def sat_change_status(iid: str, body: SATStatusChangeIn, user: dict = Depe
         "from_status": prev,
         "to_status": body.status,
         "comment": (body.comment or "").strip(),
+        "facturable": body.facturable if body.status == "resuelta" else None,
         "user_id": user.get("id"),
         "user_name": user.get("name") or user.get("email") or "usuario",
         "created_at": now,
@@ -2384,6 +2388,7 @@ async def sat_change_status(iid: str, body: SATStatusChangeIn, user: dict = Depe
     if body.status == "resuelta" and prev != "resuelta":
         patch["resolved_at"] = now
         patch["resolved_by"] = user.get("id")
+        patch["facturable"] = body.facturable
     elif body.status == "pendiente":
         patch["resolved_at"] = None
         patch["resolved_by"] = None

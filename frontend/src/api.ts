@@ -144,10 +144,10 @@ export const api = {
   satGet: (id: string) => request(`/sat/incidents/${id}`),
   satUpdate: (id: string, body: any) =>
     request(`/sat/incidents/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
-  satChangeStatus: (id: string, status: "pendiente" | "resuelta", comment: string) =>
+  satChangeStatus: (id: string, status: "pendiente" | "resuelta", comment: string, facturable?: boolean) =>
     request(`/sat/incidents/${id}/status`, {
       method: "POST",
-      body: JSON.stringify({ status, comment }),
+      body: JSON.stringify({ status, comment, facturable }),
     }),
   satScheduleIncident: (id: string, scheduledFor: string, comment: string) =>
     request(`/sat/incidents/${id}/schedule`, {

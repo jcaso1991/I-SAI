@@ -38,6 +38,7 @@ type Incident = {
   scheduled_for?: string | null;
   client_id?: string | null;
   history?: HistoryEntry[];
+  facturable?: boolean | null;
 };
 
 type HistoryEntry = {
@@ -391,14 +392,41 @@ export default function SATScreen() {
               </View>
             ) : (
               <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 80, gap: 12 }}>
-                {visibleIncidents.map((it) => (
-                  <IncidentCard
-                    key={it.id}
-                    item={it}
-                    clientName={clients.find((c) => c.id === it.client_id)?.cliente}
-                    onPress={() => setOpenItem(it)}
-                  />
-                ))}
+                {tab === "resuelta" ? (
+                  // Split into facturable / no facturable
+                  <>
+                    {(() => {
+                      const fact = visibleIncidents.filter((i) => i.facturable === true);
+                      const nofact = visibleIncidents.filter((i) => i.facturable === false);
+                      return (
+                        <>
+                          <Text style={s.sectionLabel}>💰 Facturables ({fact.length})</Text>
+                          {fact.length === 0 ? (
+                            <Text style={{ color: COLORS.textSecondary, fontSize: 12, fontStyle: "italic" }}>Ninguna incidencia facturable</Text>
+                          ) : fact.map((it) => (
+                            <IncidentCard key={it.id} item={it} clientName={clients.find((c) => c.id === it.client_id)?.cliente} onPress={() => setOpenItem(it)} />
+                          ))}
+                          <View style={{ height: 16 }} />
+                          <Text style={s.sectionLabel}>🚫 No facturables ({nofact.length})</Text>
+                          {nofact.length === 0 ? (
+                            <Text style={{ color: COLORS.textSecondary, fontSize: 12, fontStyle: "italic" }}>Ninguna incidencia no facturable</Text>
+                          ) : nofact.map((it) => (
+                            <IncidentCard key={it.id} item={it} clientName={clients.find((c) => c.id === it.client_id)?.cliente} onPress={() => setOpenItem(it)} />
+                          ))}
+                        </>
+                      );
+                    })()}
+                  </>
+                ) : (
+                  visibleIncidents.map((it) => (
+                    <IncidentCard
+                      key={it.id}
+                      item={it}
+                      clientName={clients.find((c) => c.id === it.client_id)?.cliente}
+                      onPress={() => setOpenItem(it)}
+                    />
+                  ))
+                )}
               </ScrollView>
             )}
           </>
@@ -689,17 +717,15 @@ function IncidentModal({ item, clients, isAdmin, onClose, onChanged }: {
   const [showSchedule, setShowSchedule] = useState(false);
 
   // Apply the status change after user has written a comment.
-  const applyStatusChange = async (status: "pendiente" | "resuelta", comment: string) => {
+  const applyStatusChange = async (status: "pendiente" | "resuelta", comment: string, facturable?: boolean) => {
     setSaving(true);
     try {
-      // First persist field edits (cliente/direccion/etc.) so they aren't
-      // lost when closing the modal.
       await api.satUpdate(item.id, {
         cliente, direccion, telefono, observaciones,
         comentarios_sat: comentarios,
         client_id: clientId,
       });
-      const updated = await api.satChangeStatus(item.id, status, comment);
+      const updated = await api.satChangeStatus(item.id, status, comment, facturable);
       setCurrent(updated);
       setPendingStatus(null);
       onChanged();
@@ -844,7 +870,7 @@ function IncidentModal({ item, clients, isAdmin, onClose, onChanged }: {
           currentStatus={current.status}
           saving={saving}
           onCancel={() => setPendingStatus(null)}
-          onConfirm={(comment) => applyStatusChange(pendingStatus, comment)}
+          onConfirm={(comment, facturable) => applyStatusChange(pendingStatus, comment, facturable)}
         />
       )}
       {showSchedule && (
@@ -1076,19 +1102,24 @@ function StatusCommentPrompt({
   currentStatus: string;
   saving: boolean;
   onCancel: () => void;
-  onConfirm: (comment: string) => void;
+  onConfirm: (comment: string, facturable?: boolean) => void;
 }) {
   const [comment, setComment] = useState("");
   const [error, setError] = useState<string | null>(null);
   const same = currentStatus === targetStatus;
   const resolved = targetStatus === "resuelta";
+  const [facturable, setFacturable] = useState<boolean | null>(null);
 
   const handleConfirm = () => {
     if (!comment.trim()) {
       setError("Escribe un comentario para registrar el cambio.");
       return;
     }
-    onConfirm(comment.trim());
+    if (resolved && facturable === null) {
+      setError("Selecciona si la incidencia es facturable o no facturable.");
+      return;
+    }
+    onConfirm(comment.trim(), resolved ? facturable ?? undefined : undefined);
   };
 
   return (
@@ -1133,6 +1164,25 @@ function StatusCommentPrompt({
           />
           {error && (
             <Text style={{ color: "#EF4444", fontSize: 12, fontWeight: "800", marginTop: 6 }}>{error}</Text>
+          )}
+          {resolved && (
+            <>
+              <Text style={[s.fieldLabel, { marginTop: 8 }]}>¿Es facturable?</Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <TouchableOpacity
+                  style={[s.factChip, facturable === true && s.factChipActive]}
+                  onPress={() => { setFacturable(true); if (error) setError(null); }}
+                >
+                  <Text style={[s.factChipText, facturable === true && { color: "#fff" }]}>💰 Facturable</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.factChip, facturable === false && s.factChipNoActive]}
+                  onPress={() => { setFacturable(false); if (error) setError(null); }}
+                >
+                  <Text style={[s.factChipText, facturable === false && { color: "#fff" }]}>🚫 No facturable</Text>
+                </TouchableOpacity>
+              </View>
+            </>
           )}
           <View style={{ flexDirection: "row", gap: 8, marginTop: 14 }}>
             <TouchableOpacity style={[s.cancelBtn, { flex: 1 }]} onPress={onCancel} disabled={saving}>
@@ -1607,4 +1657,16 @@ const s = StyleSheet.create({
     borderRadius: 10, marginTop: 8,
   },
   scheduleBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
+  sectionLabel: {
+    fontSize: 13, fontWeight: "900", color: COLORS.text,
+    letterSpacing: 0.5, textTransform: "uppercase",
+  },
+  factChip: {
+    flex: 1, paddingVertical: 10, borderRadius: 8,
+    alignItems: "center", backgroundColor: COLORS.bg,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  factChipActive: { backgroundColor: "#10B981", borderColor: "#10B981" },
+  factChipNoActive: { backgroundColor: "#6B7280", borderColor: "#6B7280" },
+  factChipText: { fontSize: 13, fontWeight: "700", color: COLORS.text },
 });
