@@ -1875,7 +1875,11 @@ async def list_materiales(user: dict = Depends(current_user), q: Optional[str] =
     if unassigned:
         query["manager_id"] = {"$in": [None, ""]}
     if project_status:
-        query["project_status"] = project_status
+        status_list = [s.strip() for s in project_status.split(",") if s.strip()]
+        if len(status_list) == 1:
+            query["project_status"] = status_list[0]
+        elif len(status_list) > 1:
+            query["project_status"] = {"$in": status_list}
     items = await db.materiales.find(query, {"_id": 0}).limit(limit).to_list(limit)
     items.sort(key=lambda x: x.get("row_index", 0))
     # Enrich with manager names

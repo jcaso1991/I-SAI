@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api, clearToken, COLORS } from "../src/api";
 import ResponsiveLayout from "../src/ResponsiveLayout";
 import { useBreakpoint } from "../src/useBreakpoint";
@@ -24,11 +25,10 @@ export default function Materiales() {
   const [managers, setManagers] = useState<any[]>([]);
   const [showManagerFilter, setShowManagerFilter] = useState(false);
   const [managerFilterIds, setManagerFilterIds] = useState<string[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [statusFilterIds, setStatusFilterIds] = useState<string[]>([]);
   const [showStatusFilter, setShowStatusFilter] = useState(false);
 
   const PROJECT_STATUSES = [
-    { key: "", label: "Todos" },
     { key: "pendiente", label: "Pendiente", color: "#F59E0B" },
     { key: "a_facturar", label: "A facturar", color: "#8B5CF6" },
     { key: "planificado", label: "Planificado", color: "#3B82F6" },
@@ -36,12 +36,31 @@ export default function Materiales() {
     { key: "anulado", label: "Anulado", color: "#EF4444" },
   ];
 
+  // Persist manager and status filters
+  useEffect(() => {
+    AsyncStorage.getItem("mat_manager_filter").then((v) => {
+      if (v) try { setManagerFilterIds(JSON.parse(v)); } catch {}
+    }).catch(() => {});
+    AsyncStorage.getItem("mat_status_filter").then((v) => {
+      if (v) try { setStatusFilterIds(JSON.parse(v)); } catch {}
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.setItem("mat_manager_filter", JSON.stringify(managerFilterIds)).catch(() => {});
+  }, [managerFilterIds]);
+
+  useEffect(() => {
+    AsyncStorage.setItem("mat_status_filter", JSON.stringify(statusFilterIds)).catch(() => {});
+  }, [statusFilterIds]);
+
   const load = async () => {
     try {
       const managerId = managerFilterIds.length === 1 ? managerFilterIds[0] : undefined;
       const unassigned = managerFilterIds.includes("__none__");
+      const statusParam = statusFilterIds.length > 0 ? statusFilterIds.join(",") : undefined;
       const [list, st, u] = await Promise.all([
-        api.listMateriales(q || undefined, pendingOnly, managerId, unassigned, statusFilter || undefined),
+        api.listMateriales(q || undefined, pendingOnly, managerId, unassigned, statusParam),
         api.stats(),
         me ? Promise.resolve(me) : api.me(),
       ]);
@@ -64,15 +83,19 @@ export default function Materiales() {
   useFocusEffect(useCallback(() => {
     load();
     api.listManagers().then(setManagers).catch(() => {});
-  }, [q, pendingOnly, managerFilterIds, statusFilter]));
+  }, [q, pendingOnly, managerFilterIds, statusFilterIds]));
 
   useEffect(() => {
     const t = setTimeout(load, 300);
     return () => clearTimeout(t);
-  }, [q, pendingOnly, managerFilterIds, statusFilter]);
+  }, [q, pendingOnly, managerFilterIds, statusFilterIds]);
 
   const toggleManagerFilter = (id: string) => {
     setManagerFilterIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  };
+
+  const toggleStatusFilter = (key: string) => {
+    setStatusFilterIds((prev) => prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]);
   };
 
   const clearManagerFilter = () => setManagerFilterIds([]);
@@ -152,7 +175,7 @@ export default function Materiales() {
         <View style={{ flex: 1 }}>
           <Text style={s.headerTitle}>Proyectos</Text>
           <Text style={s.headerSubHint}>
-            {(managerFilterIds.length > 0 || statusFilter !== "")
+            {(managerFilterIds.length > 0 || statusFilterIds.length > 0)
               ? `${items.length} proyecto${items.length !== 1 ? "s" : ""} · ${items.reduce((sum: number, it: any) => sum + (parseFloat(it.horas_prev) || 0), 0)}h totales`
               : "Base sincronizada con OneDrive"}
           </Text>
@@ -237,15 +260,15 @@ export default function Materiales() {
         </TouchableOpacity>
         <TouchableOpacity
           testID="btn-filter-status"
-          style={[s.filterBtn, statusFilter !== "" && s.filterBtnActive]}
+          style={[s.filterBtn, statusFilterIds.length > 0 && s.filterBtnActive]}
           onPress={() => { setShowStatusFilter((v) => !v); setShowManagerFilter(false); }}
         >
-          <Ionicons name="flag" size={18} color={statusFilter !== "" ? "#fff" : COLORS.navy} />
+          <Ionicons name="flag" size={18} color={statusFilterIds.length > 0 ? "#fff" : COLORS.navy} />
         </TouchableOpacity>
-        {(managerFilterIds.length > 0 || statusFilter !== "") && (
+        {(managerFilterIds.length > 0 || statusFilterIds.length > 0) && (
           <TouchableOpacity
             style={[s.filterBtn, { backgroundColor: COLORS.errorBg }]}
-            onPress={() => { clearManagerFilter(); setStatusFilter(""); }}
+            onPress={() => { clearManagerFilter(); setStatusFilterIds([]); }}
           >
             <Ionicons name="close" size={16} color={COLORS.errorText} />
           </TouchableOpacity>
@@ -282,15 +305,16 @@ export default function Materiales() {
         <View style={{ paddingHorizontal: 12, paddingBottom: 8, gap: 6 }}>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
             {PROJECT_STATUSES.map((st) => {
-              const on = statusFilter === st.key;
+              const on = statusFilterIds.includes(st.key);
               return (
                 <TouchableOpacity
                   key={st.key}
                   style={[s.managerChip, on && { backgroundColor: st.color + "22", borderColor: st.color }]}
-                  onPress={() => { setStatusFilter(st.key); setShowStatusFilter(false); }}
+                  onPress={() => toggleStatusFilter(st.key)}
                 >
-                  {st.key !== "" && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: st.color }} />}
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: st.color }} />
                   <Text style={[s.managerChipTxt, on && { color: st.color, fontWeight: "800" }]}>{st.label}</Text>
+                  {on && <Ionicons name="checkmark" size={14} color={st.color} />}
                 </TouchableOpacity>
               );
             })}
