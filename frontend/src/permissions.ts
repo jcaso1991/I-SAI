@@ -59,14 +59,14 @@ export function usePermissions() {
  * bottom/side navigation. Order is the global navigation order.
  */
 export type NavItem =
-  | "home" | "proyectos" | "calendario" | "planos"
+  | "home" | "calendario" | "planos" | "proyectos"
   | "presupuestos" | "sat" | "ajustes";
 
 export function visibleNav(perms: string[]): NavItem[] {
   const items: NavItem[] = ["home"]; // home is always visible
-  if (perms.includes("proyectos.view")) items.push("proyectos");
   if (perms.includes("calendario.view")) items.push("calendario");
   if (perms.includes("planos.view")) items.push("planos");
+  if (perms.includes("proyectos.view")) items.push("proyectos");
   if (perms.includes("presupuestos.view")) items.push("presupuestos");
   if (perms.includes("sat.view")) items.push("sat");
   // Ajustes is visible to everyone (theme + portfolio etc)

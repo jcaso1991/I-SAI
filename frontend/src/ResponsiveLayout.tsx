@@ -92,14 +92,14 @@ export default function ResponsiveLayout({
 
         <Text style={s.sectionLabel}>NAVEGACIÓN</Text>
         <SideLink active={active === "home"} label="Inicio" icon="home" to="/home" />
-        {has("proyectos.view") && (
-          <SideLink active={active === "proyectos"} label="Proyectos" icon="set-square" to="/materiales" matIcon />
-        )}
         {has("calendario.view") && (
           <SideLink active={active === "calendario"} label="Calendario" icon="calendar" to="/calendario" />
         )}
         {has("planos.view") && (
           <SideLink active={active === "planos"} label="Planos" icon="map" to="/planos" />
+        )}
+        {has("proyectos.view") && (
+          <SideLink active={active === "proyectos"} label="Proyectos" icon="set-square" to="/materiales" matIcon />
         )}
         {has("presupuestos.view") && (
           <SideLink active={active === "presupuestos"} label="Presupuestos" icon="document-text" to="/presupuestos" />
