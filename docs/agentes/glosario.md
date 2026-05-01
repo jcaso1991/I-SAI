@@ -11,3 +11,4 @@
 - Mongo/Motor: base de datos y herramienta para hablar con ella desde Python.
 - Pydantic: validación de datos en Python; funciona como un formulario con campos obligatorios.
 - Snapshot: foto de seguridad que permite volver atrás con `/undo`.
+<!-- prueba pr base correcta -->

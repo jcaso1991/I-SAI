@@ -10,10 +10,11 @@ Flujo:
 
 1. Ejecutá `git status`.
 2. Si hay cambios:
-   - Creá una rama `escalacion/<slug>`.
+   - Capturá la rama actual con `git rev-parse --abbrev-ref HEAD` y guardala como `<rama-base>`.
+   - Creá una rama `escalacion/<slug>` desde `<rama-base>`.
    - Hacé commit de los cambios con mensaje conventional commit.
    - Pusheá la rama.
-   - Abrí PR draft con `gh pr create --draft`.
+   - Abrí PR draft con `gh pr create --draft --base <rama-base>`.
 3. Si no hay cambios:
    - Abrí issue con `gh issue create`.
 
