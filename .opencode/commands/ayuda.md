@@ -19,7 +19,6 @@ Después listá comandos con ejemplos coloquiales:
 - `/verificar backend`
 - `/revisar`
 - `/guardar`
-- `/deshacer`
 - `/pedir-ayuda no puedo resolver este error`
 - `/explicar este error`
 

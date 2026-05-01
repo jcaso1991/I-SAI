@@ -24,6 +24,10 @@ Si no hay cambios locales, se abre un issue.
 - No leer `.env`, credenciales ni claves privadas.
 - No usar `git restore`, `git reset` ni `git revert` para deshacer.
 
+## Deshacer Cambios
+
+Para deshacer el último cambio usá `/undo`, que es un comando incorporado de OpenCode (en inglés: undo). Este comando usa el sistema interno de snapshots para revertir, sin tocar `git restore`, `git reset` ni `git revert`.
+
 ## Backend Tests
 
 Para verificar backend desde comandos de usuario, usar solo `.opencode/scripts/safe-backend-pytest.sh`.
