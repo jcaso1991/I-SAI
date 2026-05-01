@@ -202,7 +202,8 @@ const s = StyleSheet.create({
     width: 36, height: 36, borderRadius: 18,
     backgroundColor: COLORS.surface,
     alignItems: "center", justifyContent: "center",
-    ...ios.shadow.card,
+    shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 6,
+    shadowOffset: { width: 0, height: 1 } as any, elevation: 1,
   },
   deskTopRight: { position: "absolute", top: 24, right: 32, zIndex: 10 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
@@ -246,7 +247,8 @@ const s = StyleSheet.create({
     paddingVertical: 22, paddingHorizontal: 16,
     alignItems: "center", justifyContent: "center",
     minHeight: 140,
-    ...ios.shadow.card,
+    shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 6,
+    shadowOffset: { width: 0, height: 1 } as any, elevation: 1,
   },
   tileWide: {
     // Three columns on desktop
@@ -266,4 +268,4 @@ const s = StyleSheet.create({
     fontSize: 15, fontWeight: "600", color: COLORS.text,
     letterSpacing: -0.2,
   },
-});
+} as Record<string, any>);

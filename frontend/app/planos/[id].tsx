@@ -12,7 +12,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { api, COLORS } from "../../src/api";
 import { BUILTIN_STAMPS, STAMP_STROKE, CATEGORY_ORDER } from "../../src/stamps";
-import { captureCanvasJpegBase64, shareOrDownloadBase64 } from "../../src/canvasCapture";
+import { captureCanvasJpegBase64, captureCanvasPngBase64, shareOrDownloadBase64 } from "../../src/canvasCapture";
 
 type Pt = { x: number; y: number };
 type LineShape = { id: string; type: "line"; points: Pt[]; stroke: string; strokeWidth: number; rotation?: number };
@@ -108,6 +108,33 @@ export default function PlanEditor() {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ w: 1000, h: 1000 });
+  const [zoom, setZoomState] = useState(1);
+  const MIN_ZOOM = 0.15;
+  const MAX_ZOOM = 5;
+  const ZOOM_STEP = 0.1;
+  const zoomRef = useRef(1);
+  const setZoom = (z: number) => {
+    const clamped = Math.round(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z)) * 100) / 100;
+    zoomRef.current = clamped;
+    setZoomState(clamped);
+  };
+
+  const [canvasRotation, setCanvasRotation] = useState<0 | 90>(0);
+  const rotationRef = useRef<0 | 90>(0);
+
+  // Convert screen touch coords → canvas coords accounting for rotation
+  const toCanvasCoords = (sx: number, sy: number): Pt => {
+    const z = zoomRef.current;
+    const r = rotationRef.current;
+    const cw = canvasSize.w;
+    const ch = canvasSize.h;
+    if (r === 0) return { x: sx / z, y: sy / z };
+    if (r === 90) {
+      // Visual x → canvas y, visual y → canvas (ch - x)
+      return { x: sy / z, y: (ch - sx) / z };
+    }
+    return { x: sx / z, y: sy / z };
+  };
 
   // Text tool state: where the text was placed and the in-progress input.
   const [textModal, setTextModal] = useState<{ x: number; y: number; editingId?: string } | null>(null);
@@ -119,6 +146,7 @@ export default function PlanEditor() {
   const currentDrawingRef = useRef<Shape | null>(null);
   const lastDragRef = useRef<Pt | null>(null);
   const pinchRef = useRef<{ startDist: number; baseShape: Shape } | null>(null);
+  const zoomPinchRef = useRef<{ startDist: number; startZoom: number } | null>(null);
 
   // Load plan + stamps + me
   const [sourceEventId, setSourceEventId] = useState<string | null>(null);
@@ -136,6 +164,11 @@ export default function PlanEditor() {
         setTitle(plan.title);
         setShapes((plan.data?.shapes || []) as Shape[]);
         if (plan.data?.background) setBackground(plan.data.background);
+        if (plan.data?.rotation) {
+          const r = plan.data.rotation === 90 ? 90 : 0;
+          setCanvasRotation(r as 0 | 90);
+          rotationRef.current = r as 0 | 90;
+        }
         setStamps(stampList);
         setMe(who);
         if (plan.source_event_id) setSourceEventId(plan.source_event_id);
@@ -171,7 +204,7 @@ export default function PlanEditor() {
     saveTimer.current = setTimeout(async () => {
       try {
         setSaving(true);
-        await api.updatePlan(id, { data: { shapes, background } });
+        await api.updatePlan(id, { data: { shapes, background, rotation: canvasRotation } });
         setDirty(false);
       } catch (e: any) {
         console.warn("Save failed:", e.message);
@@ -189,39 +222,52 @@ export default function PlanEditor() {
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
     onPanResponderGrant: (evt) => {
-      const { locationX: x, locationY: y } = evt.nativeEvent;
+      const z = zoomRef.current;
+      const { x, y } = toCanvasCoords(evt.nativeEvent.locationX, evt.nativeEvent.locationY);
       const touches = evt.nativeEvent.touches || [];
-      if (touches.length >= 2 && selectedId) {
-        // start pinch
+      if (touches.length >= 2) {
         const [t1, t2] = touches;
         const d = Math.hypot((t1.pageX - t2.pageX), (t1.pageY - t2.pageY));
-        const sh = shapes.find((s) => s.id === selectedId);
-        if (sh) {
-          pinchRef.current = { startDist: d, baseShape: JSON.parse(JSON.stringify(sh)) };
+        if (selectedId) {
+          const sh = shapes.find((s) => s.id === selectedId);
+          if (sh) {
+            pinchRef.current = { startDist: d, baseShape: JSON.parse(JSON.stringify(sh)) };
+          }
+        } else {
+          zoomPinchRef.current = { startDist: d, startZoom: z };
         }
         return;
       }
       handleStart(x, y);
     },
     onPanResponderMove: (evt) => {
+      const z = zoomRef.current;
       const touches = evt.nativeEvent.touches || [];
-      if (touches.length >= 2 && pinchRef.current && selectedId) {
+      if (touches.length >= 2) {
         const [t1, t2] = touches;
         const d = Math.hypot((t1.pageX - t2.pageX), (t1.pageY - t2.pageY));
-        const factor = d / pinchRef.current.startDist;
-        const base = pinchRef.current.baseShape;
-        setShapes((arr) => arr.map((sh) => {
-          if (sh.id !== selectedId) return sh;
-          return scaleShape(base, factor);
-        }));
-        markDirty();
+        if (pinchRef.current && selectedId) {
+          const factor = d / pinchRef.current.startDist;
+          const base = pinchRef.current.baseShape;
+          setShapes((arr) => arr.map((sh) => {
+            if (sh.id !== selectedId) return sh;
+            return scaleShape(base, factor);
+          }));
+          markDirty();
+          return;
+        }
+        if (zoomPinchRef.current) {
+          const factor = d / zoomPinchRef.current.startDist;
+          setZoom(zoomPinchRef.current.startZoom * factor);
+          return;
+        }
         return;
       }
-      const { locationX: x, locationY: y } = evt.nativeEvent;
+      const { x, y } = toCanvasCoords(evt.nativeEvent.locationX, evt.nativeEvent.locationY);
       handleMove(x, y);
     },
-    onPanResponderRelease: () => { pinchRef.current = null; handleEnd(); },
-    onPanResponderTerminate: () => { pinchRef.current = null; handleEnd(); },
+    onPanResponderRelease: () => { pinchRef.current = null; zoomPinchRef.current = null; handleEnd(); },
+    onPanResponderTerminate: () => { pinchRef.current = null; zoomPinchRef.current = null; handleEnd(); },
     // NOTE: we include `selectMode`, `selectedIds`, `strokeColor` and
     // `strokeW` in the deps because the handlers read them via closure.
     // Without these deps the PanResponder captured stale values from the
@@ -587,21 +633,28 @@ export default function PlanEditor() {
   /**
    * Compute optimal capture dimensions to preserve original quality.
    * - If a background image/PDF exists, capture at its native resolution
-   *   (capped at 3600px on the longest side to avoid memory issues).
+   *   (capped at 5000px on the longest side to avoid memory issues).
    * - Otherwise capture at the canvas display size.
    * Shapes are vector and re-rasterise crisply at any size.
    */
   const computeCaptureSize = () => {
-    const MAX_DIM = 3600;
+    const MAX_DIM = 5000;
     if (background?.width && background?.height) {
-      const ratio = canvasSize.w && canvasSize.h ? (canvasSize.w / canvasSize.h) : (background.width / background.height);
-      // Use the SAME aspect ratio as the canvas viewBox (so coordinates match),
-      // but scale up to match the background's longest side.
-      const maxSrc = Math.max(background.width, background.height);
-      const scale = Math.min(maxSrc, MAX_DIM) / Math.max(canvasSize.w, canvasSize.h);
-      if (scale > 1) {
-        return { w: Math.round(canvasSize.w * scale), h: Math.round(canvasSize.h * scale) };
+      const bw = background.width;
+      const bh = background.height;
+      const aspect = bw / bh;
+      let capW = bw;
+      let capH = bh;
+      if (Math.max(bw, bh) > MAX_DIM) {
+        if (bw >= bh) {
+          capW = MAX_DIM;
+          capH = Math.round(MAX_DIM / aspect);
+        } else {
+          capH = MAX_DIM;
+          capW = Math.round(MAX_DIM * aspect);
+        }
       }
+      return { w: capW, h: capH };
     }
     return { w: canvasSize.w, h: canvasSize.h };
   };
@@ -611,17 +664,21 @@ export default function PlanEditor() {
       clearSelection();
       await new Promise((r) => setTimeout(r, 100));
       const cap = computeCaptureSize();
-      const jpgBase64 = await captureCanvasJpegBase64(canvasRef, {
-        quality: 0.98,
-        width: cap.w,
-        height: cap.h,
-      });
-      const baseName = safeFilename(title);
       if (format === "jpg") {
+        const jpgBase64 = await captureCanvasJpegBase64(canvasRef, {
+          quality: 0.98,
+          width: cap.w,
+          height: cap.h,
+        });
+        const baseName = safeFilename(title);
         await shareOrDownloadBase64(jpgBase64, "image/jpeg", `${baseName}.jpg`);
       } else {
-        // Convert JPEG -> PDF via backend (works on web + native)
-        const pdfBase64 = await api.imageToPdfBase64(jpgBase64, "image/jpeg");
+        const pngBase64 = await captureCanvasPngBase64(canvasRef, {
+          width: cap.w,
+          height: cap.h,
+        });
+        const baseName = safeFilename(title);
+        const pdfBase64 = await api.imageToPdfBase64(pngBase64, "image/png");
         await shareOrDownloadBase64(pdfBase64, "application/pdf", `${baseName}.pdf`);
       }
     } catch (e: any) {
@@ -635,49 +692,56 @@ export default function PlanEditor() {
       clearSelection();
       await new Promise((r) => setTimeout(r, 100));
 
-      // 1) Capture canvas as JPG base64 (cross-platform) at original resolution
-      //    to preserve as much definition as possible.
+      // 1) Capture canvas at original background resolution.
+      //    Use PNG (lossless) for PDFs, JPEG for images.
       const cap = computeCaptureSize();
-      const jpgBase64 = await captureCanvasJpegBase64(canvasRef, {
-        quality: 0.98,
-        width: cap.w,
-        height: cap.h,
-      });
-
-      // 2) If original was PDF, convert to PDF via backend. Otherwise keep JPEG.
       const baseName = safeFilename(sourceFilename || title);
       const isPdf = (sourceFilename || "").toLowerCase().endsWith(".pdf");
-      let uploadBase64 = jpgBase64;
-      let mimeType: "image/jpeg" | "application/pdf" = "image/jpeg";
-      let finalFilename = baseName.endsWith(".jpg") || baseName.endsWith(".jpeg")
-        ? baseName
-        : `${baseName}.jpg`;
+
+      let uploadBase64: string;
+      let mimeType: "image/jpeg" | "application/pdf";
+      let finalFilename: string;
+
       if (isPdf) {
-        uploadBase64 = await api.imageToPdfBase64(jpgBase64, "image/jpeg");
+        const pngBase64 = await captureCanvasPngBase64(canvasRef, {
+          width: cap.w,
+          height: cap.h,
+        });
+        uploadBase64 = await api.imageToPdfBase64(pngBase64, "image/png");
         mimeType = "application/pdf";
         finalFilename = baseName.endsWith(".pdf") ? baseName : `${baseName}.pdf`;
+      } else {
+        uploadBase64 = await captureCanvasJpegBase64(canvasRef, {
+          quality: 0.98,
+          width: cap.w,
+          height: cap.h,
+        });
+        mimeType = "image/jpeg";
+        finalFilename = baseName.endsWith(".jpg") || baseName.endsWith(".jpeg")
+          ? baseName
+          : `${baseName}.jpg`;
       }
 
-      // 3) Save current shapes state to the plan
+      // 2) Save current shapes state to the plan
       try {
-        await api.updatePlan(id, { data: { shapes, ...(background ? { background } : {}) } } as any);
+        await api.updatePlan(id, { data: { shapes, ...(background ? { background } : {}), rotation: canvasRotation } } as any);
       } catch {}
 
-      // 4) Upload new attachment FIRST (to avoid losing data if delete succeeds but upload fails)
+      // 3) Upload new attachment FIRST (to avoid losing data if delete succeeds but upload fails)
       const newAtt = await api.uploadEventAttachment(sourceEventId, {
         filename: finalFilename,
         mime_type: mimeType,
         base64: uploadBase64,
       });
 
-      // 5) Delete old attachment (best-effort)
+      // 4) Delete old attachment (best-effort)
       try {
         await api.deleteEventAttachment(sourceEventId, sourceAttachmentId);
       } catch (err) {
         console.warn("Could not delete old attachment:", err);
       }
 
-      // 6) Update plan source_attachment_id so subsequent saves replace the new one
+      // 5) Update plan source_attachment_id so subsequent saves replace the new one
       try {
         await api.updatePlan(id, { source_attachment_id: newAtt.id } as any);
       } catch {}
@@ -725,6 +789,17 @@ export default function PlanEditor() {
         </TouchableOpacity>
         <TouchableOpacity testID="btn-export-pdf" style={s.iconBtn} onPress={() => exportAs("pdf")}>
           <Ionicons name="document-outline" size={22} color={COLORS.navy} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          testID="btn-rotate"
+          style={[s.iconBtn,           canvasRotation === 90 && { backgroundColor: COLORS.primarySoft, borderWidth: 2, borderColor: COLORS.primary }]}
+          onPress={() => {
+            const next = canvasRotation === 0 ? 90 as const : 0 as const;
+            rotationRef.current = next;
+            setCanvasRotation(next);
+          }}
+        >
+          <Ionicons name="phone-landscape-outline" size={22} color={canvasRotation === 90 ? COLORS.primary : COLORS.navy} />
         </TouchableOpacity>
         {sourceEventId && sourceAttachmentId && (
           <>
@@ -899,33 +974,114 @@ export default function PlanEditor() {
         style={s.canvasWrap}
         onLayout={(e) => setCanvasSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
         collapsable={false}
+        {...(Platform.OS === "web" ? { onWheel: (e: any) => {
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+            setZoom(zoomRef.current + delta);
+          }
+        } } as any : {})}
       >
-        <View style={s.canvasPaper} {...panResponder.panHandlers}>
-          <Svg width="100%" height="100%" viewBox={`0 0 ${canvasSize.w} ${canvasSize.h}`} pointerEvents="none">
-            {background && (
-              <SvgImage
-                x={0} y={0}
-                width={canvasSize.w} height={canvasSize.h}
-                href={background.data_uri}
-                preserveAspectRatio="xMidYMid meet"
-                opacity={0.75}
-              />
-            )}
-            {shapes.map((sh) => renderShape(sh, selectedIds.includes(sh.id)))}
-            {/* Marquee selection rect (Seleccionar tool · Rectángulo). */}
-            {marquee && (
-              <Rect
-                x={Math.min(marquee.x1, marquee.x2)}
-                y={Math.min(marquee.y1, marquee.y2)}
-                width={Math.abs(marquee.x2 - marquee.x1)}
-                height={Math.abs(marquee.y2 - marquee.y1)}
-                stroke={COLORS.primary}
-                strokeWidth={1.5}
-                strokeDasharray="8 4"
-                fill={hexToRgba(COLORS.primary, 0.08)}
-              />
-            )}
-          </Svg>
+        {/* Canvas content with zoom and optional rotation */}
+        <View style={s.canvasScrollOuter}>
+          {Platform.OS === "web" ? (
+            <View
+              style={{
+                width: canvasRotation === 90 ? canvasSize.h * zoom : canvasSize.w * zoom,
+                height: canvasRotation === 90 ? canvasSize.w * zoom : canvasSize.h * zoom,
+                justifyContent: "center", alignItems: "center",
+              } as any}
+            >
+              <View
+                {...(canvasRotation === 90 ? {
+                  style: { transform: "rotate(90deg)", width: canvasSize.w * zoom, height: canvasSize.h * zoom },
+                } as any : {})}
+              >
+                <View
+                  style={[s.canvasPaper, { width: canvasSize.w * zoom, height: canvasSize.h * zoom }]}
+                  {...panResponder.panHandlers}
+                >
+                  <Svg width="100%" height="100%" viewBox={`0 0 ${canvasSize.w} ${canvasSize.h}`} pointerEvents="none">
+                    {background && (
+                      <SvgImage
+                        x={0} y={0}
+                        width={canvasSize.w} height={canvasSize.h}
+                        href={background.data_uri}
+                        preserveAspectRatio="xMidYMid meet"
+                        opacity={0.75}
+                      />
+                    )}
+                    {shapes.map((sh) => renderShape(sh, selectedIds.includes(sh.id)))}
+                    {marquee && (
+                      <Rect
+                        x={Math.min(marquee.x1, marquee.x2)}
+                        y={Math.min(marquee.y1, marquee.y2)}
+                        width={Math.abs(marquee.x2 - marquee.x1)}
+                        height={Math.abs(marquee.y2 - marquee.y1)}
+                        stroke={COLORS.primary}
+                        strokeWidth={1.5}
+                        strokeDasharray="8 4"
+                        fill={hexToRgba(COLORS.primary, 0.08)}
+                      />
+                    )}
+                  </Svg>
+                </View>
+              </View>
+            </View>
+          ) : (
+            <View
+              style={[
+                s.canvasPaper,
+                { transform: [{ scale: zoom }, { rotate: canvasRotation === 90 ? "90deg" : "0deg" }] },
+              ]}
+              {...panResponder.panHandlers}
+            >
+              <Svg width="100%" height="100%" viewBox={`0 0 ${canvasSize.w} ${canvasSize.h}`} pointerEvents="none">
+                {background && (
+                  <SvgImage
+                    x={0} y={0}
+                    width={canvasSize.w} height={canvasSize.h}
+                    href={background.data_uri}
+                    preserveAspectRatio="xMidYMid meet"
+                    opacity={0.75}
+                  />
+                )}
+                {shapes.map((sh) => renderShape(sh, selectedIds.includes(sh.id)))}
+                {marquee && (
+                  <Rect
+                    x={Math.min(marquee.x1, marquee.x2)}
+                    y={Math.min(marquee.y1, marquee.y2)}
+                    width={Math.abs(marquee.x2 - marquee.x1)}
+                    height={Math.abs(marquee.y2 - marquee.y1)}
+                    stroke={COLORS.primary}
+                    strokeWidth={1.5}
+                    strokeDasharray="8 4"
+                    fill={hexToRgba(COLORS.primary, 0.08)}
+                  />
+                )}
+              </Svg>
+            </View>
+          )}
+        </View>
+
+        {/* Zoom controls */}
+        <View style={s.zoomControls} pointerEvents="box-none">
+          <TouchableOpacity
+            style={s.zoomBtn}
+            onPress={() => setZoom(zoom + ZOOM_STEP)}
+            disabled={zoom >= MAX_ZOOM}
+          >
+            <Ionicons name="add" size={20} color={zoom >= MAX_ZOOM ? COLORS.textDisabled : COLORS.navy} />
+          </TouchableOpacity>
+          <Text style={s.zoomLabel}>{Math.round(zoom * 100)}%</Text>
+          <TouchableOpacity
+            style={s.zoomBtn}
+            onPress={() => setZoom(zoom - ZOOM_STEP)}
+            disabled={zoom <= MIN_ZOOM}
+          >
+            <Ionicons name="remove" size={20} color={zoom <= MIN_ZOOM ? COLORS.textDisabled : COLORS.navy} />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -1672,11 +1828,33 @@ const s = StyleSheet.create({
   },
   sizeChipActive: { backgroundColor: COLORS.primary },
   sizeChipText: { fontSize: 12, fontWeight: "800", color: COLORS.navy },
-  canvasWrap: { flex: 1, padding: 4, backgroundColor: COLORS.bg },
+  canvasWrap: { flex: 1, padding: 4, backgroundColor: COLORS.bg, overflow: "hidden", position: "relative" },
+  canvasScrollOuter: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    ...Platform.select({ web: { overflow: "auto" } as any, default: {} }),
+  },
   canvasPaper: {
-    flex: 1, backgroundColor: COLORS.canvasPaper,
+    backgroundColor: COLORS.canvasPaper,
     borderRadius: 4, borderWidth: 1, borderColor: COLORS.border,
     overflow: "hidden",
+  },
+  zoomControls: {
+    position: "absolute", bottom: 12, right: 12,
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: COLORS.surface,
+    borderRadius: 10, borderWidth: 1, borderColor: COLORS.border,
+    paddingHorizontal: 4, paddingVertical: 2,
+    shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  zoomBtn: {
+    width: 32, height: 32, alignItems: "center", justifyContent: "center", borderRadius: 8,
+  },
+  zoomLabel: {
+    fontSize: 11, fontWeight: "800", color: COLORS.navy,
+    minWidth: 40, textAlign: "center",
   },
   bottomBar: {
     minHeight: BOTTOM_H,

@@ -1,17 +1,72 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator, Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { api, setToken, COLORS } from "../src/api";
 
 export default function Login() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ microsoft_token?: string }>();
   const [email, setEmail] = useState("admin@materiales.com");
   const [password, setPassword] = useState("Admin1234");
   const [loading, setLoading] = useState(false);
+  const [msLoading, setMsLoading] = useState(false);
+
+  // Handle redirect from Microsoft OAuth (web: query param)
+  useEffect(() => {
+    if (params.microsoft_token) {
+      (async () => {
+        await setToken(params.microsoft_token as string);
+        router.replace("/home");
+      })();
+    }
+  }, [params.microsoft_token]);
+
+  // Listen for postMessage from popup (web flow)
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const handler = (ev: MessageEvent) => {
+      if (ev.data?.type === "microsoft_auth" && ev.data?.token) {
+        (async () => {
+          await setToken(ev.data.token);
+          router.replace("/home");
+        })();
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
+
+  const microsoftLogin = async () => {
+    setMsLoading(true);
+    try {
+      const { auth_url } = await api.microsoftLoginUrl();
+      if (Platform.OS === "web") {
+        const w = 600, h = 700;
+        const left = window.screenX + (window.outerWidth - w) / 2;
+        const top = window.screenY + (window.outerHeight - h) / 2;
+        window.open(auth_url, "ms-login", `width=${w},height=${h},left=${left},top=${top}`);
+      } else {
+        const result = await WebBrowser.openAuthSessionAsync(auth_url, "frontend://");
+        if (result.type === "success" && result.url) {
+          const raw = result.url.includes("?") ? result.url.split("?")[1] : "";
+          const token = new URLSearchParams(raw).get("microsoft_token");
+          if (token) {
+            await setToken(token);
+            router.replace("/home");
+          }
+        }
+      }
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Error al conectar con Microsoft");
+    } finally {
+      setMsLoading(false);
+    }
+  };
 
   const submit = async () => {
     if (!email || !password) {
@@ -90,6 +145,19 @@ export default function Login() {
               )}
             </TouchableOpacity>
 
+            <TouchableOpacity
+              testID="btn-ms-login"
+              style={[s.btnMicrosoft, msLoading && s.btnDisabled]}
+              onPress={microsoftLogin}
+              disabled={msLoading}
+            >
+              {msLoading ? (
+                <ActivityIndicator color={COLORS.text} />
+              ) : (
+                <Text style={s.btnMicrosoftText}>Iniciar sesión con Microsoft</Text>
+              )}
+            </TouchableOpacity>
+
             <Text style={s.helperText}>
               ¿No tienes cuenta? Pídele al administrador que te cree una.
             </Text>
@@ -130,6 +198,12 @@ const s = StyleSheet.create({
   },
   btnDisabled: { opacity: 0.7 },
   btnPrimaryText: { color: "#fff", fontSize: 17, fontWeight: "800", letterSpacing: 1 },
+  btnMicrosoft: {
+    height: 56, backgroundColor: COLORS.surface,
+    borderWidth: 2, borderColor: COLORS.borderInput, borderRadius: 12,
+    alignItems: "center", justifyContent: "center", marginTop: 12,
+  },
+  btnMicrosoftText: { fontSize: 16, fontWeight: "700", color: COLORS.text },
   helperText: {
     textAlign: "center", color: COLORS.textSecondary,
     fontSize: 13, marginTop: 20, lineHeight: 18,

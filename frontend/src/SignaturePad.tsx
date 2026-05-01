@@ -22,8 +22,7 @@ export default function SignaturePad({
       forceRender((n) => n + 1);
     },
     onPanResponderMove: (_, g) => {
-      currentPath.current += ` L ${g.moveX - (g.x0 - g.dx0) + g.dx} ${g.moveY - (g.y0 - g.dy0) + g.dy}`;
-      // Simpler: just append moveX/moveY relative to view
+      currentPath.current += ` L ${g.moveX} ${g.moveY}`;
       forceRender((n) => n + 1);
     },
     onPanResponderRelease: () => {
@@ -49,7 +48,7 @@ export default function SignaturePad({
   return (
     <View style={s.wrap}>
       {label ? <Text style={s.lbl}>{label}</Text> : null}
-      <View ref={viewRef} collapsable={false} style={s.pad} {...pan.panHandlers}>
+      <View ref={viewRef} collapsable={false} style={s.pad as any} {...pan.panHandlers}>
         <Svg width="100%" height="100%">
           {paths.map((d, i) => (
             <Path key={i} d={d} stroke={COLORS.navy} strokeWidth={2.5} fill="none" strokeLinecap="round" strokeLinejoin="round" />

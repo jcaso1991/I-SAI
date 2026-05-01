@@ -981,6 +981,10 @@ function DraggableEvent({
 
   const tapTimeRef = useRef(0);
   const hasMovedRef = useRef(false);
+  const topRef = useRef(top);
+  const heightRef = useRef(height);
+  topRef.current = top;
+  heightRef.current = height;
   const dayShiftRef = useRef(0);
   const canCrossDays = !!(weekDays && weekDays.length > 0 && colW && colW > 0 && typeof dayIndex === "number");
 
@@ -1017,8 +1021,10 @@ function DraggableEvent({
         setLeftOffset(0);
         return;
       }
-      const startMin = Math.round((top / HOUR_H) * 60 / 15) * 15;
-      const durMin = Math.round((height / HOUR_H) * 60);
+      const t = topRef.current;
+      const h = heightRef.current;
+      const startMin = Math.round((t / HOUR_H) * 60 / 15) * 15;
+      const durMin = Math.round((h / HOUR_H) * 60);
       const targetDay = canCrossDays && dayShiftRef.current !== 0
         ? weekDays![dayIndex! + dayShiftRef.current]
         : day;
@@ -1076,8 +1082,10 @@ function DraggableEvent({
         onTap();
         return;
       }
-      const startMin = Math.round((top / HOUR_H) * 60 / 15) * 15;
-      const durMin = Math.round((height / HOUR_H) * 60);
+      const t = topRef.current;
+      const h = heightRef.current;
+      const startMin = Math.round((t / HOUR_H) * 60 / 15) * 15;
+      const durMin = Math.round((h / HOUR_H) * 60);
       const targetDay = canCrossDays && dayShiftRef.current !== 0
         ? weekDays![dayIndex! + dayShiftRef.current]
         : day;
@@ -1106,8 +1114,10 @@ function DraggableEvent({
       setHeight(nh);
     },
     onPanResponderRelease: async () => {
-      const startMin = Math.round((top / HOUR_H) * 60 / 15) * 15;
-      const durMin = Math.max(15, Math.round((height / HOUR_H) * 60 / 15) * 15);
+      const t = topRef.current;
+      const h = heightRef.current;
+      const startMin = Math.round((t / HOUR_H) * 60 / 15) * 15;
+      const durMin = Math.max(15, Math.round((h / HOUR_H) * 60 / 15) * 15);
       const newStart = dateAt(day, startMin);
       const newEnd = new Date(newStart.getTime() + durMin * 60000);
       await onMoveEvent(event, newStart, newEnd);
@@ -1131,8 +1141,10 @@ function DraggableEvent({
       setTop(nt); setHeight(nh);
     },
     onPanResponderRelease: async () => {
-      const startMin = Math.round((top / HOUR_H) * 60 / 15) * 15;
-      const durMin = Math.max(15, Math.round((height / HOUR_H) * 60 / 15) * 15);
+      const t = topRef.current;
+      const h = heightRef.current;
+      const startMin = Math.round((t / HOUR_H) * 60 / 15) * 15;
+      const durMin = Math.max(15, Math.round((h / HOUR_H) * 60 / 15) * 15);
       const newStart = dateAt(day, startMin);
       const newEnd = new Date(newStart.getTime() + durMin * 60000);
       await onMoveEvent(event, newStart, newEnd);
@@ -1346,6 +1358,7 @@ function CreateEventModal({
   const [assignedIds, setAssignedIds] = useState<string[]>([]);
   const [managerId, setManagerId] = useState<string | null>(null);
   const [showManagerList, setShowManagerList] = useState(false);
+  const [showTechList, setShowTechList] = useState(false);
   const [recurrence, setRecurrence] = useState<RecurrenceType>("none");
   const [until, setUntil] = useState<string>("");
 
@@ -1356,7 +1369,7 @@ function CreateEventModal({
     if (visible) {
       setMode("texto"); setTitle(""); setDescription("");
       setMaterialId(null); setMaterialObj(null); setShowMatList(false);
-      setAssignedIds([]); setManagerId(null); setShowManagerList(false);
+      setAssignedIds([]); setManagerId(null); setShowManagerList(false); setShowTechList(false);
       setRecurrence("none"); setUntil("");
       (async () => {
         try { setTechs(await api.listTechnicians()); } catch {}
@@ -1499,30 +1512,69 @@ function CreateEventModal({
               )}
 
               <Text style={s.mLabel}>Técnicos asignados</Text>
-              <Text style={{ fontSize: 11, color: COLORS.textSecondary, marginBottom: 6 }}>
-                {assignedIds.length === 0 ? "Si no seleccionas nadie, solo lo verán los admins" : `${assignedIds.length} seleccionado${assignedIds.length !== 1 ? "s" : ""}`}
-              </Text>
-              <View style={{ gap: 6 }}>
-                {techs.map((t) => {
-                  const on = assignedIds.includes(t.id);
-                  return (
-                    <TouchableOpacity
-                      key={t.id}
-                      testID={`assign-${t.id}`}
-                      style={[s.techRow, on && { backgroundColor: COLORS.highlightBg, borderColor: COLORS.primary }]}
-                      onPress={() => toggleAssign(t.id)}
-                    >
-                      <View style={[s.checkBox, on && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}>
-                        {on && <Ionicons name="checkmark" size={16} color="#fff" />}
+              <TouchableOpacity
+                testID="btn-pick-techs"
+                style={s.pickMatBtn}
+                onPress={() => setShowTechList((v) => !v)}
+              >
+                <Ionicons name="people-outline" size={20} color={COLORS.primary} />
+                <Text style={{ color: assignedIds.length > 0 ? COLORS.navy : COLORS.primary, fontWeight: "700", flex: 1 }} numberOfLines={1}>
+                  {assignedIds.length === 0
+                    ? "Seleccionar técnicos"
+                    : assignedIds.length === 1
+                      ? (techs.find((t) => t.id === assignedIds[0])?.name || "1 técnico")
+                      : `${assignedIds.length} técnicos seleccionados`}
+                </Text>
+                <Ionicons name={showTechList ? "chevron-up" : "chevron-down"} size={18} color={COLORS.primary} />
+              </TouchableOpacity>
+              {showTechList && (
+                <View style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, marginTop: 6, overflow: "hidden" }}>
+                  {techs.length === 0 ? (
+                    <View style={{ padding: 12 }}>
+                      <Text style={{ color: COLORS.textSecondary, fontStyle: "italic" }}>Cargando técnicos...</Text>
+                    </View>
+                  ) : techs.map((t, idx) => {
+                    const on = assignedIds.includes(t.id);
+                    return (
+                      <TouchableOpacity
+                        key={t.id}
+                        testID={`assign-${t.id}`}
+                        style={[
+                          s.techRow,
+                          { borderRadius: 0, borderWidth: 0, borderBottomWidth: idx === techs.length - 1 ? 0 : 1, borderBottomColor: COLORS.border },
+                          on && { backgroundColor: COLORS.highlightBg },
+                        ]}
+                        onPress={() => toggleAssign(t.id)}
+                      >
+                        <View style={[s.checkBox, on && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}>
+                          {on && <Ionicons name="checkmark" size={16} color="#fff" />}
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.techName}>{t.name}</Text>
+                          <Text style={s.techEmail}>{t.email}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+              {assignedIds.length > 0 && (
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                  {assignedIds.map((id) => {
+                    const t = techs.find((x) => x.id === id);
+                    if (!t) return null;
+                    return (
+                      <View key={id} style={s.techChip}>
+                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: (t as any).color || COLORS.primary }} />
+                        <Text style={s.techChipText} numberOfLines={1}>{t.name || t.email}</Text>
+                        <TouchableOpacity hitSlop={8} onPress={() => toggleAssign(id)}>
+                          <Ionicons name="close" size={14} color={COLORS.textSecondary} />
+                        </TouchableOpacity>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.techName}>{t.name}</Text>
-                        <Text style={s.techEmail}>{t.email}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+                    );
+                  })}
+                </View>
+              )}
 
               <Text style={s.mLabel}>Gestor del proyecto</Text>
               <TouchableOpacity
@@ -2222,7 +2274,7 @@ function EventDetailsModal({
                 {editing ? (
                   <TextInput
                     testID="seguimiento-input"
-                    style={[s.input, { minHeight: 72, textAlignVertical: "top" }]}
+                    style={[s.mInput, { minHeight: 72, textAlignVertical: "top" }]}
                     value={seguimiento}
                     onChangeText={setSeguimiento}
                     placeholder="Escribe aquí las observaciones…"
@@ -2371,7 +2423,7 @@ const s = StyleSheet.create({
   viewChipText: { fontSize: 13, fontWeight: "800", color: COLORS.navy, letterSpacing: 0.3 },
   navRow: {
     flexDirection: "row", gap: 8, paddingHorizontal: 8, paddingBottom: 8, backgroundColor: COLORS.surface,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border, position: "relative", zIndex: 100,
   },
   navBtn: {
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",

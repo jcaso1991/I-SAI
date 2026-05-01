@@ -47,6 +47,10 @@ MS_AUTHORITY = "https://login.microsoftonline.com/common"
 MS_SCOPES = ["Files.ReadWrite.All", "User.Read"]  # offline_access added automatically by MSAL
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
+# Microsoft user-authentication redirect URIs
+MS_AUTH_REDIRECT_URI = os.environ.get('MS_AUTH_REDIRECT_URI', 'http://localhost:8000/api/auth/microsoft/callback')
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:8081')
+
 # Auto-sync config
 AUTO_IMPORT_INTERVAL_SEC = 300  # re-import OneDrive file every 5 min on read
 AUTO_PUSH_DELAY_SEC = 6         # debounce pushes: wait 6s after last edit
@@ -1260,7 +1264,11 @@ async def list_events(
     events = await db.events.find(query, {"_id": 0}).to_list(2000)
     # Expand recurrences
     from_dt = datetime.fromisoformat(from_.replace("Z", "+00:00")) if from_ else datetime.min.replace(tzinfo=timezone.utc)
+    if from_dt.tzinfo is None:
+        from_dt = from_dt.replace(tzinfo=timezone.utc)
     to_dt = datetime.fromisoformat(to.replace("Z", "+00:00")) if to else datetime.max.replace(tzinfo=timezone.utc)
+    if to_dt.tzinfo is None:
+        to_dt = to_dt.replace(tzinfo=timezone.utc)
     expanded: List[dict] = []
     for e in events:
         expanded.extend(_expand_recurrence(e, from_dt, to_dt))
@@ -1634,6 +1642,145 @@ async def onedrive_status(user: dict = Depends(current_user)):
 async def onedrive_disconnect(user: dict = Depends(require_permission("onedrive.manage"))):
     await db.onedrive_tokens.delete_one({"_id": "admin"})
     return {"ok": True}
+
+# ---------------- Microsoft user authentication (Entra ID / Azure AD) ----------------
+@api_router.get("/auth/microsoft/login")
+async def microsoft_login():
+    """Return the Microsoft OAuth URL for user login (Entra ID / Azure AD)."""
+    app_msal = _msal_app()
+    auth_url = app_msal.get_authorization_request_url(
+        scopes=["User.Read"],
+        redirect_uri=MS_AUTH_REDIRECT_URI,
+        state=str(uuid.uuid4()),
+        prompt="select_account",
+    )
+    return {"auth_url": auth_url}
+
+@api_router.get("/auth/microsoft/callback", response_class=HTMLResponse)
+async def microsoft_callback(code: str, state: Optional[str] = None, error: Optional[str] = None):
+    """Handle Microsoft OAuth callback for user login.
+    Creates the user on first login (auto-register), then returns HTML that
+    posts the JWT back to the frontend (popup message on web, redirect on native)."""
+    if error:
+        return HTMLResponse(f"<h2>Error</h2><p>{error}</p>", status_code=400)
+
+    app_msal = _msal_app()
+    result = app_msal.acquire_token_by_authorization_code(
+        code,
+        scopes=["User.Read"],
+        redirect_uri=MS_AUTH_REDIRECT_URI,
+    )
+    if "error" in result:
+        return HTMLResponse(
+            f"<h2>Error de autenticación</h2><p>{result.get('error_description', result['error'])}</p>",
+            status_code=400,
+        )
+
+    claims = result.get("id_token_claims", {})
+    email = (claims.get("preferred_username") or claims.get("email") or "").lower().strip()
+    name = claims.get("name") or ""
+
+    if not email and result.get("access_token"):
+        try:
+            async with httpx.AsyncClient(timeout=15) as c:
+                r = await c.get(
+                    f"{GRAPH_BASE}/me",
+                    headers={"Authorization": f"Bearer {result['access_token']}"},
+                )
+                if r.status_code == 200:
+                    profile = r.json()
+                    email = (profile.get("mail") or profile.get("userPrincipalName") or "").lower().strip()
+                    name = profile.get("displayName") or name
+        except Exception:
+            pass
+
+    if not email:
+        return HTMLResponse(
+            "<h2>Error de autenticación</h2><p>No se pudo obtener tu email de Microsoft.</p>",
+            status_code=400,
+        )
+
+    user = await db.users.find_one({"email": email})
+    if not user:
+        count = await db.users.count_documents({})
+        role_key = "admin" if count == 0 else "tecnico"
+        role = await db.roles.find_one({"key": role_key})
+        existing_colors = [u.get("color") for u in await db.users.find({}, {"_id": 0, "color": 1}).to_list(1000)]
+        color = _next_default_color([c for c in existing_colors if c])
+
+        legacy_role = "admin" if role_key == "admin" else "user"
+        user = {
+            "id": str(uuid.uuid4()),
+            "email": email,
+            "name": name or email.split("@")[0],
+            "password": hash_password(str(uuid.uuid4())),
+            "role": legacy_role,
+            "role_id": role["id"] if role else None,
+            "color": color,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "microsoft_id": claims.get("oid"),
+        }
+        await db.users.insert_one(user)
+        logging.getLogger(__name__).info(f"Auto-registered Microsoft user: {email}")
+    elif not user.get("name") and name:
+        await db.users.update_one({"id": user["id"]}, {"$set": {"name": name}})
+
+    jwt_token = create_jwt(user)
+
+    return HTMLResponse(content=f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Autenticado — i-SAI</title>
+<style>
+  * {{ box-sizing:border-box;margin:0;padding:0 }}
+  body {{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    display:flex;align-items:center;justify-content:center;
+    min-height:100vh;background:#F8FAFC;
+  }}
+  .card {{
+    background:#fff;border-radius:16px;padding:40px;text-align:center;
+    box-shadow:0 2px 20px rgba(0,0,0,0.08);max-width:400px
+  }}
+  h2 {{ color:#10B981;margin-bottom:8px;font-size:20px }}
+  p {{ color:#475569;margin-bottom:20px;font-size:14px }}
+  .spinner {{
+    width:24px;height:24px;border:3px solid #E2E8F0;border-top-color:#1976D2;
+    border-radius:50%;animation:spin 0.6s linear infinite;margin:0 auto 16px
+  }}
+  @keyframes spin {{ to {{ transform:rotate(360deg) }} }}
+  .fallback {{ font-size:12px;color:#94A3B8;margin-top:20px }}
+  .fallback a {{ color:#1976D2;font-weight:600;text-decoration:none }}
+</style>
+</head>
+<body>
+<div class="card">
+  <h2>✓ Autenticado</h2>
+  <p>Redirigiendo a i-SAI como <strong>{email}</strong>...</p>
+  <div class="spinner"></div>
+  <p class="fallback">
+    Si no te redirige automáticamente,<br/>
+    <a href="{FRONTEND_URL}/login?microsoft_token={jwt_token}">haz clic aquí para entrar</a>
+  </p>
+</div>
+<script>
+  var token = '{jwt_token}';
+  try {{
+    if (window.opener && !window.opener.closed) {{
+      window.opener.postMessage({{ type:'microsoft_auth', token:token }}, '*');
+      setTimeout(function(){{ window.close(); }}, 500);
+    }} else {{
+      window.location.replace('{FRONTEND_URL}/login?microsoft_token=' + token);
+    }}
+  }} catch(e) {{
+    window.location.replace('{FRONTEND_URL}/login?microsoft_token=' + token);
+  }}
+</script>
+</body>
+</html>""")
+
 
 # ---------------- Sync routes (manual override — uses internal helpers) ----------------
 @api_router.post("/sync/import-from-onedrive")

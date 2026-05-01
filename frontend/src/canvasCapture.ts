@@ -20,7 +20,7 @@ export async function captureCanvasJpegBase64(
   opts: CaptureOptions = {}
 ): Promise<string> {
   if (Platform.OS === "web") {
-    return await captureSvgWeb(ref, opts);
+    return await captureSvgWeb(ref, { ...opts, format: "jpeg" });
   }
   const { captureRef } = await import("react-native-view-shot");
   const FS = await import("expo-file-system/legacy");
@@ -28,10 +28,26 @@ export async function captureCanvasJpegBase64(
   return await FS.readAsStringAsync(uri, { encoding: FS.EncodingType.Base64 });
 }
 
+/**
+ * Devuelve base64 PNG (sin el prefijo "data:image/png;base64,").
+ */
+export async function captureCanvasPngBase64(
+  ref: any,
+  opts: CaptureOptions = {}
+): Promise<string> {
+  if (Platform.OS === "web") {
+    return await captureSvgWeb(ref, { ...opts, format: "png" });
+  }
+  const { captureRef } = await import("react-native-view-shot");
+  const FS = await import("expo-file-system/legacy");
+  const uri = await captureRef(ref, { format: "png", result: "tmpfile" });
+  return await FS.readAsStringAsync(uri, { encoding: FS.EncodingType.Base64 });
+}
+
 // ---------------------------------------------------------------------------
 // Web implementation
 // ---------------------------------------------------------------------------
-async function captureSvgWeb(ref: any, opts: CaptureOptions): Promise<string> {
+async function captureSvgWeb(ref: any, opts: CaptureOptions & { format?: "jpeg" | "png" }): Promise<string> {
   const node: HTMLElement | null = findDomNode(ref);
   if (!node) throw new Error("No se encontró el canvas en el DOM");
   const svg = node.querySelector("svg") as SVGSVGElement | null;
@@ -78,7 +94,9 @@ async function captureSvgWeb(ref: any, opts: CaptureOptions): Promise<string> {
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, width, height);
     ctx.drawImage(img, 0, 0, width, height);
-    return canvas.toDataURL("image/jpeg", opts.quality ?? 0.95).split(",")[1];
+    const fmt = opts.format === "png" ? "image/png" : "image/jpeg";
+    const quality = fmt === "image/jpeg" ? (opts.quality ?? 0.95) : undefined;
+    return canvas.toDataURL(fmt, quality as any).split(",")[1];
   } finally {
     URL.revokeObjectURL(url);
   }

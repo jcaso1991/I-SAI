@@ -252,6 +252,9 @@ export const api = {
   createStamp: (body: { name: string; image_base64: string }) =>
     request("/stamps", { method: "POST", body: JSON.stringify(body) }),
   deleteStamp: (id: string) => request(`/stamps/${id}`, { method: "DELETE" }),
+
+  // Microsoft login (Entra ID)
+  microsoftLoginUrl: () => request("/auth/microsoft/login"),
 };
 
 export const COLORS = {
@@ -277,4 +280,8 @@ export const COLORS = {
   pillBlueText: "#1E40AF",
   pillPurpleBg: "#EDE9FE",
   pillPurpleText: "#5B21B6",
+  highlightBg: "#EFF6FF",
+  canvasPaper: "#F1F5F9",
+  accent: "#EA580C",
+  pillOrangeBg: "#FFF7ED",
 };

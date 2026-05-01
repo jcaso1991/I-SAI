@@ -119,27 +119,21 @@ export const ios = {
   // ---------------------------------------------------------------------------
   shadow: {
     /** Subtle shadow used by cards. iOS prefers subtle blur. */
-    card: Platform.select<any>({
-      web: { boxShadow: "0 1px 3px rgba(0,0,0,0.04)" },
-      default: {
-        shadowColor: "#000",
-        shadowOpacity: 0.05,
-        shadowRadius: 6,
-        shadowOffset: { width: 0, height: 1 },
-        elevation: 1,
-      },
-    }) as any,
+    card: {
+      shadowColor: "#000",
+      shadowOpacity: 0.05,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 1 } as any,
+      elevation: 1,
+    } as any,
     /** Slightly elevated (modal handle, FAB). */
-    elevated: Platform.select<any>({
-      web: { boxShadow: "0 4px 16px rgba(0,0,0,0.10)" },
-      default: {
-        shadowColor: "#000",
-        shadowOpacity: 0.12,
-        shadowRadius: 14,
-        shadowOffset: { width: 0, height: 4 },
-        elevation: 6,
-      },
-    }) as any,
+    elevated: {
+      shadowColor: "#000",
+      shadowOpacity: 0.12,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 4 } as any,
+      elevation: 6,
+    } as any,
   },
 
   /** Hairline (iOS uses 0.33pt — we approximate with 0.5px). */

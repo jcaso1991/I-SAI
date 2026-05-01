@@ -311,7 +311,13 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     </View>
   );
 }
-function Field({ label, value, onChange, placeholder, multiline }: any) {
+function Field({ label, value, onChange, placeholder, multiline }: {
+  label?: string;
+  value?: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  multiline?: boolean;
+}) {
   return (
     <View style={{ gap: 4, flex: 1 }}>
       {label && <Text style={s.lbl}>{label}</Text>}
@@ -326,7 +332,11 @@ function Field({ label, value, onChange, placeholder, multiline }: any) {
     </View>
   );
 }
-function Check({ label, value, onChange }: any) {
+function Check({ label, value, onChange }: {
+  label: string;
+  value?: boolean;
+  onChange: (v: boolean) => void;
+}) {
   return (
     <TouchableOpacity style={s.check} onPress={() => onChange(!value)} activeOpacity={0.7}>
       <View style={[s.checkBox, value && s.checkBoxOn]}>

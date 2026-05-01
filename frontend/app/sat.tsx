@@ -1448,6 +1448,12 @@ const s = StyleSheet.create({
     width: 34, height: 34, borderRadius: 8, alignItems: "center", justifyContent: "center",
     backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
   },
+  clientActionSecondary: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 10, height: 34, borderRadius: 8,
+    backgroundColor: COLORS.navy,
+  },
+  clientActionSecondaryText: { color: "#fff", fontWeight: "900", fontSize: 12 },
 
   // Modal
   sheetRoot: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
@@ -1582,4 +1588,10 @@ const s = StyleSheet.create({
   },
   promptTitle: { fontSize: 17, fontWeight: "900", color: COLORS.text, letterSpacing: -0.3 },
   promptSub: { fontSize: 12, color: COLORS.textSecondary, fontWeight: "600", marginTop: 2, lineHeight: 17 },
+  scheduleBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+    backgroundColor: COLORS.primary, paddingHorizontal: 16, paddingVertical: 12,
+    borderRadius: 10, marginTop: 8,
+  },
+  scheduleBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
 });
