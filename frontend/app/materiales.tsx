@@ -155,7 +155,7 @@ export default function Materiales() {
           </View>
           <View style={s.infoCell}>
             <Text style={s.infoLabel}>Técnico</Text>
-            <Text style={s.infoValue}>{item.tecnico || "—"}</Text>
+            <Text style={s.infoValue} numberOfLines={1}>{item.tecnicos?.join(", ") || item.tecnico || "—"}</Text>
           </View>
         </View>
         {item.ubicacion && (

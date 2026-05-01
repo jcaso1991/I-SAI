@@ -87,6 +87,7 @@ export default function MaterialDetail() {
   const [entrega, setEntrega] = useState("");
   const [tp, setTp] = useState("");
   const [tecnico, setTecnico] = useState("");
+  const [tecnicos, setTecnicos] = useState<string[]>([]);
   const [comentarios, setComentarios] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -113,6 +114,7 @@ export default function MaterialDetail() {
         setEntrega(data.entrega_recogida || "");
         setTp(data.total_parcial || "");
         setTecnico(data.tecnico || "");
+        setTecnicos(data.tecnicos || (data.tecnico ? [data.tecnico] : []));
         setComentarios(data.comentarios || "");
         setManagerId(data.manager_id || "");
         setProjectStatus(data.project_status || "pendiente");
@@ -136,6 +138,7 @@ export default function MaterialDetail() {
         entrega_recogida: entrega || null,
         total_parcial: tp || null,
         tecnico: tecnico || null,
+        tecnicos: tecnicos.length > 0 ? tecnicos : null,
         comentarios: comentarios || null,
         manager_id: managerId || null,
         project_status: projectStatus || null,
@@ -286,18 +289,33 @@ export default function MaterialDetail() {
               onChange={(v) => { setTp(v); setDirty(true); }}
             />
 
-            <Text style={s.fieldLabel}>Técnico</Text>
+            <Text style={s.fieldLabel}>Técnicos</Text>
             <TouchableOpacity
               testID="picker-tecnico"
               style={s.picker}
               onPress={() => setShowTechPicker(true)}
               activeOpacity={0.7}
             >
-              <Text style={[s.pickerText, !tecnico && { color: COLORS.textDisabled }]}>
-                {tecnico || "Selecciona técnico..."}
-              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                <Ionicons name="people" size={20} color={COLORS.primary} />
+                <Text style={[s.pickerText, tecnicos.length === 0 && { color: COLORS.textDisabled }]}>
+                  {tecnicos.length > 0 ? `${tecnicos.length} técnico${tecnicos.length !== 1 ? "s" : ""}` : "Selecciona técnicos..."}
+                </Text>
+              </View>
               <Ionicons name="chevron-down" size={22} color={COLORS.textSecondary} />
             </TouchableOpacity>
+            {tecnicos.length > 0 && (
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+                {tecnicos.map((name) => (
+                  <View key={name} style={s.techChipSmall}>
+                    <Text style={s.techChipSmallText} numberOfLines={1}>{name}</Text>
+                    <TouchableOpacity hitSlop={8} onPress={() => { setTecnicos((prev) => prev.filter((t) => t !== name)); setDirty(true); }}>
+                      <Ionicons name="close" size={14} color={COLORS.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
 
             <Text style={s.fieldLabel}>Comentarios</Text>
             <TextInput
@@ -399,24 +417,20 @@ export default function MaterialDetail() {
         <View style={s.modalRoot}>
           <View style={s.modalCard}>
             <View style={s.modalHeader}>
-              <Text style={s.modalTitle}>Selecciona técnico</Text>
+              <Text style={s.modalTitle}>Selecciona técnicos</Text>
               <TouchableOpacity onPress={() => setShowTechPicker(false)}>
                 <Ionicons name="close" size={26} color={COLORS.text} />
               </TouchableOpacity>
             </View>
             <ScrollView style={{ maxHeight: 440 }}>
-              {tecnico !== "" && (
+              {tecnicos.length > 0 && (
                 <TouchableOpacity
                   testID="tech-clear"
                   style={s.techRow}
-                  onPress={() => {
-                    setTecnico("");
-                    setDirty(true);
-                    setShowTechPicker(false);
-                  }}
+                  onPress={() => { setTecnicos([]); setDirty(true); }}
                 >
                   <Ionicons name="close-circle" size={20} color={COLORS.errorText} />
-                  <Text style={[s.techName, { color: COLORS.errorText }]}>Quitar técnico</Text>
+                  <Text style={[s.techName, { color: COLORS.errorText }]}>Quitar todos los técnicos</Text>
                 </TouchableOpacity>
               )}
               {techs.length === 0 && (
@@ -425,26 +439,25 @@ export default function MaterialDetail() {
                 </Text>
               )}
               {techs.map((t) => {
-                const active = (tecnico || "").toLowerCase() === t.name.toLowerCase();
+                const on = tecnicos.includes(t.name);
                 return (
                   <TouchableOpacity
                     key={t.id}
                     testID={`tech-opt-${t.id}`}
-                    style={[s.techRow, active && s.techRowActive]}
+                    style={[s.techRow, on && s.techRowActive]}
                     onPress={() => {
-                      setTecnico(t.name);
+                      setTecnicos((prev) => prev.includes(t.name) ? prev.filter((n) => n !== t.name) : [...prev, t.name]);
                       setDirty(true);
-                      setShowTechPicker(false);
                     }}
                   >
-                    <View style={[s.techAvatar, active && { backgroundColor: COLORS.primary }]}>
-                      <Ionicons name="person" size={18} color={active ? "#fff" : COLORS.textSecondary} />
+                    <View style={[s.techAvatar, on && { backgroundColor: COLORS.primary }]}>
+                      <Ionicons name="person" size={18} color={on ? "#fff" : COLORS.textSecondary} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={s.techName}>{t.name}</Text>
                       <Text style={s.techEmail}>{t.email}</Text>
                     </View>
-                    {active && <Ionicons name="checkmark-circle" size={22} color={COLORS.primary} />}
+                    {on && <Ionicons name="checkmark-circle" size={22} color={COLORS.primary} />}
                   </TouchableOpacity>
                 );
               })}
@@ -678,4 +691,10 @@ const s = StyleSheet.create({
     flex: 1, height: 48, borderRadius: 10, backgroundColor: COLORS.primary,
     alignItems: "center", justifyContent: "center",
   },
+  techChipSmall: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6,
+    backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
+  },
+  techChipSmallText: { fontSize: 11, fontWeight: "600", color: COLORS.text },
 });

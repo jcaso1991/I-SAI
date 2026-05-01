@@ -102,6 +102,7 @@ class Material(BaseModel):
     entrega_recogida: Optional[str] = None
     total_parcial: Optional[str] = None
     tecnico: Optional[str] = None
+    tecnicos: Optional[List[str]] = None
     comentarios: Optional[str] = None
     # manager assignment
     manager_id: Optional[str] = None
@@ -118,6 +119,7 @@ class MaterialUpdate(BaseModel):
     entrega_recogida: Optional[str] = None
     total_parcial: Optional[str] = None
     tecnico: Optional[str] = None
+    tecnicos: Optional[List[str]] = None
     comentarios: Optional[str] = None
     manager_id: Optional[str] = None
     project_status: Optional[str] = None
