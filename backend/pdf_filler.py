@@ -68,9 +68,11 @@ CHECKBOX_MAP: Dict[str, str] = {
     "entrega_eps100":                "Check Box3",
 }
 
-# Signature image positions (same as before — overlay on top of template)
-SIG_ISAI_RECT   = (55,  60, 275, 140)
-SIG_CLIENT_RECT = (310, 60, 540, 140)
+# Signature image positions (overlay on top of template)
+# Signature pad on web is 400×140 (aspect 20:7); native capture matches view size.
+# We fit the image into the rect below preserving aspect ratio, centred.
+SIG_ISAI_RECT   = (55,  55, 275, 132)
+SIG_CLIENT_RECT = (310, 55, 540, 135)
 
 
 # -----------------------------------------------------------------
@@ -382,8 +384,24 @@ def _draw_signature_overlay(budget: Dict[str, Any]) -> bytes:
             raw = base64.b64decode(b64)
             img = ImageReader(io.BytesIO(raw))
             x1, y1, x2, y2 = rect
-            c.drawImage(img, x1, y1, width=x2 - x1, height=y2 - y1,
-                        mask="auto", preserveAspectRatio=True)
+            box_w = x2 - x1
+            box_h = y2 - y1
+            # Get image dimensions
+            iw, ih = img.getSize()
+            if iw > 0 and ih > 0:
+                # Fit image into box preserving aspect ratio, centred
+                scale = min(box_w / iw, box_h / ih)
+                fitted_w = iw * scale
+                fitted_h = ih * scale
+                cx = x1 + (box_w - fitted_w) / 2
+                cy = y1 + (box_h - fitted_h) / 2
+            else:
+                cx, cy = x1, y1
+                fitted_w, fitted_h = box_w, box_h
+            c.setFillColorRGB(1, 1, 1)
+            c.rect(x1, y1, box_w, box_h, fill=1, stroke=0)
+            c.drawImage(img, cx, cy, width=fitted_w, height=fitted_h,
+                        mask="auto")
         except Exception as e:
             print("signature embed failed:", e)
 
