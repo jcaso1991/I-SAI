@@ -6,6 +6,13 @@ Si falta descripción después de `/pedir-ayuda`, preguntá: "¿Qué necesitás 
 
 No uses nombres propios. Hablá de "la persona mantenedora" o "el equipo".
 
+## Contexto importante
+
+- La persona usuaria trabaja desde una sola rama estable (típicamente `main`, pero puede ser otra).
+- La rama actual al invocar `/pedir-ayuda` **es** la rama de trabajo, siempre.
+- El PR debe apuntar a esa misma rama (no a `main`, no al default del repositorio). Así los commits del PR incluyen **solo** los de la escalación, sin mezclar cambios que ya estaban en la rama base.
+- **No** verifiques el default branch del repositorio. **No** dudes entre `main` y la rama actual. La rama actual es siempre la respuesta correcta.
+
 Flujo:
 
 1. Ejecutá `git status`.
