@@ -98,7 +98,7 @@ export default function IOSTabBar({ active, isAdmin: _isAdmin }: { active: Botto
       });
 
   // Order: Home leftmost, then functional tabs, Settings rightmost.
-  const ORDER: BottomTab[] = ["home", "proyectos", "calendario", "planos", "presupuestos", "sat", "ajustes"];
+  const ORDER: BottomTab[] = ["home", "calendario", "planos", "proyectos", "presupuestos", "sat", "ajustes"];
   const ordered = ORDER.filter((t) => visibleTabs.includes(t));
 
   return (

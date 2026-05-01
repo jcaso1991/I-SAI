@@ -136,16 +136,6 @@ export default function HomeScreen() {
 
           <Text style={s.sectionTitle}>Módulos</Text>
           <View style={[s.tilesGrid, isWide && s.tilesGridWide]}>
-            {showProyectos && (
-              <Tile
-                testID="circle-proyectos"
-                iconFamily="mat"
-                icon="set-square"
-                title="Proyectos"
-                accent={ios.colors.brand}
-                onPress={() => router.push("/materiales")}
-              />
-            )}
             {showCalendario && (
               <Tile
                 testID="circle-calendario"
@@ -162,6 +152,16 @@ export default function HomeScreen() {
                 title="Planos"
                 accent={ios.colors.orange}
                 onPress={() => router.push("/planos")}
+              />
+            )}
+            {showProyectos && (
+              <Tile
+                testID="circle-proyectos"
+                iconFamily="mat"
+                icon="set-square"
+                title="Proyectos"
+                accent={ios.colors.brand}
+                onPress={() => router.push("/materiales")}
               />
             )}
             {showPresupuestos && (
