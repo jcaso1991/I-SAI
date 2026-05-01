@@ -6,7 +6,7 @@
   "agent": {
     "lider-producto": {
       "mode": "primary",
-      "model": "deepseek/deepseek-v4-flash",
+      "model": "deepseek/deepseek-v4-pro",
       "permission": {
         "edit": "ask"
       }
