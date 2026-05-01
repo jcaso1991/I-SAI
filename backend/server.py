@@ -103,6 +103,9 @@ class Material(BaseModel):
     total_parcial: Optional[str] = None
     tecnico: Optional[str] = None
     comentarios: Optional[str] = None
+    # manager assignment
+    manager_id: Optional[str] = None
+    manager_name: Optional[str] = None
     # meta
     sync_status: str = "synced"  # synced | pending | error
     updated_at: Optional[str] = None
