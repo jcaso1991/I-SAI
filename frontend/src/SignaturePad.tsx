@@ -14,6 +14,19 @@ export default function SignaturePad({
   const currentPath = useRef<string>("");
   const pathsRef = useRef<string[]>([]);
   const [, forceRender] = useState(0);
+  const sizeRef = useRef({ w: 400, h: 140 });
+
+  const updateSize = () => {
+    if (viewRef.current && typeof window !== "undefined") {
+      try {
+        const el = viewRef.current as HTMLElement;
+        if (el) {
+          const r = el.getBoundingClientRect();
+          if (r.width > 0) sizeRef.current = { w: Math.round(r.width), h: Math.round(r.height) };
+        }
+      } catch {}
+    }
+  };
 
   const pan = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -34,11 +47,12 @@ export default function SignaturePad({
       pathsRef.current = allPaths;
       setPaths(allPaths);
       currentPath.current = "";
+      updateSize();
 
       setTimeout(async () => {
         try {
           if (Platform.OS === "web") {
-            const pngBase64 = await svgToPngBase64(allPaths);
+            const pngBase64 = await svgToPngBase64(allPaths, sizeRef.current.w, sizeRef.current.h);
             onChange(`data:image/png;base64,${pngBase64}`);
           } else {
             const uri = await captureRef(viewRef, { format: "png", quality: 0.95, result: "tmpfile" });
@@ -47,7 +61,7 @@ export default function SignaturePad({
             onChange(`data:image/png;base64,${b64}`);
           }
         } catch {
-          onChange(svgToDataUrl(allPaths));
+          onChange(svgToDataUrl(allPaths, sizeRef.current.w, sizeRef.current.h));
         }
       }, 50);
     },
@@ -58,7 +72,8 @@ export default function SignaturePad({
   return (
     <View style={s.wrap}>
       {label ? <Text style={s.lbl}>{label}</Text> : null}
-      <View ref={viewRef} collapsable={false} style={s.pad as any} {...pan.panHandlers}>
+      <View ref={viewRef} collapsable={false} style={s.pad as any} {...pan.panHandlers}
+        onLayout={updateSize}>
         <Svg width="100%" height="100%">
           {paths.map((d, i) => (
             <Path key={i} d={d} stroke={COLORS.navy} strokeWidth={2.5} fill="none" strokeLinecap="round" strokeLinejoin="round" />
@@ -82,8 +97,8 @@ export default function SignaturePad({
   );
 }
 
-function svgToDataUrl(paths: string[]): string {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="140">${paths.map((d) => `<path d="${d}" stroke="#0F172A" stroke-width="2.5" fill="none"/>`).join("")}</svg>`;
+function svgToDataUrl(paths: string[], w: number = 400, h: number = 140): string {
+  const svg = buildSvg(paths, w, h);
   let b64 = "";
   if (typeof TextEncoder !== "undefined") {
     const bytes = new TextEncoder().encode(svg);
@@ -93,27 +108,31 @@ function svgToDataUrl(paths: string[]): string {
   return `data:image/svg+xml;base64,${b64}`;
 }
 
-function svgToPngBase64(paths: string[]): Promise<string> {
+function svgToPngBase64(paths: string[], w: number = 400, h: number = 140): Promise<string> {
   return new Promise((resolve, reject) => {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="140">${paths.map((d) => `<path d="${d}" stroke="#0F172A" stroke-width="2.5" fill="none"/>`).join("")}</svg>`;
+    const svg = buildSvg(paths, w, h);
     const img = new Image();
     const svgBlob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
     const url = URL.createObjectURL(svgBlob);
     img.onload = () => {
       URL.revokeObjectURL(url);
       const canvas = document.createElement("canvas");
-      canvas.width = 400;
-      canvas.height = 140;
+      canvas.width = w;
+      canvas.height = h;
       const ctx = canvas.getContext("2d");
       if (!ctx) { reject(new Error("No canvas context")); return; }
       ctx.fillStyle = "#FFFFFF";
-      ctx.fillRect(0, 0, 400, 140);
+      ctx.fillRect(0, 0, w, h);
       ctx.drawImage(img, 0, 0);
       resolve(canvas.toDataURL("image/png").split(",")[1]);
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("SVG load failed")); };
     img.src = url;
   });
+}
+
+function buildSvg(paths: string[], w: number, h: number): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${paths.map((d) => `<path d="${d}" stroke="#0F172A" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`).join("")}</svg>`;
 }
 
 const s = StyleSheet.create({
