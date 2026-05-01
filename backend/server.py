@@ -1897,6 +1897,8 @@ async def create_budget(payload: BudgetCreate, user: dict = Depends(current_admi
         "created_at": now,
         "updated_at": now,
         "created_by": user["email"],
+        "created_by_name": user.get("name") or user["email"],
+        "status": "pendiente",
     })
     await db.budgets.insert_one(doc)
     doc.pop("_id", None)
@@ -1913,6 +1915,15 @@ async def get_budget(bid: str, user: dict = Depends(current_admin_or_comercial))
     if not b:
         raise HTTPException(404, "Presupuesto no encontrado")
     return b
+
+@api_router.patch("/budgets/{bid}/status")
+async def update_budget_status(bid: str, user: dict = Depends(current_admin_or_comercial)):
+    b = await db.budgets.find_one({"id": bid})
+    if not b:
+        raise HTTPException(404, "Presupuesto no encontrado")
+    new_status = "aceptado" if b.get("status") != "aceptado" else "pendiente"
+    await db.budgets.update_one({"id": bid}, {"$set": {"status": new_status, "updated_at": datetime.now(timezone.utc).isoformat()}})
+    return {"ok": True, "status": new_status}
 
 @api_router.patch("/budgets/{bid}")
 async def update_budget(bid: str, payload: BudgetPatch, user: dict = Depends(current_admin_or_comercial)):
