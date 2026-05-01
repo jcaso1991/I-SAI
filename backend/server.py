@@ -114,6 +114,7 @@ class MaterialUpdate(BaseModel):
     total_parcial: Optional[str] = None
     tecnico: Optional[str] = None
     comentarios: Optional[str] = None
+    manager_id: Optional[str] = None
 
 class OneDriveStatus(BaseModel):
     connected: bool
@@ -1851,7 +1852,7 @@ async def sync_push(user: dict = Depends(require_permission("onedrive.manage")))
 
 # ---------------- Materials routes ----------------
 @api_router.get("/materiales", response_model=List[Material])
-async def list_materiales(user: dict = Depends(current_user), q: Optional[str] = None, pending_only: bool = False, limit: int = 2000):
+async def list_materiales(user: dict = Depends(current_user), q: Optional[str] = None, pending_only: bool = False, limit: int = 2000, manager_id: Optional[str] = None, unassigned: bool = False):
     # fire-and-forget auto-import if stale
     await maybe_auto_import()
     query: dict = {}
@@ -1863,8 +1864,21 @@ async def list_materiales(user: dict = Depends(current_user), q: Optional[str] =
             {"materiales": rx}, {"cliente": rx}, {"ubicacion": rx},
             {"tecnico": rx}, {"comentarios": rx}, {"comercial": rx}, {"gestor": rx},
         ]
+    if manager_id:
+        query["manager_id"] = manager_id
+    if unassigned:
+        query["manager_id"] = {"$in": [None, ""]}
     items = await db.materiales.find(query, {"_id": 0}).limit(limit).to_list(limit)
     items.sort(key=lambda x: x.get("row_index", 0))
+    # Enrich with manager names
+    manager_ids = list({m.get("manager_id") for m in items if m.get("manager_id")})
+    if manager_ids:
+        mgrs = await db.users.find({"id": {"$in": manager_ids}}, {"_id": 0, "id": 1, "name": 1}).to_list(500)
+        mgr_map = {m["id"]: m.get("name") or m.get("email", "") for m in mgrs}
+        for item in items:
+            mid = item.get("manager_id")
+            if mid and mid in mgr_map:
+                item["manager_name"] = mgr_map[mid]
     return items
 
 @api_router.get("/materiales/{mid}", response_model=Material)

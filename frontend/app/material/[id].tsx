@@ -92,15 +92,19 @@ export default function MaterialDetail() {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [techs, setTechs] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [managers, setManagers] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [managerId, setManagerId] = useState("");
   const [showTechPicker, setShowTechPicker] = useState(false);
+  const [showManagerPicker, setShowManagerPicker] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const [data, tlist] = await Promise.all([
+        const [data, tlist, mlist] = await Promise.all([
           api.getMaterial(id),
           api.listTechnicians().catch(() => []),
+          api.listManagers().catch(() => []),
         ]);
         setM(data);
         setFecha(data.fecha || todayISO());
@@ -108,7 +112,9 @@ export default function MaterialDetail() {
         setTp(data.total_parcial || "");
         setTecnico(data.tecnico || "");
         setComentarios(data.comentarios || "");
+        setManagerId(data.manager_id || "");
         setTechs(tlist);
+        setManagers(mlist);
         // if fecha was empty, mark dirty so user sees the default today is pending save
         if (!data.fecha) setDirty(true);
       } catch (e: any) {
@@ -128,6 +134,7 @@ export default function MaterialDetail() {
         total_parcial: tp || null,
         tecnico: tecnico || null,
         comentarios: comentarios || null,
+        manager_id: managerId || null,
       });
       setM(updated);
       setDirty(false);
@@ -184,11 +191,36 @@ export default function MaterialDetail() {
             <Text style={s.sectionTitle}>INFORMACIÓN FIJA</Text>
             <ReadRow label="Horas PREV" value={m.horas_prev} />
             <ReadRow label="Comercial" value={m.comercial} />
-            <ReadRow label="Gestor/a" value={m.gestor} />
           </View>
 
           <View style={s.section}>
             <Text style={s.sectionTitle}>EDITABLE</Text>
+
+            <Text style={s.fieldLabel}>Gestor asignado</Text>
+            <TouchableOpacity
+              testID="picker-manager"
+              style={s.picker}
+              onPress={() => setShowManagerPicker(true)}
+              activeOpacity={0.7}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                <Ionicons name="person" size={20} color={COLORS.primary} />
+                <Text style={[s.pickerText, !managerId && { color: COLORS.textDisabled }]}>
+                  {managerId
+                    ? (managers.find((m) => m.id === managerId)?.name || managers.find((m) => m.id === managerId)?.email || "Seleccionado")
+                    : "Selecciona gestor..."}
+                </Text>
+              </View>
+              {managerId !== "" && (
+                <TouchableOpacity
+                  testID="btn-clear-manager"
+                  onPress={() => { setManagerId(""); setDirty(true); }}
+                  hitSlop={10}
+                >
+                  <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+              )}
+            </TouchableOpacity>
 
             <Text style={s.fieldLabel}>Fecha</Text>
             <TouchableOpacity
@@ -387,6 +419,69 @@ export default function MaterialDetail() {
                     <View style={{ flex: 1 }}>
                       <Text style={s.techName}>{t.name}</Text>
                       <Text style={s.techEmail}>{t.email}</Text>
+                    </View>
+                    {active && <Ionicons name="checkmark-circle" size={22} color={COLORS.primary} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showManagerPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowManagerPicker(false)}
+      >
+        <View style={s.modalRoot}>
+          <View style={s.modalCard}>
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitle}>Selecciona gestor</Text>
+              <TouchableOpacity onPress={() => setShowManagerPicker(false)}>
+                <Ionicons name="close" size={26} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 440 }}>
+              {managerId !== "" && (
+                <TouchableOpacity
+                  testID="manager-clear"
+                  style={s.techRow}
+                  onPress={() => {
+                    setManagerId("");
+                    setDirty(true);
+                    setShowManagerPicker(false);
+                  }}
+                >
+                  <Ionicons name="close-circle" size={20} color={COLORS.errorText} />
+                  <Text style={[s.techName, { color: COLORS.errorText }]}>Quitar gestor</Text>
+                </TouchableOpacity>
+              )}
+              {managers.length === 0 && (
+                <Text style={{ color: COLORS.textSecondary, padding: 20, textAlign: "center" }}>
+                  No hay gestores disponibles
+                </Text>
+              )}
+              {managers.map((mgr) => {
+                const active = managerId === mgr.id;
+                return (
+                  <TouchableOpacity
+                    key={mgr.id}
+                    testID={`manager-opt-${mgr.id}`}
+                    style={[s.techRow, active && s.techRowActive]}
+                    onPress={() => {
+                      setManagerId(mgr.id);
+                      setDirty(true);
+                      setShowManagerPicker(false);
+                    }}
+                  >
+                    <View style={[s.techAvatar, active && { backgroundColor: COLORS.primary }]}>
+                      <Ionicons name="person" size={18} color={active ? "#fff" : COLORS.textSecondary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.techName}>{mgr.name}</Text>
+                      <Text style={s.techEmail}>{mgr.email}</Text>
                     </View>
                     {active && <Ionicons name="checkmark-circle" size={22} color={COLORS.primary} />}
                   </TouchableOpacity>

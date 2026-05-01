@@ -20,11 +20,17 @@ export default function Materiales() {
   const [pendingOnly, setPendingOnly] = useState(false);
   const [stats, setStats] = useState<{ total: number; pending: number; synced: number } | null>(null);
   const [me, setMe] = useState<any>(null);
+  // Manager filter
+  const [managers, setManagers] = useState<any[]>([]);
+  const [showManagerFilter, setShowManagerFilter] = useState(false);
+  const [managerFilterIds, setManagerFilterIds] = useState<string[]>([]);
 
   const load = async () => {
     try {
+      const managerId = managerFilterIds.length === 1 ? managerFilterIds[0] : undefined;
+      const unassigned = managerFilterIds.includes("__none__");
       const [list, st, u] = await Promise.all([
-        api.listMateriales(q || undefined, pendingOnly),
+        api.listMateriales(q || undefined, pendingOnly, managerId, unassigned),
         api.stats(),
         me ? Promise.resolve(me) : api.me(),
       ]);
@@ -46,12 +52,19 @@ export default function Materiales() {
 
   useFocusEffect(useCallback(() => {
     load();
-  }, [q, pendingOnly]));
+    api.listManagers().then(setManagers).catch(() => {});
+  }, [q, pendingOnly, managerFilterIds]));
 
   useEffect(() => {
     const t = setTimeout(load, 300);
     return () => clearTimeout(t);
-  }, [q, pendingOnly]);
+  }, [q, pendingOnly, managerFilterIds]);
+
+  const toggleManagerFilter = (id: string) => {
+    setManagerFilterIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  };
+
+  const clearManagerFilter = () => setManagerFilterIds([]);
 
   const logout = async () => {
     await clearToken();
@@ -83,6 +96,9 @@ export default function Materiales() {
           </View>
         </View>
         <Text style={s.cliente} numberOfLines={1}>{item.cliente || "Sin cliente"}</Text>
+        {item.manager_name && (
+          <Text style={s.managerText} numberOfLines={1}>👤 {item.manager_name}</Text>
+        )}
         <View style={s.metaRow}>
           <View style={s.metaItem}>
             <Ionicons name="location" size={13} color={COLORS.textSecondary} />
@@ -183,7 +199,48 @@ export default function Materiales() {
         >
           <Ionicons name="time" size={18} color={pendingOnly ? "#fff" : COLORS.navy} />
         </TouchableOpacity>
+        <TouchableOpacity
+          testID="btn-filter-manager"
+          style={[s.filterBtn, managerFilterIds.length > 0 && s.filterBtnActive]}
+          onPress={() => setShowManagerFilter((v) => !v)}
+        >
+          <Ionicons name="people" size={18} color={managerFilterIds.length > 0 ? "#fff" : COLORS.navy} />
+        </TouchableOpacity>
+        {managerFilterIds.length > 0 && (
+          <TouchableOpacity
+            style={[s.filterBtn, { backgroundColor: COLORS.errorBg }]}
+            onPress={clearManagerFilter}
+          >
+            <Ionicons name="close" size={16} color={COLORS.errorText} />
+          </TouchableOpacity>
+        )}
       </View>
+
+      {showManagerFilter && (
+        <View style={{ paddingHorizontal: 12, paddingBottom: 8, gap: 6 }}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+            <TouchableOpacity
+              style={[s.managerChip, managerFilterIds.includes("__none__") && { backgroundColor: COLORS.pillPurpleBg, borderColor: COLORS.pillPurpleText }]}
+              onPress={() => toggleManagerFilter("__none__")}
+            >
+              <Text style={[s.managerChipTxt, managerFilterIds.includes("__none__") && { color: COLORS.primary }]}>⚡ Sin gestor</Text>
+            </TouchableOpacity>
+            {managers.map((mgr) => {
+              const on = managerFilterIds.includes(mgr.id);
+              return (
+                <TouchableOpacity
+                  key={mgr.id}
+                  style={[s.managerChip, on && { backgroundColor: COLORS.pillBlueBg, borderColor: COLORS.primary }]}
+                  onPress={() => toggleManagerFilter(mgr.id)}
+                >
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: (mgr as any).color || COLORS.primary }} />
+                  <Text style={[s.managerChipTxt, on && { color: COLORS.primary, fontWeight: "800" }]} numberOfLines={1}>{mgr.name || mgr.email}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
 
       {loading ? (
         <View style={s.centerBox}>
@@ -289,4 +346,11 @@ const s = StyleSheet.create({
   pillBlue: { backgroundColor: COLORS.pillBlueBg },
   pillOrange: { backgroundColor: COLORS.pillOrangeBg },
   pillText: { fontSize: 10, fontWeight: "800", color: COLORS.navy, letterSpacing: 0.5 },
+  managerText: { fontSize: 12, color: COLORS.textSecondary, fontWeight: "600", marginTop: 2 },
+  managerChip: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+    backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
+  },
+  managerChipTxt: { fontSize: 12, fontWeight: "600", color: COLORS.textSecondary },
 });
