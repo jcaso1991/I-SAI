@@ -1126,6 +1126,47 @@ class EventOut(BaseModel):
     seguimiento: Optional[str] = None
     budget_id: Optional[str] = None
 
+async def current_admin_or_comercial(user: dict = Depends(current_user)):
+    """Backwards-compatible guard: now allows anyone with `presupuestos.view`."""
+    perms = await get_user_permissions(user)
+    if "presupuestos.view" not in perms and user.get("role") not in ("admin", "comercial"):
+        raise HTTPException(403, "Requiere permiso de Presupuestos")
+    return user
+
+class EquipmentRow(BaseModel):
+    elemento: str = ""
+    cantidad: Optional[str] = ""
+    ubicacion: Optional[str] = ""
+    observaciones: Optional[str] = ""
+
+class BudgetCreate(BaseModel):
+    # general
+    n_proyecto: Optional[str] = ""
+    cliente: Optional[str] = ""
+    nombre_instalacion: Optional[str] = ""
+    direccion: Optional[str] = ""
+    contacto_1: Optional[str] = ""
+    contacto_2: Optional[str] = ""
+    observaciones_presupuesto: Optional[str] = ""
+    fecha_inicio: Optional[str] = ""
+    fecha_fin: Optional[str] = ""
+    observaciones_ejecucion: Optional[str] = ""
+    # equipos
+    equipos: List[EquipmentRow] = []
+    # deliveries
+    entrega_tarjeta_mantenimiento: bool = False
+    entrega_llave_salto: bool = False
+    entrega_eps100: bool = False
+    # signatures (base64 PNG)
+    firma_isai: Optional[str] = ""
+    nombre_isai: Optional[str] = ""
+    cargo_isai: Optional[str] = ""
+    firma_cliente: Optional[str] = ""
+    nombre_cliente: Optional[str] = ""
+    cargo_cliente: Optional[str] = ""
+    # link to existing material (proyecto)
+    material_id: Optional[str] = None
+
 class BudgetPatch(BudgetCreate):
     pass
 
