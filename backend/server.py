@@ -1877,9 +1877,16 @@ async def list_materiales(user: dict = Depends(current_user), q: Optional[str] =
     if project_status:
         status_list = [s.strip() for s in project_status.split(",") if s.strip()]
         if len(status_list) == 1:
-            query["project_status"] = status_list[0]
+            st = status_list[0]
+            if st == "pendiente":
+                query["$or"] = [{"project_status": "pendiente"}, {"project_status": {"$exists": False}}]
+            else:
+                query["project_status"] = st
         elif len(status_list) > 1:
-            query["project_status"] = {"$in": status_list}
+            q_list = [{"project_status": s} for s in status_list]
+            if "pendiente" in status_list:
+                q_list.append({"project_status": {"$exists": False}})
+            query["$or"] = q_list
     items = await db.materiales.find(query, {"_id": 0}).limit(limit).to_list(limit)
     items.sort(key=lambda x: x.get("row_index", 0))
     # Enrich with manager names
