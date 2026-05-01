@@ -166,6 +166,22 @@ export const api = {
 
   // CRM SAT — clients catalog (with Excel import)
   satClientList: () => request("/sat/clients"),
+  satExportExcel: async () => {
+    const token = await getToken();
+    const res = await fetch(`${BASE}/api/sat/export-excel`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `informe_incidencias_SAT.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 15000);
+  },
   satClientGet: (id: string) => request(`/sat/clients/${id}`),
   satClientCreate: (body: { cliente: string; direccion?: string; contacto?: string; telefono?: string }) =>
     request("/sat/clients", { method: "POST", body: JSON.stringify(body) }),

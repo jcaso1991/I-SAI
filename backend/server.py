@@ -2625,6 +2625,108 @@ async def sat_client_import(
     return {"ok": True, "created": created, "updated": updated, "skipped": skipped}
 
 
+@api_router.get("/sat/export-excel")
+async def sat_export_excel(user: dict = Depends(current_user)):
+    """Export all SAT incidents as an Excel file grouped by client."""
+    incidents = await db.sat_incidents.find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    clients = await db.sat_clients.find({}, {"_id": 0}).to_list(5000)
+    client_map = {c["id"]: c for c in clients}
+    client_name_map = {c.get("cliente", "").lower(): c for c in clients}
+
+    # Build client → incidents grouping
+    grouped: Dict[str, List[dict]] = {}
+    all_client_names: set = set()
+    for inc in incidents:
+        key = inc.get("cliente", "Sin cliente")
+        all_client_names.add(key)
+        if key not in grouped:
+            grouped[key] = []
+        grouped[key].append(inc)
+
+    wb = load_workbook(io.BytesIO()) if False else __import__("openpyxl").Workbook()
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Incidencias SAT"
+
+    # Styles
+    header_font = Font(bold=True, size=12, color="FFFFFF")
+    header_fill = PatternFill(start_color="1976D2", end_color="1976D2", fill_type="solid")
+    client_font = Font(bold=True, size=11, color="0B2545")
+    client_fill = PatternFill(start_color="E6F0FB", end_color="E6F0FB", fill_type="solid")
+    thin_border = Border(
+        left=Side(style="thin"), right=Side(style="thin"),
+        top=Side(style="thin"), bottom=Side(style="thin"),
+    )
+
+    # Header
+    headers = ["Cliente", "Estado", "Fecha creación", "Teléfono", "Dirección", "Observaciones", "Comentarios SAT", "Resuelto por", "Resuelto el", "Historial"]
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+        cell.border = thin_border
+
+    row = 2
+    for client_name in sorted(grouped.keys()):
+        # Client sub-header
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=len(headers))
+        cell = ws.cell(row=row, column=1, value=f"📋 {client_name} ({len(grouped[client_name])} incidencia{'s' if len(grouped[client_name]) != 1 else ''})")
+        cell.font = client_font
+        cell.fill = client_fill
+        cell.border = thin_border
+        row += 1
+
+        for inc in sorted(grouped[client_name], key=lambda i: i.get("created_at", ""), reverse=True):
+            status_map = {"pendiente": "Pendiente", "resuelta": "Resuelta", "agendada": "Agendada"}
+            history_text = ""
+            for h_entry in inc.get("history", []) or []:
+                ts = h_entry.get("created_at", "")[:16].replace("T", " ")
+                action = h_entry.get("action", "?")
+                who = h_entry.get("user_name", "?")
+                comment = h_entry.get("comment", "")
+                history_text += f"[{ts}] {who} · {action}"
+                if comment:
+                    history_text += f": {comment}"
+                history_text += "\n"
+
+            values = [
+                inc.get("cliente", ""),
+                status_map.get(inc.get("status", ""), inc.get("status", "")),
+                (inc.get("created_at") or "")[:16].replace("T", " "),
+                inc.get("telefono", ""),
+                inc.get("direccion", ""),
+                inc.get("observaciones", ""),
+                inc.get("comentarios_sat", ""),
+                inc.get("resolved_by", ""),
+                (inc.get("resolved_at") or "")[:16].replace("T", " ") if inc.get("resolved_at") else "",
+                history_text.strip(),
+            ]
+            for col, v in enumerate(values, 1):
+                cell = ws.cell(row=row, column=col, value=v)
+                cell.border = thin_border
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+            row += 1
+        row += 1  # blank row between clients
+
+    # Auto-size columns
+    for col in range(1, len(headers) + 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = max(18, min(40, ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width or 18))
+
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+
+    filename = f"informe_incidencias_SAT_{datetime.now(timezone.utc).strftime('%Y%m%d')}.xlsx"
+    return StreamingResponse(
+        out,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 # -----------------------------------------------------------------------------
 # Portfolio — self-contained HTML presentation for clients.
 # -----------------------------------------------------------------------------

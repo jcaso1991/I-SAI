@@ -246,6 +246,7 @@ export default function SATScreen() {
             </TouchableOpacity>
           </View>
           {view === "incidencias" && (
+            <>
             <TouchableOpacity
               testID="btn-copy-sat-url"
               style={[s.copyBtn, copied && { backgroundColor: "#10B981", borderColor: "#10B981" }]}
@@ -260,6 +261,18 @@ export default function SATScreen() {
                 {copied ? "¡Copiada!" : "URL cliente"}
               </Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              testID="btn-export-excel"
+              style={[s.copyBtn, { backgroundColor: "#DCFCE7", borderColor: "#10B981" }]}
+              onPress={async () => {
+                try { await api.satExportExcel(); }
+                catch (e: any) { Alert.alert("Error", e.message || "No se pudo exportar"); }
+              }}
+            >
+              <Ionicons name="download-outline" size={16} color="#166534" />
+              <Text style={[s.copyBtnText, { color: "#166534" }]} numberOfLines={1}>Exportar Excel</Text>
+            </TouchableOpacity>
+            </>
           )}
           {view === "clientes" && isAdmin && (
             <TouchableOpacity
