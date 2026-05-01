@@ -2074,26 +2074,8 @@ function EventDetailsModal({
                     </ScrollView>
                   </View>
                 )}
-                {budgetObj && (
-                  <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
-                    <TouchableOpacity
-                      style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: COLORS.primarySoft }}
-                      onPress={() => { onClose(); router.push(`/presupuestos/${budgetObj.id}`); }}
-                    >
-                      <Ionicons name="create-outline" size={14} color={COLORS.primary} />
-                      <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.primary }}>Editar</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: COLORS.primarySoft }}
-                      onPress={() => window.open(api.getBudgetPdfUrl(budgetObj.id), "_blank")}
-                    >
-                      <Ionicons name="eye-outline" size={14} color={COLORS.primary} />
-                      <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.primary }}>Ver PDF</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
               </>
-            ) : (budgetObj ? (
+            ) : budgetObj ? (
               <View style={s.matPreview}>
                 <View style={{ flex: 1 }}>
                   <Text style={s.matCode}>{budgetObj.n_proyecto ? `#${budgetObj.n_proyecto}` : "—"}</Text>
@@ -2103,7 +2085,26 @@ function EventDetailsModal({
               </View>
             ) : (
               <Text style={[s.descText, { color: COLORS.textDisabled }]}>Sin presupuesto vinculado</Text>
-            ))}
+            )}
+            {/* Edit / Export buttons always visible when a budget is linked */}
+            {budgetObj && (
+              <View style={{ flexDirection: "row", gap: 8, marginTop: editing ? 6 : 4 }}>
+                <TouchableOpacity
+                  style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: COLORS.primarySoft }}
+                  onPress={() => { onClose(); router.push(`/presupuestos/${budgetObj.id}`); }}
+                >
+                  <Ionicons name="create-outline" size={14} color={COLORS.primary} />
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.primary }}>Editar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: COLORS.primarySoft }}
+                  onPress={() => window.open(api.getBudgetPdfUrl(budgetObj.id), "_blank")}
+                >
+                  <Ionicons name="eye-outline" size={14} color={COLORS.primary} />
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.primary }}>Ver PDF</Text>
+                </TouchableOpacity>
+              </View>
+            )}
             {/* Técnicos asignados — editable por admin, read-only para resto.
                 Usa un dropdown idéntico al de "Gestor del proyecto" para
                 mantener coherencia visual. Permite seleccionar varios. */}
