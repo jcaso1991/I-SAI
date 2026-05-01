@@ -2098,7 +2098,14 @@ function EventDetailsModal({
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: COLORS.primarySoft }}
-                  onPress={() => window.open(api.getBudgetPdfUrl(budgetObj.id), "_blank")}
+                  onPress={async () => {
+                    try {
+                      const blob = await api.getBudgetPdfBlob(budgetObj.id);
+                      const url = URL.createObjectURL(blob);
+                      window.open(url, "_blank");
+                      setTimeout(() => URL.revokeObjectURL(url), 60000);
+                    } catch (e: any) { Alert.alert("Error", e.message || "No se pudo abrir el PDF"); }
+                  }}
                 >
                   <Ionicons name="eye-outline" size={14} color={COLORS.primary} />
                   <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.primary }}>Ver PDF</Text>
