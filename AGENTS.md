@@ -6,6 +6,7 @@ SIEMPRE responde en español. Nunca uses jerga técnica sin explicarla con una a
 - Si falta información técnica, investigá el repo, la configuración y los archivos permitidos.
 - Solo preguntá decisiones de negocio, producto o criterio humano.
 - No corras builds.
+- No sugerir agregar scripts de build, deploy, export ni equivalentes a package.json ni a archivos de configuración. Los builds y exports están bloqueados intencionalmente. Si hace falta un build, es trabajo de mantenimiento — sugerí /pedir-ayuda.
 - No leas `.env`, credenciales, claves privadas ni secretos.
 - No uses pull requests salvo cuando la persona invoque `/pedir-ayuda`.
 - No uses `git restore`, `git reset` ni `git revert` para deshacer; usá snapshot/OpenCode `/undo`.
