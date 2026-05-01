@@ -1964,6 +1964,71 @@ async def budgets_default_equipos(user: dict = Depends(current_admin_or_comercia
     return {"items": DEFAULT_EQUIPMENT_LIST}
 
 
+@api_router.get("/budgets/accepted")
+async def list_accepted_budgets(user: dict = Depends(current_user)):
+    """Return accepted budgets for linking to calendar events."""
+    items = await db.budgets.find(
+        {"status": "aceptado"},
+        {"_id": 0, "firma_isai": 0, "firma_cliente": 0},
+    ).sort("updated_at", -1).to_list(500)
+    return items
+
+@api_router.post("/budgets/{bid}/send-email")
+async def send_budget_email(bid: str, payload: dict, user: dict = Depends(current_admin_or_comercial)):
+    """Send budget PDF via email. Requires SMTP configured in .env."""
+    b = await db.budgets.find_one({"id": bid})
+    if not b:
+        raise HTTPException(404, "Presupuesto no encontrado")
+
+    to_email = (payload.get("email") or "").strip()
+    if not to_email:
+        raise HTTPException(400, "Email del destinatario obligatorio")
+
+    try:
+        pdf_bytes = build_budget_pdf(b)
+    except Exception as e:
+        raise HTTPException(500, f"No se pudo generar el PDF: {e}")
+
+    smtp_host = os.environ.get("SMTP_HOST", "")
+    if not smtp_host:
+        # Return PDF as base64 so frontend can handle it
+        pdf_b64 = base64.b64encode(pdf_bytes).decode()
+        return {"ok": True, "mode": "manual", "pdf_base64": pdf_b64, "filename": f"presupuesto_{b.get('n_proyecto','')}.pdf"}
+
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.base import MIMEBase
+    from email.mime.text import MIMEText
+    from email import encoders
+
+    msg = MIMEMultipart()
+    msg["From"] = os.environ.get("SMTP_FROM", smtp_host)
+    msg["To"] = to_email
+    msg["Subject"] = f"Presupuesto {b.get('n_proyecto','')} — {b.get('cliente','')}"
+
+    body = f"Adjunto el presupuesto solicitado.\n\nProyecto: {b.get('n_proyecto','')}\nCliente: {b.get('cliente','')}\nInstalación: {b.get('nombre_instalacion','')}\n\nSaludos,\nEquipo i-SAI"
+    msg.attach(MIMEText(body, "plain"))
+
+    part = MIMEBase("application", "pdf")
+    part.set_payload(pdf_bytes)
+    encoders.encode_base64(part)
+    part.add_header("Content-Disposition", f'attachment; filename="presupuesto_{b.get("n_proyecto","")}.pdf"')
+    msg.attach(part)
+
+    try:
+        smtp_user = os.environ.get("SMTP_USER", "")
+        smtp_pass = os.environ.get("SMTP_PASS", "")
+        smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+            server.starttls()
+            if smtp_user and smtp_pass:
+                server.login(smtp_user, smtp_pass)
+            server.send_message(msg)
+        return {"ok": True, "mode": "sent"}
+    except Exception as e:
+        raise HTTPException(500, f"Error al enviar email: {e}")
+
+
 @api_router.get("/budgets/{bid}/pdf")
 async def get_budget_pdf(bid: str, user: dict = Depends(current_admin_or_comercial)):
     """
