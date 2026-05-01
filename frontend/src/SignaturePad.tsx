@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "./api";
@@ -12,38 +12,48 @@ export default function SignaturePad({
   const viewRef = useRef<any>(null);
   const [paths, setPaths] = useState<string[]>([]);
   const currentPath = useRef<string>("");
+  const pathsRef = useRef<string[]>([]);
   const [, forceRender] = useState(0);
 
   const pan = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: (_, g) => {
-      currentPath.current = `M ${g.x0} ${g.y0}`;
+    onPanResponderGrant: (evt) => {
+      const { locationX: x, locationY: y } = evt.nativeEvent;
+      currentPath.current = `M ${x} ${y}`;
       forceRender((n) => n + 1);
     },
-    onPanResponderMove: (_, g) => {
-      currentPath.current += ` L ${g.moveX} ${g.moveY}`;
+    onPanResponderMove: (evt) => {
+      const { locationX: x, locationY: y } = evt.nativeEvent;
+      currentPath.current += ` L ${x} ${y}`;
       forceRender((n) => n + 1);
     },
     onPanResponderRelease: () => {
-      setPaths((p) => [...p, currentPath.current]);
+      const newPath = currentPath.current;
+      const allPaths = [...pathsRef.current, newPath];
+      pathsRef.current = allPaths;
+      setPaths(allPaths);
       currentPath.current = "";
-      // Capture and emit base64
+
       setTimeout(async () => {
         try {
-          const uri = await captureRef(viewRef, { format: "png", quality: 0.95, result: "tmpfile" });
-          const FS = require("expo-file-system/legacy");
-          const b64 = await FS.readAsStringAsync(uri, { encoding: FS.EncodingType.Base64 });
-          onChange(`data:image/png;base64,${b64}`);
+          if (Platform.OS === "web") {
+            const pngBase64 = await svgToPngBase64(allPaths);
+            onChange(`data:image/png;base64,${pngBase64}`);
+          } else {
+            const uri = await captureRef(viewRef, { format: "png", quality: 0.95, result: "tmpfile" });
+            const FS = require("expo-file-system/legacy");
+            const b64 = await FS.readAsStringAsync(uri, { encoding: FS.EncodingType.Base64 });
+            onChange(`data:image/png;base64,${b64}`);
+          }
         } catch {
-          // Fallback: on web, convert SVG to base64 manually
-          onChange(svgToDataUrl(paths));
+          onChange(svgToDataUrl(allPaths));
         }
       }, 50);
     },
   })).current;
 
-  const clear = () => { setPaths([]); currentPath.current = ""; onChange(""); };
+  const clear = () => { pathsRef.current = []; setPaths([]); currentPath.current = ""; onChange(""); };
 
   return (
     <View style={s.wrap}>
@@ -74,9 +84,36 @@ export default function SignaturePad({
 
 function svgToDataUrl(paths: string[]): string {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="140">${paths.map((d) => `<path d="${d}" stroke="#0F172A" stroke-width="2.5" fill="none"/>`).join("")}</svg>`;
-  // @ts-ignore btoa on web
-  const b64 = typeof btoa !== "undefined" ? btoa(unescape(encodeURIComponent(svg))) : "";
+  let b64 = "";
+  if (typeof TextEncoder !== "undefined") {
+    const bytes = new TextEncoder().encode(svg);
+    const bin = Array.from(bytes, (b) => String.fromCharCode(b)).join("");
+    b64 = typeof btoa !== "undefined" ? btoa(bin) : "";
+  }
   return `data:image/svg+xml;base64,${b64}`;
+}
+
+function svgToPngBase64(paths: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="140">${paths.map((d) => `<path d="${d}" stroke="#0F172A" stroke-width="2.5" fill="none"/>`).join("")}</svg>`;
+    const img = new Image();
+    const svgBlob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(svgBlob);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement("canvas");
+      canvas.width = 400;
+      canvas.height = 140;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { reject(new Error("No canvas context")); return; }
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(0, 0, 400, 140);
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL("image/png").split(",")[1]);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("SVG load failed")); };
+    img.src = url;
+  });
 }
 
 const s = StyleSheet.create({
