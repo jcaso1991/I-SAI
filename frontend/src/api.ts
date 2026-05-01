@@ -196,12 +196,10 @@ export const api = {
 
   // Budgets (presupuestos)
   listBudgets: () => request("/budgets"),
-  listAcceptedBudgets: () => request("/budgets/accepted"),
   getBudget: (id: string) => request(`/budgets/${id}`),
   createBudget: (body: any) => request("/budgets", { method: "POST", body: JSON.stringify(body) }),
   updateBudget: (id: string, body: any) => request(`/budgets/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   toggleBudgetStatus: (id: string) => request(`/budgets/${id}/status`, { method: "PATCH" }),
-  sendBudgetEmail: (id: string, email: string) => request(`/budgets/${id}/send-email`, { method: "POST", body: JSON.stringify({ email }) }),
   deleteBudget: (id: string) => request(`/budgets/${id}`, { method: "DELETE" }),
   budgetsDefaultEquipos: () => request("/budgets-defaults/equipos"),
   // Get budget PDF URL (authenticated blob fetch)

@@ -1343,8 +1343,7 @@ function CreateEventModal({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const router = useRouter();
-  const [mode, setMode] = useState<"texto" | "proyecto" | "presupuesto">("texto");
+  const [mode, setMode] = useState<"texto" | "proyecto">("texto");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [materialId, setMaterialId] = useState<string | null>(null);
@@ -1362,12 +1361,6 @@ function CreateEventModal({
   const [showTechList, setShowTechList] = useState(false);
   const [recurrence, setRecurrence] = useState<RecurrenceType>("none");
   const [until, setUntil] = useState<string>("");
-  // Budget mode
-  const [budgets, setBudgets] = useState<any[]>([]);
-  const [budgetObj, setBudgetObj] = useState<any>(null);
-  const [showBudgetList, setShowBudgetList] = useState(false);
-  const [emailTo, setEmailTo] = useState("");
-  const [sendEmailLoading, setSendEmailLoading] = useState(false);
 
   const startDate = dateAt(range.day, range.startMin);
   const endDate = dateAt(range.day, range.endMin);
@@ -1376,7 +1369,6 @@ function CreateEventModal({
     if (visible) {
       setMode("texto"); setTitle(""); setDescription("");
       setMaterialId(null); setMaterialObj(null); setShowMatList(false);
-      setBudgetObj(null); setShowBudgetList(false); setEmailTo("");
       setAssignedIds([]); setManagerId(null); setShowManagerList(false); setShowTechList(false);
       setRecurrence("none"); setUntil("");
       (async () => {
@@ -1394,38 +1386,6 @@ function CreateEventModal({
     finally { setLoadingMat(false); }
   };
 
-  const loadBudgets = async () => {
-    if (budgets.length > 0) return;
-    setLoadingMat(true);
-    try { setBudgets(await api.listAcceptedBudgets()); }
-    catch (e: any) { Alert.alert("Error", e.message); }
-    finally { setLoadingMat(false); }
-  };
-
-  const pickBudget = (b: any) => {
-    setBudgetObj(b);
-    setTitle(`${b.n_proyecto ? `#${b.n_proyecto} · ` : ""}${b.cliente || "Sin cliente"}`);
-    setShowBudgetList(false);
-  };
-
-  const sendEmail = async () => {
-    if (!budgetObj || !emailTo.trim()) { Alert.alert("Error", "Introduce un email de destino"); return; }
-    setSendEmailLoading(true);
-    try {
-      const res = await api.sendBudgetEmail(budgetObj.id, emailTo.trim());
-      if (res.mode === "sent") {
-        Alert.alert("Enviado", `Presupuesto enviado a ${emailTo}`);
-      } else {
-        Alert.alert("PDF generado", "El servidor no tiene SMTP configurado. Descarga el PDF y envíalo manualmente.");
-        window.open(`${api.getBudgetPdfUrl(budgetObj.id)}`, "_blank");
-      }
-    } catch (e: any) {
-      Alert.alert("Error", e.message || "No se pudo enviar");
-    } finally {
-      setSendEmailLoading(false);
-    }
-  };
-
   const pickMaterial = (m: any) => {
     setMaterialId(m.id);
     setMaterialObj(m);
@@ -1440,7 +1400,6 @@ function CreateEventModal({
   const submit = async () => {
     if (mode === "texto" && !title.trim()) { Alert.alert("Error", "Introduce un título"); return; }
     if (mode === "proyecto" && !materialId) { Alert.alert("Error", "Selecciona un proyecto"); return; }
-    if (mode === "presupuesto" && !budgetObj) { Alert.alert("Error", "Selecciona un presupuesto"); return; }
     setSaving(true);
     try {
       await api.createEvent({
@@ -1465,7 +1424,7 @@ function CreateEventModal({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={s.modalRoot}>
-        <View style={[s.modalCard, (showMatList || showBudgetList) && { maxHeight: "88%", minHeight: "70%" }]}>
+        <View style={[s.modalCard, showMatList && { maxHeight: "88%", minHeight: "70%" }]}>
           <View style={s.modalHeader}>
             <Text style={s.modalTitle}>Nuevo evento</Text>
             <TouchableOpacity onPress={onClose}>
@@ -1501,38 +1460,6 @@ function CreateEventModal({
                 />
               )}
             </View>
-          ) : showBudgetList ? (
-            <View style={{ flex: 1, minHeight: 300 }}>
-              <TouchableOpacity style={s.backRow} onPress={() => setShowBudgetList(false)}>
-                <Ionicons name="chevron-back" size={20} color={COLORS.navy} />
-                <Text style={s.backRowText}>Volver</Text>
-              </TouchableOpacity>
-              <View style={s.searchBox}>
-                <Ionicons name="search" size={18} color={COLORS.textSecondary} />
-                <TextInput style={s.searchInput} value={q} onChangeText={setQ} placeholder="Buscar presupuesto..." placeholderTextColor={COLORS.textDisabled} />
-              </View>
-              {loadingMat ? (
-                <ActivityIndicator color={COLORS.primary} style={{ padding: 20 }} />
-              ) : (
-                <FlatList
-                  data={q.trim() ? budgets.filter((b) => `${b.n_proyecto || ""} ${b.cliente || ""} ${b.nombre_instalacion || ""}`.toLowerCase().includes(q.toLowerCase())) : budgets}
-                  keyExtractor={(b) => b.id}
-                  style={{ flex: 1 }}
-                  keyboardShouldPersistTaps="handled"
-                  renderItem={({ item }) => (
-                    <TouchableOpacity style={s.matRow} onPress={() => pickBudget(item)}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.matCode}>{item.n_proyecto ? `#${item.n_proyecto}` : "—"}</Text>
-                        <Text style={s.matCliente} numberOfLines={1}>{item.cliente || item.nombre_instalacion || "Sin título"}</Text>
-                        {item.direccion && <Text style={s.matUbic} numberOfLines={1}>📍 {item.direccion}</Text>}
-                      </View>
-                      <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
-                    </TouchableOpacity>
-                  )}
-                  initialNumToRender={15}
-                />
-              )}
-            </View>
           ) : (
             <ScrollView keyboardShouldPersistTaps="handled">
               <View style={s.timeBox}>
@@ -1551,10 +1478,6 @@ function CreateEventModal({
                   <Ionicons name="briefcase-outline" size={18} color={mode === "proyecto" ? "#fff" : COLORS.navy} />
                   <Text style={[s.modeChipText, mode === "proyecto" && { color: "#fff" }]}>Desde proyecto</Text>
                 </TouchableOpacity>
-                <TouchableOpacity testID="mode-presupuesto" style={[s.modeChip, mode === "presupuesto" && s.modeChipActive]} onPress={() => { setMode("presupuesto"); loadBudgets(); }}>
-                  <Ionicons name="document-text-outline" size={18} color={mode === "presupuesto" ? "#fff" : COLORS.navy} />
-                  <Text style={[s.modeChipText, mode === "presupuesto" && { color: "#fff" }]}>Desde presupuesto</Text>
-                </TouchableOpacity>
               </View>
               {mode === "texto" ? (
                 <>
@@ -1562,73 +1485,6 @@ function CreateEventModal({
                   <TextInput style={s.mInput} value={title} onChangeText={setTitle} placeholder="Ej. Reunión equipo" placeholderTextColor={COLORS.textDisabled} autoFocus />
                   <Text style={s.mLabel}>Descripción (opcional)</Text>
                   <TextInput style={[s.mInput, { height: 90, paddingTop: 12 }]} value={description} onChangeText={setDescription} placeholder="Notas adicionales..." multiline textAlignVertical="top" placeholderTextColor={COLORS.textDisabled} />
-                </>
-              ) : mode === "presupuesto" ? (
-                <>
-                  <Text style={s.mLabel}>Presupuesto aceptado</Text>
-                  {budgetObj ? (
-                    <View style={s.matPreview}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.matCode}>{budgetObj.n_proyecto ? `#${budgetObj.n_proyecto}` : "—"}</Text>
-                        <Text style={s.matCliente}>{budgetObj.cliente || budgetObj.nombre_instalacion || "Sin título"}</Text>
-                        {budgetObj.direccion && <Text style={s.matUbic}>📍 {budgetObj.direccion}</Text>}
-                      </View>
-                      <TouchableOpacity onPress={() => setShowBudgetList(true)}>
-                        <Ionicons name="swap-horizontal" size={22} color={COLORS.primary} />
-                      </TouchableOpacity>
-                    </View>
-                  ) : (
-                    <TouchableOpacity style={s.pickMatBtn} onPress={() => setShowBudgetList(true)}>
-                      <Ionicons name="list" size={20} color={COLORS.primary} />
-                      <Text style={{ color: COLORS.primary, fontWeight: "700" }}>Elegir presupuesto...</Text>
-                    </TouchableOpacity>
-                  )}
-                  {budgetObj && (
-                    <>
-                      <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-                        <TouchableOpacity
-                          style={[s.recChip, { backgroundColor: COLORS.primarySoft }]}
-                            onPress={() => window.open(api.getBudgetPdfUrl(budgetObj.id), "_blank")}
-                        >
-                          <Ionicons name="eye-outline" size={14} color={COLORS.primary} />
-                          <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.primary }}>Ver PDF</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[s.recChip, { backgroundColor: COLORS.primarySoft }]}
-                          onPress={() => { onClose(); router.push(`/presupuestos/${budgetObj.id}`); }}
-                        >
-                          <Ionicons name="create-outline" size={14} color={COLORS.primary} />
-                          <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.primary }}>Editar</Text>
-                        </TouchableOpacity>
-                      </View>
-                      <Text style={[s.mLabel, { marginTop: 12 }]}>Enviar presupuesto por email</Text>
-                      <View style={{ flexDirection: "row", gap: 8 }}>
-                        <TextInput
-                          style={[s.mInput, { flex: 1 }]}
-                          value={emailTo}
-                          onChangeText={setEmailTo}
-                          placeholder="email@cliente.com"
-                          autoCapitalize="none"
-                          keyboardType="email-address"
-                          placeholderTextColor={COLORS.textDisabled}
-                        />
-                        <TouchableOpacity
-                          style={[s.recChip, { backgroundColor: COLORS.primary, paddingHorizontal: 14 }, sendEmailLoading && { opacity: 0.6 }]}
-                          onPress={sendEmail}
-                          disabled={sendEmailLoading}
-                        >
-                          {sendEmailLoading ? (
-                            <ActivityIndicator color="#fff" size="small" />
-                          ) : (
-                            <Ionicons name="send" size={16} color="#fff" />
-                          )}
-                          <Text style={{ fontSize: 12, fontWeight: "700", color: "#fff" }}>Enviar</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </>
-                  )}
-                  <Text style={s.mLabel}>Nota adicional (opcional)</Text>
-                  <TextInput style={[s.mInput, { height: 70, paddingTop: 12 }]} value={description} onChangeText={setDescription} placeholder="Instrucciones específicas..." multiline textAlignVertical="top" placeholderTextColor={COLORS.textDisabled} />
                 </>
               ) : (
                 <>
