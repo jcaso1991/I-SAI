@@ -126,7 +126,11 @@ export default function Materiales() {
       <View style={s.header}>
         <View style={{ flex: 1 }}>
           <Text style={s.headerTitle}>Proyectos</Text>
-          <Text style={s.headerSubHint}>Base sincronizada con OneDrive</Text>
+          <Text style={s.headerSubHint}>
+            {managerFilterIds.length > 0
+              ? `${items.length} proyecto${items.length !== 1 ? "s" : ""} encontrado${items.length !== 1 ? "s" : ""}`
+              : "Base sincronizada con OneDrive"}
+          </Text>
         </View>
         {!isWide && (
           <View style={s.headerBtns}>
