@@ -91,31 +91,35 @@ export default function Materiales() {
               color={pending ? COLORS.pendingText : COLORS.syncedText}
             />
             <Text style={[s.badgeText, { color: pending ? COLORS.pendingText : COLORS.syncedText }]}>
-              {pending ? "PENDIENTE" : "SINC"}
+              {pending ? "PEND" : "SINC"}
             </Text>
           </View>
         </View>
         <Text style={s.cliente} numberOfLines={1}>{item.cliente || "Sin cliente"}</Text>
-        {item.manager_name && (
-          <Text style={s.managerText} numberOfLines={1}>👤 {item.manager_name}</Text>
-        )}
-        <View style={s.metaRow}>
+        <View style={s.infoGrid}>
+          <View style={s.infoCell}>
+            <Text style={s.infoLabel}>Horas</Text>
+            <Text style={s.infoValue}>{item.horas_prev || "—"}</Text>
+          </View>
+          <View style={s.infoCell}>
+            <Text style={s.infoLabel}>Comercial</Text>
+            <Text style={s.infoValue}>{item.comercial || "—"}</Text>
+          </View>
+          <View style={s.infoCell}>
+            <Text style={s.infoLabel}>Gestor</Text>
+            <Text style={s.infoValue}>{item.manager_name || item.gestor || "—"}</Text>
+          </View>
+          <View style={s.infoCell}>
+            <Text style={s.infoLabel}>Técnico</Text>
+            <Text style={s.infoValue}>{item.tecnico || "—"}</Text>
+          </View>
+        </View>
+        {item.ubicacion && (
           <View style={s.metaItem}>
             <Ionicons name="location" size={13} color={COLORS.textSecondary} />
-            <Text style={s.metaText} numberOfLines={1}>{item.ubicacion || "—"}</Text>
+            <Text style={s.metaText} numberOfLines={1}>{item.ubicacion}</Text>
           </View>
-          {item.horas_prev && (
-            <View style={s.metaItem}>
-              <Ionicons name="time" size={13} color={COLORS.textSecondary} />
-              <Text style={s.metaText}>{item.horas_prev}h</Text>
-            </View>
-          )}
-          {item.entrega_recogida && (
-            <View style={[s.pill, item.entrega_recogida.toLowerCase().includes("entrega") ? s.pillBlue : s.pillOrange]}>
-              <Text style={s.pillText}>{item.entrega_recogida}</Text>
-            </View>
-          )}
-        </View>
+        )}
       </TouchableOpacity>
     );
   };
@@ -339,6 +343,13 @@ const s = StyleSheet.create({
   metaRow: { flexDirection: "row", alignItems: "center", gap: 12, flexWrap: "wrap" },
   metaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
   metaText: { fontSize: 13, color: COLORS.textSecondary, fontWeight: "500" },
+  infoGrid: { flexDirection: "row", marginTop: 6, gap: 4 },
+  infoCell: {
+    flex: 1, backgroundColor: COLORS.bg, borderRadius: 6,
+    paddingVertical: 6, paddingHorizontal: 6, alignItems: "center",
+  },
+  infoLabel: { fontSize: 10, color: COLORS.textDisabled, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 },
+  infoValue: { fontSize: 12, color: COLORS.text, fontWeight: "700", marginTop: 1 },
   badge: {
     flexDirection: "row", alignItems: "center", gap: 4,
     paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
