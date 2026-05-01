@@ -12,7 +12,7 @@ import { useBreakpoint } from "../src/useBreakpoint";
 
 export default function Materiales() {
   const router = useRouter();
-  const { isWide, isDesktop } = useBreakpoint();
+  const { isWide } = useBreakpoint();
   const [items, setItems] = useState<any[]>([]);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
@@ -78,7 +78,7 @@ export default function Materiales() {
     return (
       <TouchableOpacity
         testID={`material-item-${item.id}`}
-        style={[s.card, isWide && { flex: 1 }]}
+        style={s.card}
         onPress={() => router.push(`/material/${item.id}`)}
         activeOpacity={0.7}
       >
@@ -265,10 +265,7 @@ export default function Materiales() {
           data={items}
           renderItem={renderItem}
           keyExtractor={(it) => it.id}
-          numColumns={isDesktop ? 3 : isWide ? 2 : 1}
-          key={`cols-${isDesktop ? 3 : isWide ? 2 : 1}`}
-          columnWrapperStyle={isWide ? { gap: 12, paddingHorizontal: 16 } : undefined}
-          contentContainerStyle={{ padding: isWide ? 0 : 16, paddingTop: isWide ? 16 : 16, gap: 12, paddingBottom: 40 }}
+          contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 40, maxWidth: 900, alignSelf: "center", width: "100%" }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
