@@ -48,6 +48,7 @@ type EventT = {
   created_by: string;
   status?: string;          // in_progress | completed | pending_completion
   seguimiento?: string;
+  budget_id?: string | null;
 };
 
 // Date helpers
@@ -1706,6 +1707,16 @@ function EventDetailsModal({
       api.listTechnicians().then(setTechs).catch(() => {});
     }
   }, [isAdmin]);
+
+  // Load linked budget if event has budget_id
+  useEffect(() => {
+    const bid = (event as any).budget_id;
+    if (bid) {
+      api.getBudget(bid).then(setBudgetObj).catch(() => {});
+    } else {
+      setBudgetObj(null);
+    }
+  }, [(event as any).budget_id]);
 
   const loadBudgets = async () => {
     if (budgets.length > 0) return;
