@@ -1354,6 +1354,27 @@ async def update_event(eid: str, payload: EventPatch, user: dict = Depends(curre
         if new_status == "completed":
             notif_title = f"Proyecto terminado: {title}"
             notif_msg = f"{user.get('name') or user.get('email')} marcó el evento como completado."
+            # If a budget is linked, generate PDF and attach to event
+            budget_id = ev_current.get("budget_id") or upd.get("budget_id")
+            if budget_id:
+                budget = await db.budgets.find_one({"id": budget_id})
+                if budget:
+                    try:
+                        pdf_bytes = build_budget_pdf(budget)
+                        pdf_b64 = base64.b64encode(pdf_bytes).decode()
+                        att = {
+                            "id": str(uuid.uuid4()),
+                            "filename": f"presupuesto_{budget.get('n_proyecto','')}.pdf",
+                            "mime_type": "application/pdf",
+                            "size": len(pdf_bytes),
+                            "base64": pdf_b64,
+                            "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                            "uploaded_by": "sistema",
+                        }
+                        await db.events.update_one({"id": real_id}, {"$push": {"attachments": att}})
+                        notif_msg += f"\n📎 Presupuesto adjunto: {att['filename']}"
+                    except Exception as e:
+                        logging.getLogger(__name__).error(f"Failed to attach budget PDF: {e}")
         elif new_status == "pending_completion":
             notif_title = f"Pendiente de terminar: {title}"
             seg = upd.get("seguimiento") or ev_current.get("seguimiento") or ""
