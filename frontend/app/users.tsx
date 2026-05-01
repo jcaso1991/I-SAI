@@ -26,6 +26,8 @@ export default function Users() {
   const [showCreate, setShowCreate] = useState(false);
   const [editUser, setEditUser] = useState<User | null>(null);
   const [passwordUser, setPasswordUser] = useState<User | null>(null);
+  const [roleFilter, setRoleFilter] = useState<string | null>(null);
+  const [showRoleFilter, setShowRoleFilter] = useState(false);
 
   const load = async () => {
     try {
@@ -102,8 +104,42 @@ export default function Users() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
-        <Text style={s.subtitle}>{users.length} usuario{users.length !== 1 ? "s" : ""}</Text>
-        {users.map((u) => {
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <Text style={s.subtitle}>
+            {roleFilter
+              ? `${(roleFilter ? users.filter((u) => u.role_id === roleFilter) : users).length} de ${users.length} usuario${users.length !== 1 ? "s" : ""}`
+              : `${users.length} usuario${users.length !== 1 ? "s" : ""}`}
+          </Text>
+          <TouchableOpacity
+            style={[s.filterBtn, roleFilter !== null && { backgroundColor: COLORS.primary }]}
+            onPress={() => setShowRoleFilter((v) => !v)}
+          >
+            <Ionicons name="funnel" size={14} color={roleFilter !== null ? "#fff" : COLORS.primary} />
+            <Text style={[s.filterBtnText, roleFilter !== null && { color: "#fff" }]}>
+              {roleFilter ? (roles.find((r) => r.id === roleFilter)?.name || "Filtro") : "Todos"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        {showRoleFilter && (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+            <TouchableOpacity
+              style={[s.roleFilterChip, roleFilter === null && { backgroundColor: COLORS.primarySoft, borderColor: COLORS.primary }]}
+              onPress={() => { setRoleFilter(null); setShowRoleFilter(false); }}
+            >
+              <Text style={[s.roleFilterChipText, roleFilter === null && { color: COLORS.primary, fontWeight: "800" }]}>Todos</Text>
+            </TouchableOpacity>
+            {roles.map((r) => (
+              <TouchableOpacity
+                key={r.id}
+                style={[s.roleFilterChip, roleFilter === r.id && { backgroundColor: COLORS.pillBlueBg, borderColor: COLORS.primary }]}
+                onPress={() => { setRoleFilter(r.id); setShowRoleFilter(false); }}
+              >
+                <Text style={[s.roleFilterChipText, roleFilter === r.id && { color: COLORS.primary, fontWeight: "800" }]}>{r.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+        {(roleFilter ? users.filter((u) => u.role_id === roleFilter) : users).map((u) => {
           const isMe = u.id === me?.id;
           return (
             <View
@@ -578,4 +614,15 @@ const s = StyleSheet.create({
     borderWidth: 3, borderColor: "transparent",
   },
   colorDotActive: { borderColor: COLORS.navy },
+  filterBtn: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+    backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
+  },
+  filterBtnText: { fontSize: 12, fontWeight: "700", color: COLORS.primary },
+  roleFilterChip: {
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
+    backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
+  },
+  roleFilterChipText: { fontSize: 12, fontWeight: "600", color: COLORS.textSecondary },
 });
