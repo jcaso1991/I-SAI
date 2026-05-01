@@ -180,6 +180,16 @@ PERMISSIONS_CATALOG = [
     {"key": "onedrive.manage", "label": "Conectar/Sincronizar OneDrive", "module": "Administración"},
 ]
 ALL_PERMS = [p["key"] for p in PERMISSIONS_CATALOG]
+
+NOTIFICATION_CATALOG = [
+    {"key": "event_completed", "label": "Proyecto terminado", "module": "Calendario"},
+    {"key": "event_pending_completion", "label": "Pendiente de terminar", "module": "Calendario"},
+    {"key": "event_updated", "label": "Estado de evento actualizado", "module": "Calendario"},
+    {"key": "sat_new", "label": "Nueva incidencia SAT", "module": "CRM SAT"},
+    {"key": "sat_revived", "label": "Incidencia SAT reactivada", "module": "CRM SAT"},
+]
+ALL_NOTIFS = [n["key"] for n in NOTIFICATION_CATALOG]
+
 NON_ADMIN_PERMS = [p for p in ALL_PERMS if p not in ("users.manage", "roles.manage")]
 TECNICO_PERMS = ["proyectos.view", "proyectos.edit", "calendario.view", "calendario.edit", "planos.view", "planos.edit"]
 COMERCIAL_PERMS = ["presupuestos.view", "presupuestos.edit", "proyectos.view"]
@@ -187,11 +197,11 @@ SAT_PERMS = ["sat.view", "sat.edit"]
 
 # System roles seeded on startup. Admin role can NEVER be modified or deleted.
 DEFAULT_ROLES = [
-    {"key": "admin", "name": "Administrador principal", "permissions": ALL_PERMS, "system": True, "locked": True},
-    {"key": "gestor", "name": "Gestor", "permissions": NON_ADMIN_PERMS, "system": True, "locked": False},
-    {"key": "tecnico", "name": "Técnico", "permissions": TECNICO_PERMS, "system": True, "locked": False},
-    {"key": "comercial", "name": "Comercial", "permissions": COMERCIAL_PERMS, "system": True, "locked": False},
-    {"key": "sat", "name": "SAT", "permissions": SAT_PERMS, "system": True, "locked": False},
+    {"key": "admin", "name": "Administrador principal", "permissions": ALL_PERMS, "notification_prefs": ALL_NOTIFS, "system": True, "locked": True},
+    {"key": "gestor", "name": "Gestor", "permissions": NON_ADMIN_PERMS, "notification_prefs": ALL_NOTIFS, "system": True, "locked": False},
+    {"key": "tecnico", "name": "Técnico", "permissions": TECNICO_PERMS, "notification_prefs": ["event_completed", "event_pending_completion"], "system": True, "locked": False},
+    {"key": "comercial", "name": "Comercial", "permissions": COMERCIAL_PERMS, "notification_prefs": ["event_completed"], "system": True, "locked": False},
+    {"key": "sat", "name": "SAT", "permissions": SAT_PERMS, "notification_prefs": ["sat_new", "sat_revived"], "system": True, "locked": False},
 ]
 
 # Map legacy `role` field -> new role key
@@ -210,16 +220,19 @@ class RoleOut(BaseModel):
     system: bool = False
     locked: bool = False
     created_at: Optional[str] = None
+    notification_prefs: List[str] = []
 
 
 class RoleCreate(BaseModel):
     name: str
     permissions: List[str] = []
+    notification_prefs: List[str] = []
 
 
 class RoleUpdate(BaseModel):
     name: Optional[str] = None
     permissions: Optional[List[str]] = None
+    notification_prefs: Optional[List[str]] = None
 
 
 async def ensure_default_roles_and_migrate():
@@ -233,6 +246,7 @@ async def ensure_default_roles_and_migrate():
                 "key": r["key"],
                 "name": r["name"],
                 "permissions": r["permissions"],
+                "notification_prefs": r.get("notification_prefs", []),
                 "system": r["system"],
                 "locked": r.get("locked", False),
                 "created_at": datetime.now(timezone.utc).isoformat(),
@@ -271,7 +285,7 @@ async def get_user_permissions(user: dict) -> List[str]:
 
 
 async def get_user_role_info(user: dict) -> dict:
-    """Return {role_id, role_name, permissions} for a user."""
+    """Return {role_id, role_name, permissions, notification_prefs} for a user."""
     role_id = user.get("role_id")
     role = None
     if role_id:
@@ -284,7 +298,17 @@ async def get_user_role_info(user: dict) -> dict:
         "role_id": role.get("id") if role else None,
         "role_name": role.get("name") if role else None,
         "permissions": role.get("permissions", []) if role else [],
+        "notification_prefs": role.get("notification_prefs", []) if role else [],
     }
+
+
+async def should_notify_user(user_id: str, notif_type: str) -> bool:
+    """Check if a user's role allows receiving this notification type."""
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        return False
+    info = await get_user_role_info(user)
+    return notif_type in info.get("notification_prefs", [])
 
 
 def require_permission(perm: str):
@@ -785,6 +809,11 @@ async def list_permissions(user: dict = Depends(current_user)):
     """Public catalog of all permissions in the app, grouped by module."""
     return {"permissions": PERMISSIONS_CATALOG}
 
+@api_router.get("/notification-prefs")
+async def list_notification_prefs(user: dict = Depends(current_user)):
+    """Public catalog of all notification preferences."""
+    return {"notifications": NOTIFICATION_CATALOG}
+
 @api_router.get("/roles", response_model=List[RoleOut])
 async def list_roles(user: dict = Depends(current_user)):
     """Anyone authenticated can see roles (used by user-edit dropdown)."""
@@ -799,11 +828,10 @@ async def create_role(payload: RoleCreate, admin: dict = Depends(require_permiss
     name = payload.name.strip()
     if not name:
         raise HTTPException(400, "Nombre obligatorio")
-    # Validate permissions
     bad = [p for p in payload.permissions if p not in ALL_PERMS]
     if bad:
         raise HTTPException(400, f"Permisos inválidos: {bad}")
-    # Generate unique key from name
+    role_notifs = [n for n in payload.notification_prefs if n in ALL_NOTIFS]
     base_key = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "role"
     key = base_key
     suffix = 1
@@ -815,6 +843,7 @@ async def create_role(payload: RoleCreate, admin: dict = Depends(require_permiss
         "key": key,
         "name": name,
         "permissions": list(dict.fromkeys(payload.permissions)),
+        "notification_prefs": role_notifs,
         "system": False,
         "locked": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -840,6 +869,8 @@ async def update_role(rid: str, payload: RoleUpdate, admin: dict = Depends(requi
         if bad:
             raise HTTPException(400, f"Permisos inválidos: {bad}")
         upd["permissions"] = list(dict.fromkeys(payload.permissions))
+    if payload.notification_prefs is not None:
+        upd["notification_prefs"] = [n for n in payload.notification_prefs if n in ALL_NOTIFS]
     if not upd:
         raise HTTPException(400, "Nada que actualizar")
     await db.roles.update_one({"id": rid}, {"$set": upd})
@@ -1350,53 +1381,55 @@ async def update_event(eid: str, payload: EventPatch, user: dict = Depends(curre
     new_status = upd.get("status")
     prev_status = ev_current.get("status") or "in_progress"
     if new_status and new_status != prev_status and ev_current.get("manager_id"):
-        title = ev_current.get("title") or "Evento"
-        if new_status == "completed":
-            notif_title = f"Proyecto terminado: {title}"
-            notif_msg = f"{user.get('name') or user.get('email')} marcó el evento como completado."
-            # If a budget is linked, generate PDF and attach to event
-            budget_id = ev_current.get("budget_id") or upd.get("budget_id")
-            if budget_id:
-                budget = await db.budgets.find_one({"id": budget_id})
-                if budget:
-                    try:
-                        pdf_bytes = build_budget_pdf(budget)
-                        pdf_b64 = base64.b64encode(pdf_bytes).decode()
-                        att = {
-                            "id": str(uuid.uuid4()),
-                            "filename": f"presupuesto_{budget.get('n_proyecto','')}.pdf",
-                            "mime_type": "application/pdf",
-                            "size": len(pdf_bytes),
-                            "base64": pdf_b64,
-                            "uploaded_at": datetime.now(timezone.utc).isoformat(),
-                            "uploaded_by": "sistema",
-                        }
-                        await db.events.update_one({"id": real_id}, {"$push": {"attachments": att}})
-                        notif_msg += f"\n📎 Presupuesto adjunto: {att['filename']}"
-                    except Exception as e:
-                        logging.getLogger(__name__).error(f"Failed to attach budget PDF: {e}")
-        elif new_status == "pending_completion":
-            notif_title = f"Pendiente de terminar: {title}"
-            seg = upd.get("seguimiento") or ev_current.get("seguimiento") or ""
-            notif_msg = (
-                f"{user.get('name') or user.get('email')} dejó el evento pendiente de terminar."
-                + (f"\nObservaciones: {seg}" if seg else "")
-            )
-        else:
-            notif_title = f"Estado actualizado: {title}"
-            notif_msg = f"El estado del evento pasó a '{new_status}'."
-        await db.notifications.insert_one({
-            "id": str(uuid.uuid4()),
-            "user_id": ev_current["manager_id"],
-            "event_id": real_id,
-            "type": f"event_{new_status}",
-            "title": notif_title,
-            "message": notif_msg,
-            "read": False,
-            "created_at": datetime.utcnow().isoformat(),
-            "from_user_id": user["id"],
-            "from_user_name": user.get("name") or user.get("email"),
-        })
+        notif_type = f"event_{new_status}"
+        if await should_notify_user(ev_current["manager_id"], notif_type):
+            title = ev_current.get("title") or "Evento"
+            if new_status == "completed":
+                notif_title = f"Proyecto terminado: {title}"
+                notif_msg = f"{user.get('name') or user.get('email')} marcó el evento como completado."
+                # If a budget is linked, generate PDF and attach to event
+                budget_id = ev_current.get("budget_id") or upd.get("budget_id")
+                if budget_id:
+                    budget = await db.budgets.find_one({"id": budget_id})
+                    if budget:
+                        try:
+                            pdf_bytes = build_budget_pdf(budget)
+                            pdf_b64 = base64.b64encode(pdf_bytes).decode()
+                            att = {
+                                "id": str(uuid.uuid4()),
+                                "filename": f"presupuesto_{budget.get('n_proyecto','')}.pdf",
+                                "mime_type": "application/pdf",
+                                "size": len(pdf_bytes),
+                                "base64": pdf_b64,
+                                "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                                "uploaded_by": "sistema",
+                            }
+                            await db.events.update_one({"id": real_id}, {"$push": {"attachments": att}})
+                            notif_msg += f"\n📎 Presupuesto adjunto: {att['filename']}"
+                        except Exception as e:
+                            logging.getLogger(__name__).error(f"Failed to attach budget PDF: {e}")
+            elif new_status == "pending_completion":
+                notif_title = f"Pendiente de terminar: {title}"
+                seg = upd.get("seguimiento") or ev_current.get("seguimiento") or ""
+                notif_msg = (
+                    f"{user.get('name') or user.get('email')} dejó el evento pendiente de terminar."
+                    + (f"\nObservaciones: {seg}" if seg else "")
+                )
+            else:
+                notif_title = f"Estado actualizado: {title}"
+                notif_msg = f"El estado del evento pasó a '{new_status}'."
+            await db.notifications.insert_one({
+                "id": str(uuid.uuid4()),
+                "user_id": ev_current["manager_id"],
+                "event_id": real_id,
+                "type": notif_type,
+                "title": notif_title,
+                "message": notif_msg,
+                "read": False,
+                "created_at": datetime.utcnow().isoformat(),
+                "from_user_id": user["id"],
+                "from_user_name": user.get("name") or user.get("email"),
+            })
 
     ev = await db.events.find_one({"id": real_id}, {"_id": 0})
     ev = await _attach_material(ev)

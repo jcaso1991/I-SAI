@@ -66,12 +66,13 @@ export const api = {
   deleteUser: (id: string) => request(`/users/${id}`, { method: "DELETE" }),
   // Roles & Permissions
   listRoles: () => request("/roles"),
-  createRole: (body: { name: string; permissions: string[] }) =>
+  createRole: (body: { name: string; permissions: string[]; notification_prefs?: string[] }) =>
     request("/roles", { method: "POST", body: JSON.stringify(body) }),
   updateRole: (id: string, body: { name?: string; permissions?: string[] }) =>
     request(`/roles/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteRole: (id: string) => request(`/roles/${id}`, { method: "DELETE" }),
   listPermissions: () => request("/permissions"),
+  listNotificationPrefs: () => request("/notification-prefs"),
   listTechnicians: () => request("/technicians"),
   listManagers: () => request("/managers"),
   // Plans

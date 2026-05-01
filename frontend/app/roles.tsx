@@ -19,11 +19,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../src/api";
 
 type Permission = { key: string; label: string; module: string };
+type NotifPref = { key: string; label: string; module: string };
 type Role = {
   id: string;
   key: string;
   name: string;
   permissions: string[];
+  notification_prefs: string[];
   system: boolean;
   locked: boolean;
   created_at?: string;
@@ -33,15 +35,17 @@ export default function RolesScreen() {
   const router = useRouter();
   const [roles, setRoles] = useState<Role[]>([]);
   const [perms, setPerms] = useState<Permission[]>([]);
+  const [notifs, setNotifs] = useState<NotifPref[]>([]);
   const [loading, setLoading] = useState(true);
   const [editRole, setEditRole] = useState<Role | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
   const load = async () => {
     try {
-      const [rl, pp] = await Promise.all([api.listRoles(), api.listPermissions()]);
+      const [rl, pp, np] = await Promise.all([api.listRoles(), api.listPermissions(), api.listNotificationPrefs()]);
       setRoles(rl);
       setPerms((pp?.permissions as Permission[]) || []);
+      setNotifs((np?.notifications as NotifPref[]) || []);
     } catch (e: any) {
       if (/403/i.test(e.message)) {
         Alert.alert("Acceso denegado", "Solo el administrador principal puede gestionar roles.");
@@ -161,6 +165,7 @@ export default function RolesScreen() {
       <CreateRoleModal
         visible={showCreate}
         permissions={perms}
+        notifications={notifs}
         onClose={() => setShowCreate(false)}
         onDone={() => { setShowCreate(false); load(); }}
       />
@@ -168,6 +173,7 @@ export default function RolesScreen() {
       <EditRoleModal
         role={editRole}
         permissions={perms}
+        notifications={notifs}
         onClose={() => setEditRole(null)}
         onDone={() => { setEditRole(null); load(); }}
       />
@@ -176,15 +182,24 @@ export default function RolesScreen() {
 }
 
 // ---------------- Create role ----------------
-function CreateRoleModal({ visible, permissions, onClose, onDone }: {
-  visible: boolean; permissions: Permission[]; onClose: () => void; onDone: () => void;
+function CreateRoleModal({ visible, permissions, notifications, onClose, onDone }: {
+  visible: boolean; permissions: Permission[]; notifications: NotifPref[]; onClose: () => void; onDone: () => void;
 }) {
   const [name, setName] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
+  const [notifSelected, setNotifSelected] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+
+  useFocusEffect(useCallback(() => {
+    setName(""); setSelected([]); setNotifSelected([]);
+  }, [visible]));
 
   const togglePerm = (k: string) => {
     setSelected((prev) => prev.includes(k) ? prev.filter((p) => p !== k) : [...prev, k]);
+  };
+
+  const toggleNotif = (k: string) => {
+    setNotifSelected((prev) => prev.includes(k) ? prev.filter((p) => p !== k) : [...prev, k]);
   };
 
   const submit = async () => {
@@ -194,8 +209,7 @@ function CreateRoleModal({ visible, permissions, onClose, onDone }: {
     }
     setSaving(true);
     try {
-      await api.createRole({ name: name.trim(), permissions: selected });
-      setName(""); setSelected([]);
+      await api.createRole({ name: name.trim(), permissions: selected, notification_prefs: notifSelected } as any);
       onDone();
     } catch (e: any) {
       Alert.alert("Error", e.message);
@@ -233,6 +247,12 @@ function CreateRoleModal({ visible, permissions, onClose, onDone }: {
               selected={selected}
               onToggle={togglePerm}
             />
+            <Text style={s.mLabel}>Notificaciones</Text>
+            <NotificationList
+              notifications={notifications}
+              selected={notifSelected}
+              onToggle={toggleNotif}
+            />
             <TouchableOpacity
               testID="modal-submit-role"
               style={[s.primary, saving && { opacity: 0.6 }]}
@@ -249,20 +269,26 @@ function CreateRoleModal({ visible, permissions, onClose, onDone }: {
 }
 
 // ---------------- Edit role ----------------
-function EditRoleModal({ role, permissions, onClose, onDone }: {
-  role: Role | null; permissions: Permission[]; onClose: () => void; onDone: () => void;
+function EditRoleModal({ role, permissions, notifications, onClose, onDone }: {
+  role: Role | null; permissions: Permission[]; notifications: NotifPref[]; onClose: () => void; onDone: () => void;
 }) {
   const [name, setName] = useState(role?.name || "");
   const [selected, setSelected] = useState<string[]>(role?.permissions || []);
+  const [notifSelected, setNotifSelected] = useState<string[]>(role?.notification_prefs || []);
   const [saving, setSaving] = useState(false);
 
   useFocusEffect(useCallback(() => {
     setName(role?.name || "");
     setSelected(role?.permissions || []);
+    setNotifSelected(role?.notification_prefs || []);
   }, [role?.id]));
 
   const togglePerm = (k: string) => {
     setSelected((prev) => prev.includes(k) ? prev.filter((p) => p !== k) : [...prev, k]);
+  };
+
+  const toggleNotif = (k: string) => {
+    setNotifSelected((prev) => prev.includes(k) ? prev.filter((p) => p !== k) : [...prev, k]);
   };
 
   const submit = async () => {
@@ -273,7 +299,7 @@ function EditRoleModal({ role, permissions, onClose, onDone }: {
     }
     setSaving(true);
     try {
-      await api.updateRole(role.id, { name: name.trim(), permissions: selected });
+      await api.updateRole(role.id, { name: name.trim(), permissions: selected, notification_prefs: notifSelected } as any);
       onDone();
     } catch (e: any) {
       Alert.alert("Error", e.message);
@@ -314,6 +340,12 @@ function EditRoleModal({ role, permissions, onClose, onDone }: {
               permissions={permissions}
               selected={selected}
               onToggle={togglePerm}
+            />
+            <Text style={s.mLabel}>Notificaciones</Text>
+            <NotificationList
+              notifications={notifications}
+              selected={notifSelected}
+              onToggle={toggleNotif}
             />
             <TouchableOpacity
               style={[s.primary, saving && { opacity: 0.6 }]}
@@ -363,6 +395,48 @@ function PermissionList({ permissions, selected, onToggle }: {
                   {p.label}
                 </Text>
                 <Text style={s.permKey}>{p.key}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// ---------------- Notification preferences list (grouped by module) ----------------
+function NotificationList({ notifications, selected, onToggle }: {
+  notifications: NotifPref[]; selected: string[]; onToggle: (k: string) => void;
+}) {
+  const groups: { [mod: string]: NotifPref[] } = {};
+  const order: string[] = [];
+  for (const n of notifications) {
+    if (!groups[n.module]) { groups[n.module] = []; order.push(n.module); }
+    groups[n.module].push(n);
+  }
+
+  return (
+    <View style={{ gap: 14 }}>
+      {order.map((mod) => (
+        <View key={mod} style={s.permGroup}>
+          <Text style={s.permGroupTitle}>{mod.toUpperCase()}</Text>
+          {groups[mod].map((n) => {
+            const on = selected.includes(n.key);
+            return (
+              <TouchableOpacity
+                key={n.key}
+                testID={`notif-${n.key}`}
+                style={s.permRow}
+                onPress={() => onToggle(n.key)}
+                activeOpacity={0.7}
+              >
+                <View style={[s.checkbox, on && s.checkboxOn]}>
+                  {on && <Ionicons name="checkmark" size={16} color="#fff" />}
+                </View>
+                <Text style={[s.permLabel, on && { color: COLORS.text, fontWeight: "700" }]}>
+                  {n.label}
+                </Text>
+                <Text style={s.permKey}>{n.key}</Text>
               </TouchableOpacity>
             );
           })}
