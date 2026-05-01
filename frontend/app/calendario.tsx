@@ -1670,6 +1670,7 @@ function CreateEventModal({
 function EventDetailsModal({
   event, isAdmin, onClose, onChanged,
 }: { event: EventT; isAdmin: boolean; onClose: () => void; onChanged: () => void }) {
+  const router = useRouter();
   const [start, setStart] = useState<Date>(new Date(event.start_at));
   const [end, setEnd] = useState<Date>(new Date(event.end_at));
   const [title, setTitle] = useState(event.title);
@@ -1692,6 +1693,11 @@ function EventDetailsModal({
   const [status, setStatus] = useState<string>(event.status || "in_progress");
   const [seguimiento, setSeguimiento] = useState<string>(event.seguimiento || "");
 
+  // Budget linking
+  const [budgetObj, setBudgetObj] = useState<any>(null);
+  const [budgets, setBudgets] = useState<any[]>([]);
+  const [showBudgetList, setShowBudgetList] = useState(false);
+
   const m = event.material;
 
   useEffect(() => {
@@ -1700,6 +1706,16 @@ function EventDetailsModal({
       api.listTechnicians().then(setTechs).catch(() => {});
     }
   }, [isAdmin]);
+
+  const loadBudgets = async () => {
+    if (budgets.length > 0) return;
+    try { setBudgets(await api.listAcceptedBudgets()); } catch {}
+  };
+
+  const pickBudget = (b: any) => {
+    setBudgetObj(b);
+    setShowBudgetList(false);
+  };
 
   const toggleAssign = (id: string) => {
     setAssignedIds((arr) => arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]);
@@ -1731,6 +1747,7 @@ function EventDetailsModal({
         assigned_user_ids: assignedIds,
         status,
         seguimiento: seguimiento || undefined,
+        budget_id: budgetObj?.id || null,
       } as any);
       onChanged();
     } catch (e: any) { Alert.alert("Error", e.message); }
@@ -2002,6 +2019,80 @@ function EventDetailsModal({
                 </View>
               </View>
             )}
+
+            {/* Presupuesto vinculado */}
+            <Text style={s.mLabel}>PRESUPUESTO</Text>
+            {editing && isAdmin ? (
+              <>
+                <TouchableOpacity
+                  testID="btn-pick-budget"
+                  style={s.pickMatBtn}
+                  onPress={() => { setShowBudgetList((v) => !v); loadBudgets(); }}
+                >
+                  <Ionicons name="document-text-outline" size={20} color={COLORS.primary} />
+                  <Text style={{ color: budgetObj ? COLORS.navy : COLORS.primary, fontWeight: "700", flex: 1 }} numberOfLines={1}>
+                    {budgetObj
+                      ? `${budgetObj.n_proyecto ? `#${budgetObj.n_proyecto} · ` : ""}${budgetObj.cliente || budgetObj.nombre_instalacion || "Seleccionado"}`
+                      : "Vincular presupuesto aceptado"}
+                  </Text>
+                  <Ionicons name={showBudgetList ? "chevron-up" : "chevron-down"} size={18} color={COLORS.primary} />
+                </TouchableOpacity>
+                {showBudgetList && (
+                  <View style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, marginTop: 6, overflow: "hidden", maxHeight: 300 }}>
+                    <ScrollView nestedScrollEnabled>
+                      {budgets.length === 0 ? (
+                        <View style={{ padding: 12 }}>
+                          <Text style={{ color: COLORS.textSecondary, fontStyle: "italic" }}>No hay presupuestos aceptados</Text>
+                        </View>
+                      ) : budgets.map((b, idx) => (
+                        <TouchableOpacity
+                          key={b.id}
+                          testID={`budget-opt-${b.id}`}
+                          style={[s.techRow, { borderRadius: 0, borderWidth: 0, borderBottomWidth: idx === budgets.length - 1 ? 0 : 1, borderBottomColor: COLORS.border }, budgetObj?.id === b.id && { backgroundColor: COLORS.highlightBg }]}
+                          onPress={() => pickBudget(b)}
+                        >
+                          <View style={[s.checkBox, budgetObj?.id === b.id && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}>
+                            {budgetObj?.id === b.id && <Ionicons name="checkmark" size={16} color="#fff" />}
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={s.techName}>{b.n_proyecto ? `#${b.n_proyecto} · ` : ""}{b.cliente || b.nombre_instalacion || "—"}</Text>
+                            <Text style={s.techEmail}>{b.direccion || b.created_by_name || ""}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+                {budgetObj && (
+                  <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
+                    <TouchableOpacity
+                      style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: COLORS.primarySoft }}
+                      onPress={() => { onClose(); router.push(`/presupuestos/${budgetObj.id}`); }}
+                    >
+                      <Ionicons name="create-outline" size={14} color={COLORS.primary} />
+                      <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.primary }}>Editar</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: COLORS.primarySoft }}
+                      onPress={() => window.open(api.getBudgetPdfUrl(budgetObj.id), "_blank")}
+                    >
+                      <Ionicons name="eye-outline" size={14} color={COLORS.primary} />
+                      <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.primary }}>Ver PDF</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </>
+            ) : (budgetObj ? (
+              <View style={s.matPreview}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.matCode}>{budgetObj.n_proyecto ? `#${budgetObj.n_proyecto}` : "—"}</Text>
+                  <Text style={s.matCliente}>{budgetObj.cliente || budgetObj.nombre_instalacion || "Sin título"}</Text>
+                  {budgetObj.direccion && <Text style={s.matUbic}>📍 {budgetObj.direccion}</Text>}
+                </View>
+              </View>
+            ) : (
+              <Text style={[s.descText, { color: COLORS.textDisabled }]}>Sin presupuesto vinculado</Text>
+            ))}
             {/* Técnicos asignados — editable por admin, read-only para resto.
                 Usa un dropdown idéntico al de "Gestor del proyecto" para
                 mantener coherencia visual. Permite seleccionar varios. */}

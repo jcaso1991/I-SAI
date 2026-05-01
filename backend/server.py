@@ -1909,6 +1909,15 @@ async def list_budgets(user: dict = Depends(current_admin_or_comercial)):
     items = await db.budgets.find({}, {"_id": 0, "firma_isai": 0, "firma_cliente": 0}).sort("updated_at", -1).to_list(500)
     return items
 
+@api_router.get("/budgets/accepted")
+async def list_accepted_budgets(user: dict = Depends(current_user)):
+    """Return accepted budgets for linking to calendar events."""
+    items = await db.budgets.find(
+        {"status": "aceptado"},
+        {"_id": 0, "firma_isai": 0, "firma_cliente": 0},
+    ).sort("updated_at", -1).to_list(500)
+    return items
+
 @api_router.get("/budgets/{bid}")
 async def get_budget(bid: str, user: dict = Depends(current_admin_or_comercial)):
     b = await db.budgets.find_one({"id": bid}, {"_id": 0})

@@ -196,6 +196,7 @@ export const api = {
 
   // Budgets (presupuestos)
   listBudgets: () => request("/budgets"),
+  listAcceptedBudgets: () => request("/budgets/accepted"),
   getBudget: (id: string) => request(`/budgets/${id}`),
   createBudget: (body: any) => request("/budgets", { method: "POST", body: JSON.stringify(body) }),
   updateBudget: (id: string, body: any) => request(`/budgets/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
