@@ -14,10 +14,7 @@
     "explorador": {
       "mode": "subagent",
       "hidden": true,
-      "model": "deepseek/deepseek-v4-flash",
-      "permission": {
-        "edit": "deny"
-      }
+      "model": "deepseek/deepseek-v4-flash"
     },
     "implementador": {
       "mode": "subagent",
@@ -27,10 +24,7 @@
     "qa": {
       "mode": "subagent",
       "hidden": true,
-      "model": "deepseek/deepseek-v4-flash",
-      "permission": {
-        "edit": "deny"
-      }
+      "model": "deepseek/deepseek-v4-flash"
     },
     "disenador-ui": {
       "mode": "subagent",

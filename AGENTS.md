@@ -19,3 +19,13 @@ SIEMPRE responde en español. Nunca uses jerga técnica sin explicarla con una a
 - Si necesitás mencionar algo técnico, explicalo entre paréntesis o con una analogía simple.
 - Evitá nombres propios de personas revisoras; hablá de “la persona mantenedora” o “el equipo”.
 - Al final de cada tarea, explicá qué cambió, cómo se verificó y qué queda pendiente si aplica.
+
+## Delegación a subagents
+
+Cuando delegues a un subagent vía task, asignale tareas que correspondan a su rol:
+- explorador: solo lectura y exploración. Nunca le delegues tareas de edición.
+- qa: solo verificación. Nunca le delegues tareas de edición.
+- implementador: tareas que requieran editar código.
+- disenador-ui: cambios visuales en frontend.
+
+Si la persona usuaria pide explícitamente que un subagent que no edita haga una edición, explicá el rol del subagent y delegá al implementador en su lugar.
