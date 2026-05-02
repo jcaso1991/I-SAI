@@ -14,22 +14,34 @@
     "explorador": {
       "mode": "subagent",
       "hidden": true,
-      "model": "deepseek/deepseek-v4-flash"
+      "model": "deepseek/deepseek-v4-flash",
+      "permission": {
+        "task": { "*": "deny" }
+      }
     },
     "implementador": {
       "mode": "subagent",
       "hidden": true,
-      "model": "deepseek/deepseek-v4-pro"
+      "model": "deepseek/deepseek-v4-pro",
+      "permission": {
+        "task": { "*": "deny" }
+      }
     },
     "qa": {
       "mode": "subagent",
       "hidden": true,
-      "model": "deepseek/deepseek-v4-flash"
+      "model": "deepseek/deepseek-v4-flash",
+      "permission": {
+        "task": { "*": "deny" }
+      }
     },
     "disenador-ui": {
       "mode": "subagent",
       "hidden": true,
-      "model": "deepseek/deepseek-v4-flash"
+      "model": "deepseek/deepseek-v4-flash",
+      "permission": {
+        "task": { "*": "deny" }
+      }
     }
   },
   "permission": {

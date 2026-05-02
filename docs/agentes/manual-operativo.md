@@ -33,3 +33,7 @@ Para deshacer el último cambio usá `/undo`, que es un comando incorporado de O
 Para verificar backend desde comandos de usuario, usar solo `.opencode/scripts/safe-backend-pytest.sh`.
 
 Ese script aborta si la URL del backend no es local. Esto evita que una prueba toque datos reales por accidente.
+
+## Cuándo cancelar
+
+Si un pedido tarda más de 1-2 minutos sin respuesta visible, está OK cancelarlo (Ctrl+C en la terminal donde corre OpenCode) y reformular más acotado. El sistema a veces se mete en investigaciones más profundas de lo necesario. Reformular con un alcance más chico (por ejemplo: "verificá si Carlos tiene el rol asignado correctamente, sin investigar el código") suele resolver más rápido.
