@@ -53,6 +53,7 @@ export const api = {
   updateMaterial: (id: string, body: any) =>
     request(`/materiales/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   stats: () => request("/stats"),
+  getDashboard: () => request("/dashboard"),
   onedriveStatus: () => request("/auth/onedrive/status"),
   onedriveLogin: () => request("/auth/onedrive/login"),
   onedriveDisconnect: () => request("/auth/onedrive/disconnect", { method: "POST" }),

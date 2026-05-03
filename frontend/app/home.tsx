@@ -35,14 +35,19 @@ export default function HomeScreen() {
   const { isWide } = useBreakpoint();
   const [me, setMe] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [dash, setDash] = useState<any>(null);
 
   useFocusEffect(useCallback(() => {
     let alive = true;
     (async () => {
       try {
-        const u = await api.me();
+        const [u, d] = await Promise.all([
+          api.me(),
+          api.getDashboard().catch(() => null),
+        ]);
         if (!alive) return;
         setMe(u);
+        setDash(d);
       } catch (e: any) {
         if (/401|Invalid|expired/i.test(e?.message || "")) {
           await clearToken();
@@ -132,6 +137,83 @@ export default function HomeScreen() {
               <Text style={s.heroGreet}>{greetingForNow()},</Text>
               <Text style={s.heroName}>{firstName || "Bienvenido"}</Text>
               <Text style={s.heroDate}>{spanishToday()}</Text>
+            </View>
+          )}
+
+          {dash && (
+            <View style={{ gap: 12, marginBottom: 8 }}>
+              <Text style={s.sectionTitle}>Resumen</Text>
+
+              {/* Today row */}
+              <View style={s.dashRow}>
+                <View style={[s.dashCard, { backgroundColor: COLORS.primarySoft }]}>
+                  <Ionicons name="today-outline" size={22} color={COLORS.primary} />
+                  <Text style={s.dashVal}>{dash.today?.events || 0}</Text>
+                  <Text style={s.dashLbl}>Eventos hoy</Text>
+                </View>
+                <View style={[s.dashCard, { backgroundColor: "#FEF3C7" }]}>
+                  <Ionicons name="alert-circle-outline" size={22} color="#F59E0B" />
+                  <Text style={s.dashVal}>{dash.today?.pending_sat || 0}</Text>
+                  <Text style={s.dashLbl}>SAT pendiente</Text>
+                </View>
+                <View style={[s.dashCard, { backgroundColor: "#EDE9FE" }]}>
+                  <Ionicons name="document-text-outline" size={22} color="#8B5CF6" />
+                  <Text style={s.dashVal}>{dash.today?.pending_budgets || 0}</Text>
+                  <Text style={s.dashLbl}>Presup. pendientes</Text>
+                </View>
+              </View>
+
+              {/* Projects by status */}
+              <Text style={s.sectionSub}>Proyectos por estado</Text>
+              <View style={s.dashRow}>
+                {(dash.projects_by_status ? Object.entries(dash.projects_by_status) as [string, number][] : []).slice(0, 4).map(([k, v]) => {
+                  const colors: Record<string, string> = {
+                    pendiente: "#F59E0B", a_facturar: "#8B5CF6", planificado: "#3B82F6",
+                    terminado: "#10B981", facturado: "#10B981", bloqueado: "#EF4444", anulado: "#6B7280",
+                  };
+                  return (
+                    <View key={k} style={[s.dashCard, { backgroundColor: (colors[k] || "#F59E0B") + "18" }]}>
+                      <Text style={[s.dashVal, { color: colors[k] || "#F59E0B" }]}>{v}</Text>
+                      <Text style={s.dashLbl}>{k.replace("_", " ")}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+
+              {/* Hours by manager */}
+              {dash.manager_hours?.length > 0 && (
+                <>
+                  <Text style={s.sectionSub}>Horas por gestor</Text>
+                  {dash.manager_hours.slice(0, 5).map((m: any, i: number) => (
+                    <View key={i} style={s.hourRow}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1 }}>
+                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: m.color || COLORS.primary }} />
+                        <Text style={s.hourName} numberOfLines={1}>{m.name}</Text>
+                      </View>
+                      <Text style={s.hourVal}>{m.hours}h</Text>
+                      <Text style={s.hourCount}>({m.count})</Text>
+                      <View style={[s.hourBar, { flex: 2, maxWidth: 120 }]}>
+                        <View style={[s.hourFill, { width: `${Math.min(100, (m.hours / (dash.manager_hours[0]?.hours || 1)) * 100)}%`, backgroundColor: m.color || COLORS.primary }]} />
+                      </View>
+                    </View>
+                  ))}
+                </>
+              )}
+
+              {/* SAT by month */}
+              {dash.sat_by_month?.length > 0 && (
+                <>
+                  <Text style={s.sectionSub}>Incidencias SAT por mes</Text>
+                  <View style={s.dashRow}>
+                    {dash.sat_by_month.map((m: any, i: number) => (
+                      <View key={i} style={[s.dashCard, { flex: 1, minWidth: 50 }]}>
+                        <Text style={s.dashVal}>{m.total}</Text>
+                        <Text style={s.dashLbl}>{m.month}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </>
+              )}
             </View>
           )}
 
@@ -278,4 +360,21 @@ const s = StyleSheet.create({
     fontSize: 15, fontWeight: "600", color: COLORS.text,
     letterSpacing: -0.2,
   },
+  dashRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  dashCard: {
+    flex: 1, minWidth: 90, padding: 12, borderRadius: 10,
+    alignItems: "center", gap: 2, backgroundColor: COLORS.surface,
+  },
+  dashVal: { fontSize: 20, fontWeight: "900", color: COLORS.text },
+  dashLbl: { fontSize: 10, color: COLORS.textSecondary, fontWeight: "600", textAlign: "center" },
+  sectionSub: {
+    fontSize: 12, fontWeight: "800", color: COLORS.textSecondary,
+    textTransform: "uppercase", letterSpacing: 0.5, marginTop: 4,
+  },
+  hourRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 4 },
+  hourName: { fontSize: 13, fontWeight: "600", color: COLORS.text },
+  hourVal: { fontSize: 13, fontWeight: "800", color: COLORS.text, minWidth: 45, textAlign: "right" },
+  hourCount: { fontSize: 11, color: COLORS.textSecondary, minWidth: 35 },
+  hourBar: { height: 10, backgroundColor: COLORS.borderInput, borderRadius: 5, overflow: "hidden" },
+  hourFill: { height: 10, borderRadius: 5 },
 } as Record<string, any>);

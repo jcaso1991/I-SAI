@@ -1972,6 +1972,79 @@ async def stats(user: dict = Depends(current_user)):
     pending = await db.materiales.count_documents({"sync_status": "pending"})
     return {"total": total, "pending": pending, "synced": total - pending}
 
+
+@api_router.get("/dashboard")
+async def dashboard(user: dict = Depends(current_user)):
+    # Projects by status
+    statuses = ["pendiente", "planificado", "a_facturar", "facturado", "terminado", "bloqueado", "anulado"]
+    projects_by_status = {}
+    total_hours = 0
+    for st in statuses:
+        count = await db.materiales.count_documents({"project_status": st})
+        projects_by_status[st] = count
+        total_hours += count
+
+    # Hours by manager
+    manager_hours = []
+    managers = await db.users.find({"role": "admin"}, {"_id": 0, "id": 1, "name": 1, "email": 1, "color": 1}).to_list(50)
+    for mgr in managers:
+        mats = await db.materiales.find({"manager_id": mgr["id"]}, {"horas_prev": 1}).to_list(5000)
+        hours = sum(float(m.get("horas_prev") or 0) for m in mats)
+        if hours > 0:
+            manager_hours.append({
+                "name": mgr.get("name") or mgr.get("email", ""),
+                "color": mgr.get("color", "#3B82F6"),
+                "hours": round(hours, 1),
+                "count": len(mats),
+            })
+    manager_hours.sort(key=lambda x: x["hours"], reverse=True)
+
+    # SAT incidents by month (last 6 months)
+    sat_by_month = []
+    for i in range(5, -1, -1):
+        dt = datetime.now(timezone.utc) - timedelta(days=30 * i)
+        month_start = dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if i == 0:
+            month_end = datetime.now(timezone.utc)
+        else:
+            if month_start.month == 12:
+                month_end = month_start.replace(year=month_start.year + 1, month=1)
+            else:
+                month_end = month_start.replace(month=month_start.month + 1)
+        count = await db.sat_incidents.count_documents({
+            "created_at": {"$gte": month_start.isoformat(), "$lt": month_end.isoformat()}
+        })
+        resolved = await db.sat_incidents.count_documents({
+            "status": "resuelta",
+            "created_at": {"$gte": month_start.isoformat(), "$lt": month_end.isoformat()},
+        })
+        mes = month_start.strftime("%b").capitalize()
+        sat_by_month.append({"month": mes, "total": count, "resolved": resolved})
+
+    # Today's pending
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    today_end = datetime.now(timezone.utc).replace(hour=23, minute=59, second=59).isoformat()
+    today_events = await db.events.count_documents({
+        "$or": [
+            {"start_at": {"$gte": today_start, "$lte": today_end}},
+            {"end_at": {"$gte": today_start, "$lte": today_end}},
+        ],
+        "status": {"$ne": "completed"},
+    })
+    pending_sat = await db.sat_incidents.count_documents({"status": "pendiente"})
+    pending_budgets = await db.budgets.count_documents({"status": "pendiente"})
+
+    return {
+        "projects_by_status": projects_by_status,
+        "manager_hours": manager_hours[:8],
+        "sat_by_month": sat_by_month,
+        "today": {
+            "events": today_events,
+            "pending_sat": pending_sat,
+            "pending_budgets": pending_budgets,
+        },
+    }
+
 # ---------------- Budgets (Presupuestos) ----------------
 async def current_admin_or_comercial(user: dict = Depends(current_user)):
     """Backwards-compatible guard: now allows anyone with `presupuestos.view`."""
