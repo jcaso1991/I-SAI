@@ -125,18 +125,19 @@ export default function PlanEditor() {
   const [canvasRotation, setCanvasRotation] = useState<0 | 90>(0);
   const rotationRef = useRef<0 | 90>(0);
 
-  // Convert screen touch coords → canvas coords accounting for rotation
+  // Convert screen touch coords → canvas coords accounting for zoom and rotation.
+  // Web uses physical size (canvasSize * zoom), native uses CSS transform scale.
   const toCanvasCoords = (sx: number, sy: number): Pt => {
     const z = zoomRef.current;
     const r = rotationRef.current;
     const cw = canvasSize.w;
     const ch = canvasSize.h;
-    if (r === 0) return { x: sx / z, y: sy / z };
+    const scale = Platform.OS === "web" ? z : 1;
+    if (r === 0) return { x: sx / scale, y: sy / scale };
     if (r === 90) {
-      // Visual x → canvas y, visual y → canvas (ch - x)
-      return { x: sy / z, y: (ch - sx) / z };
+      return { x: sy / scale, y: (ch - sx / scale) };
     }
-    return { x: sx / z, y: sy / z };
+    return { x: sx / scale, y: sy / scale };
   };
 
   // Text tool state: where the text was placed and the in-progress input.
