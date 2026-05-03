@@ -10,7 +10,9 @@ from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Literal
 import uuid
+import secrets
 from datetime import datetime, timezone, timedelta
+import time
 import bcrypt
 import jwt as pyjwt
 import msal
@@ -66,6 +68,16 @@ AUTO_PUSH_DELAY_SEC = 6         # debounce pushes: wait 6s after last edit
 # ---------------- DB ----------------
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
+
+# In-memory one-time auth codes for Microsoft mobile login (no JWT in URL)
+# code -> {jwt, state, expires_at}
+_auth_codes: dict = {}
+
+def _cleanup_expired_codes():
+    now = time.time()
+    for k in list(_auth_codes.keys()):
+        if _auth_codes[k]["expires_at"] < now:
+            del _auth_codes[k]
 
 # ---------------- App ----------------
 app = FastAPI(title="Materiales OneDrive App")
@@ -1067,6 +1079,8 @@ async def delete_plan(pid: str, user: dict = Depends(current_user)):
         raise HTTPException(404, "Plano no encontrado")
     return {"ok": True}
 
+MAX_BACKGROUND_MB = 25
+
 class BackgroundUpload(BaseModel):
     file_base64: str  # raw base64 (no data URI prefix)
     mime_type: str   # "image/jpeg" | "image/png" | "application/pdf"
@@ -1076,10 +1090,16 @@ async def upload_background(pid: str, payload: BackgroundUpload, user: dict = De
     plan = await db.plans.find_one({"id": pid})
     if not plan:
         raise HTTPException(404, "Plano no encontrado")
+    # Size check before decoding (approximate: base64 → raw is ~ 3/4 ratio)
+    est_raw = (len(payload.file_base64) * 3) // 4
+    if est_raw > MAX_BACKGROUND_MB * 1024 * 1024:
+        raise HTTPException(413, f"El archivo excede {MAX_BACKGROUND_MB}MB")
     try:
         raw = base64.b64decode(payload.file_base64)
     except Exception:
         raise HTTPException(400, "Base64 inválido")
+    if len(raw) > MAX_BACKGROUND_MB * 1024 * 1024:
+        raise HTTPException(413, f"El archivo excede {MAX_BACKGROUND_MB}MB")
     mime = payload.mime_type.lower()
     if mime == "application/pdf":
         try:
@@ -1725,15 +1745,22 @@ async def onedrive_disconnect(user: dict = Depends(require_permission("onedrive.
 # ---------------- Microsoft user authentication (Entra ID / Azure AD) ----------------
 @api_router.get("/auth/microsoft/login")
 async def microsoft_login():
-    """Return the Microsoft OAuth URL for user login (Entra ID / Azure AD)."""
+    """Return the Microsoft OAuth URL for user login (Entra ID / Azure AD).
+    Generates a signed, expirable state JWT to protect the callback."""
     app_msal = _msal_app()
+    state_id = str(uuid.uuid4())
+    state_jwt = pyjwt.encode(
+        {"jti": state_id, "exp": datetime.now(timezone.utc) + timedelta(minutes=5)},
+        JWT_SECRET,
+        algorithm=JWT_ALGORITHM,
+    )
     auth_url = app_msal.get_authorization_request_url(
         scopes=["User.Read"],
         redirect_uri=MS_AUTH_REDIRECT_URI,
-        state=str(uuid.uuid4()),
+        state=state_jwt,
         prompt="select_account",
     )
-    return {"auth_url": auth_url}
+    return {"auth_url": auth_url, "state": state_jwt}
 
 @api_router.get("/auth/microsoft/callback", response_class=HTMLResponse)
 async def microsoft_callback(code: str, state: Optional[str] = None, error: Optional[str] = None):
@@ -1742,6 +1769,15 @@ async def microsoft_callback(code: str, state: Optional[str] = None, error: Opti
     posts the JWT back to the frontend (popup message on web, redirect on native)."""
     if error:
         return HTMLResponse(f"<h2>Error</h2><p>{error}</p>", status_code=400)
+
+    if not state:
+        return HTMLResponse("<h2>Error de autenticación</h2><p>Falta el parámetro state.</p>", status_code=400)
+    try:
+        pyjwt.decode(state, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except pyjwt.ExpiredSignatureError:
+        return HTMLResponse("<h2>Error de autenticación</h2><p>State expirado. Volvé a iniciar sesión.</p>", status_code=400)
+    except Exception:
+        return HTMLResponse("<h2>Error de autenticación</h2><p>State inválido.</p>", status_code=400)
 
     app_msal = _msal_app()
     result = app_msal.acquire_token_by_authorization_code(
@@ -1806,6 +1842,14 @@ async def microsoft_callback(code: str, state: Optional[str] = None, error: Opti
 
     jwt_token = create_jwt(user)
 
+    _cleanup_expired_codes()
+    code = secrets.token_hex(32)
+    _auth_codes[code] = {
+        "jwt": jwt_token,
+        "state": state,
+        "expires_at": time.time() + 300,
+    }
+
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -1841,24 +1885,52 @@ async def microsoft_callback(code: str, state: Optional[str] = None, error: Opti
   <div class="spinner"></div>
   <p class="fallback">
     Si no te redirige automáticamente,<br/>
-    <a href="{FRONTEND_URL}/login?microsoft_token={jwt_token}">haz clic aquí para entrar</a>
+    <a href="{FRONTEND_URL}/login">volvé a la pantalla de inicio de sesión</a>
   </p>
 </div>
 <script>
-  var token = '{jwt_token}';
+  var code = '{code}';
+  var state = '{state}';
   try {{
     if (window.opener && !window.opener.closed) {{
-      window.opener.postMessage({{ type:'microsoft_auth', token:token }}, '*');
+      window.opener.postMessage({{ type:'microsoft_auth', code:code, state:state }}, '{FRONTEND_URL}');
       setTimeout(function(){{ window.close(); }}, 500);
     }} else {{
-      window.location.replace('{FRONTEND_URL}/login?microsoft_token=' + token);
+      window.location.replace('frontend://microsoft-callback?code=' + encodeURIComponent(code) + '&state=' + encodeURIComponent(state));
     }}
   }} catch(e) {{
-    window.location.replace('{FRONTEND_URL}/login?microsoft_token=' + token);
+    window.location.replace('{FRONTEND_URL}/login');
   }}
 </script>
 </body>
 </html>""")
+
+
+class MicrosoftExchangeRequest(BaseModel):
+    code: str
+    state: str
+
+
+class MicrosoftExchangeResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+@api_router.post("/auth/microsoft/exchange", response_model=MicrosoftExchangeResponse)
+async def microsoft_exchange(payload: MicrosoftExchangeRequest):
+    """Exchange a one-time code for a JWT access token. Code is single-use."""
+    _cleanup_expired_codes()
+    record = _auth_codes.get(payload.code)
+    if not record:
+        raise HTTPException(401, "Código inválido o ya usado")
+    if record["state"] != payload.state:
+        raise HTTPException(401, "State no coincide")
+    if time.time() > record["expires_at"]:
+        del _auth_codes[payload.code]
+        raise HTTPException(401, "Código expirado")
+    jwt_token = record["jwt"]
+    del _auth_codes[payload.code]
+    return MicrosoftExchangeResponse(access_token=jwt_token, token_type="bearer")
 
 
 # ---------------- Sync routes (manual override — uses internal helpers) ----------------
@@ -2632,10 +2704,25 @@ class SATUpdateIn(BaseModel):
     comentarios_sat: Optional[str] = None
     status: Optional[str] = None  # "pendiente" | "resuelta"
 
+_sat_rl: dict = {}  # IP → list of epoch timestamps
+
+_SAT_RL_WINDOW_S = 30
+_SAT_RL_MAX = 3
+
+def _check_sat_rate_limit(ip: str) -> None:
+    now = time.monotonic()
+    entries = [t for t in _sat_rl.get(ip, []) if now - t < _SAT_RL_WINDOW_S]
+    _sat_rl[ip] = entries
+    if len(entries) >= _SAT_RL_MAX:
+        raise HTTPException(429, "Demasiadas solicitudes. Esperá unos segundos.")
+    _sat_rl[ip].append(now)
+
 @api_router.post("/sat/public")
-async def sat_public_create(body: SATPublicIn):
+async def sat_public_create(body: SATPublicIn, request: Request):
     """Endpoint PÚBLICO — no requiere login. Lo usa el enlace que se envía
     al cliente para que abra la incidencia."""
+    ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if request.client else "unknown")
+    _check_sat_rate_limit(ip)
     now = datetime.now(timezone.utc)
     doc = {
         "id": str(uuid.uuid4()),

@@ -4,38 +4,40 @@ import {
   KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator, Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { api, setToken, COLORS } from "../src/api";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { api, setToken, COLORS, BACKEND_URL } from "../src/api";
+
+const MS_STATE_KEY = "ms_login_state";
 
 export default function Login() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ microsoft_token?: string }>();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [msLoading, setMsLoading] = useState(false);
 
-  // Handle redirect from Microsoft OAuth (web: query param)
-  useEffect(() => {
-    if (params.microsoft_token) {
-      (async () => {
-        await setToken(params.microsoft_token as string);
-        router.replace("/home");
-      })();
-    }
-  }, [params.microsoft_token]);
+  const backendOrigin = BACKEND_URL.replace(/\/+$/, "");
 
   // Listen for postMessage from popup (web flow)
   useEffect(() => {
     if (Platform.OS !== "web") return;
     const handler = (ev: MessageEvent) => {
-      if (ev.data?.type === "microsoft_auth" && ev.data?.token) {
-        (async () => {
-          await setToken(ev.data.token);
+      if (ev.origin !== backendOrigin) return;
+      if (ev.data?.type !== "microsoft_auth" || !ev.data?.code) return;
+      const storedState = sessionStorage.getItem("ms_state");
+      if (!storedState || ev.data?.state !== storedState) return;
+      sessionStorage.removeItem("ms_state");
+      (async () => {
+        try {
+          const res = await api.microsoftExchange(ev.data.code, storedState);
+          await setToken(res.access_token);
           router.replace("/home");
-        })();
-      }
+        } catch (e: any) {
+          Alert.alert("Error", e.message || "Error al completar autenticación");
+        }
+      })();
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
@@ -44,21 +46,26 @@ export default function Login() {
   const microsoftLogin = async () => {
     setMsLoading(true);
     try {
-      const { auth_url } = await api.microsoftLoginUrl();
+      const { auth_url, state } = await api.microsoftLoginUrl();
+
       if (Platform.OS === "web") {
+        sessionStorage.setItem("ms_state", state);
         const w = 600, h = 700;
         const left = window.screenX + (window.outerWidth - w) / 2;
         const top = window.screenY + (window.outerHeight - h) / 2;
         window.open(auth_url, "ms-login", `width=${w},height=${h},left=${left},top=${top}`);
       } else {
-        const result = await WebBrowser.openAuthSessionAsync(auth_url, "frontend://");
+        await AsyncStorage.setItem(MS_STATE_KEY, state);
+        const result = await WebBrowser.openAuthSessionAsync(
+          auth_url,
+          "frontend://microsoft-callback"
+        );
         if (result.type === "success" && result.url) {
           const raw = result.url.includes("?") ? result.url.split("?")[1] : "";
-          const token = new URLSearchParams(raw).get("microsoft_token");
-          if (token) {
-            await setToken(token);
-            router.replace("/home");
-          }
+          router.replace(`/microsoft-callback${raw ? `?${raw}` : ""}`);
+        }
+        if (result.type === "cancel") {
+          await AsyncStorage.removeItem(MS_STATE_KEY);
         }
       }
     } catch (e: any) {

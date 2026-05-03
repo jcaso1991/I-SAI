@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL;
+export const BACKEND_URL = BASE || "";
 const TOKEN_KEY = "materiales_token";
 
 export async function getToken(): Promise<string | null> {
@@ -277,6 +278,8 @@ export const api = {
 
   // Microsoft login (Entra ID)
   microsoftLoginUrl: () => request("/auth/microsoft/login"),
+  microsoftExchange: (code: string, state: string) =>
+    request("/auth/microsoft/exchange", { method: "POST", body: JSON.stringify({ code, state }) }, false),
 };
 
 export const COLORS = {
