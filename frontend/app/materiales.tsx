@@ -269,6 +269,15 @@ export default function Materiales() {
         >
           <Ionicons name="flag" size={18} color={statusFilterIds.length > 0 ? "#fff" : COLORS.navy} />
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[s.filterBtn, { backgroundColor: "#DCFCE7", borderColor: "#10B981", borderWidth: 1 }]}
+          onPress={async () => {
+            try { await api.exportProjectsExcel(); }
+            catch (e: any) { Alert.alert("Error", "No se pudo exportar"); }
+          }}
+        >
+          <Ionicons name="download-outline" size={16} color="#166534" />
+        </TouchableOpacity>
         {(managerFilterIds.length > 0 || statusFilterIds.length > 0) && (
           <TouchableOpacity
             style={[s.filterBtn, { backgroundColor: COLORS.errorBg }]}

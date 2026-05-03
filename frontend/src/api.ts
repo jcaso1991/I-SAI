@@ -54,6 +54,22 @@ export const api = {
     request(`/materiales/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   stats: () => request("/stats"),
   getDashboard: () => request("/dashboard"),
+  exportProjectsExcel: async () => {
+    const token = await getToken();
+    const res = await fetch(`${BASE}/api/materiales/export-excel`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `proyectos.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 15000);
+  },
   onedriveStatus: () => request("/auth/onedrive/status"),
   onedriveLogin: () => request("/auth/onedrive/login"),
   onedriveDisconnect: () => request("/auth/onedrive/disconnect", { method: "POST" }),
