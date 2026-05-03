@@ -26,7 +26,7 @@ const DAY_LABELS_FULL = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 const DAY_LABELS_MONTH = ["L", "M", "X", "J", "V", "S", "D"];
 const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
-type ViewMode = "day" | "week" | "month";
+type ViewMode = "day" | "week" | "month" | "multi";
 type Technician = { id: string; name: string; email: string };
 type RecurrenceType = "none" | "daily" | "weekly" | "monthly";
 
@@ -252,12 +252,12 @@ export default function CalendarScreen() {
 
   const stepBack = () => {
     if (view === "day") setAnchor(addDays(anchor, -1));
-    else if (view === "week") setAnchor(addDays(anchor, -7));
+    else if (view === "week" || view === "multi") setAnchor(addDays(anchor, -7));
     else setAnchor(addMonths(anchor, -1));
   };
   const stepForward = () => {
     if (view === "day") setAnchor(addDays(anchor, 1));
-    else if (view === "week") setAnchor(addDays(anchor, 7));
+    else if (view === "week" || view === "multi") setAnchor(addDays(anchor, 7));
     else setAnchor(addMonths(anchor, 1));
   };
 
@@ -340,6 +340,10 @@ export default function CalendarScreen() {
       const s = mondayOf(anchor);
       return fmtRange(s, addDays(s, 4));
     }
+    if (view === "multi") {
+      const s = mondayOf(anchor);
+      return `${fmtRange(s, addDays(s, 4))} · Equipo`;
+    }
     return `${MONTHS[anchor.getMonth()]} ${anchor.getFullYear()}`;
   }, [view, anchor]);
 
@@ -393,7 +397,7 @@ export default function CalendarScreen() {
 
       {/* View selector */}
       <View style={s.viewSelector}>
-        {(["day", "week", "month"] as ViewMode[]).map((v) => (
+        {(["day", "week", "multi", "month"] as ViewMode[]).map((v) => (
           <TouchableOpacity
             key={v}
             testID={`view-${v}`}
@@ -401,12 +405,12 @@ export default function CalendarScreen() {
             onPress={() => setView(v)}
           >
             <Ionicons
-              name={v === "day" ? "today-outline" : v === "week" ? "calendar-outline" : "grid-outline"}
+              name={v === "day" ? "today-outline" : v === "week" ? "calendar-outline" : v === "multi" ? "people-outline" : "grid-outline"}
               size={16}
               color={view === v ? "#fff" : COLORS.navy}
             />
             <Text style={[s.viewChipText, view === v && { color: "#fff" }]}>
-              {v === "day" ? "Día" : v === "week" ? "Semana" : "Mes"}
+              {v === "day" ? "Día" : v === "week" ? "Semana" : v === "multi" ? "Equipo" : "Mes"}
             </Text>
           </TouchableOpacity>
         ))}
@@ -491,6 +495,19 @@ export default function CalendarScreen() {
           onCreate={(startMin, endMin) => setCreateRange({ day: anchor, startMin, endMin })}
           onTapEvent={openTappedEvent}
           onMoveEvent={moveEvent}
+        />
+      ) : view === "multi" ? (
+        <MultiView
+          weekStart={mondayOf(anchor)}
+          events={filteredEvents}
+          isAdmin={isAdmin}
+          now={now}
+          onCreate={(day, startMin, endMin) => setCreateRange({ day, startMin, endMin })}
+          onTapEvent={openTappedEvent}
+          onMoveEvent={moveEvent}
+          onSelectDay={(d) => { setAnchor(d); setView("day"); }}
+          users={allUsers}
+          disabledUserIds={disabledUserIds}
         />
       ) : (
         <WeekView
@@ -734,6 +751,66 @@ function WeekView({
         </View>
       </ScrollView>
     </>
+  );
+}
+
+// ---------------- Multi-view (each visible user gets a week column) ----------------
+function MultiView({
+  weekStart, events, isAdmin, now, onCreate, onTapEvent, onMoveEvent, onSelectDay,
+  users, disabledUserIds,
+}: {
+  weekStart: Date; events: EventT[]; isAdmin: boolean; now: Date;
+  onCreate: (day: Date, startMin: number, endMin: number) => void;
+  onTapEvent: (e: EventT) => void;
+  onMoveEvent: (ev: EventT, s: Date, e: Date) => Promise<void>;
+  onSelectDay: (d: Date) => void;
+  users: { id: string; name: string; email: string; color?: string }[];
+  disabledUserIds: Set<string>;
+}) {
+  const visibleUsers = users.filter((u) => !disabledUserIds.has(u.id));
+
+  return (
+    <View style={{ flex: 1 }}>
+      {/* Scrollable user columns */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator
+        style={{ flex: 1 }}
+        contentContainerStyle={{ gap: 0 }}
+      >
+        {visibleUsers.length === 0 ? (
+          <View style={{ padding: 40, alignItems: "center" }}>
+            <Text style={{ color: COLORS.textSecondary }}>No hay usuarios visibles</Text>
+          </View>
+        ) : visibleUsers.map((user) => {
+          const thisUserEvents = events.filter((ev) => (ev.assigned_user_ids || []).includes(user.id));
+          return (
+            <View key={user.id} style={{ width: 320, borderRightWidth: 1, borderRightColor: COLORS.border }}>
+              {/* User header */}
+              <View style={{ paddingHorizontal: 8, paddingVertical: 6, backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: user.color || COLORS.primary }} />
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: COLORS.text }} numberOfLines={1}>{user.name || user.email}</Text>
+                </View>
+              </View>
+              {/* Week column for this user */}
+              <View style={{ flex: 1 }}>
+                <WeekView
+                  weekStart={weekStart}
+                  events={thisUserEvents}
+                  isAdmin={isAdmin}
+                  now={now}
+                  onCreate={onCreate}
+                  onTapEvent={onTapEvent}
+                  onMoveEvent={onMoveEvent}
+                  onSelectDay={onSelectDay}
+                />
+              </View>
+            </View>
+          );
+        })}
+      </ScrollView>
+    </View>
   );
 }
 
