@@ -140,7 +140,48 @@ export default function PlanEditor() {
     return { x: sx / scale, y: sy / scale };
   };
 
-  // Text tool state: where the text was placed and the in-progress input.
+  // Native wheel event listener for zoom (needs passive: false to preventDefault)
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const timer = setTimeout(() => {
+      const el = canvasRef.current as any;
+      if (!el) return;
+      let node: HTMLElement | null = null;
+      if (el instanceof HTMLElement) {
+        node = el;
+      } else if (typeof el?.getNativeNode === "function") {
+        node = el.getNativeNode();
+      }
+      if (!node) return;
+      const handler = (e: WheelEvent) => {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+          const newZoom = Math.round(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomRef.current + delta)) * 100) / 100;
+          if (newZoom === zoomRef.current) return;
+          const scrollEl = scrollRef.current as HTMLElement | null;
+          if (scrollEl) {
+            const rect = scrollEl.getBoundingClientRect();
+            const cx = e.clientX - rect.left + scrollEl.scrollLeft;
+            const cy = e.clientY - rect.top + scrollEl.scrollTop;
+            const ratio = newZoom / zoomRef.current;
+            zoomRef.current = newZoom;
+            setZoomState(newZoom);
+            requestAnimationFrame(() => {
+              scrollEl.scrollLeft = cx * ratio - (e.clientX - rect.left);
+              scrollEl.scrollTop = cy * ratio - (e.clientY - rect.top);
+            });
+          } else {
+            zoomRef.current = newZoom;
+            setZoomState(newZoom);
+          }
+        }
+      };
+      node.addEventListener("wheel", handler, { passive: false });
+      return () => node?.removeEventListener("wheel", handler);
+    }, 100);
+  }, []);
   const [textModal, setTextModal] = useState<{ x: number; y: number; editingId?: string } | null>(null);
   const [textDraft, setTextDraft] = useState("");
   const [textFontSize, setTextFontSize] = useState<number>(18);
@@ -1055,31 +1096,6 @@ export default function PlanEditor() {
         style={s.canvasWrap}
         onLayout={(e) => setCanvasSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
         collapsable={false}
-        {...(Platform.OS === "web" ? { onWheel: (e: any) => {
-          if (e.ctrlKey || e.metaKey) {
-            e.preventDefault();
-            e.stopPropagation();
-            const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
-            const newZoom = Math.round(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomRef.current + delta)) * 100) / 100;
-            if (newZoom === zoomRef.current) return;
-            // Zoom toward cursor position
-            const el = scrollRef.current as HTMLElement | null;
-            if (el) {
-              const rect = el.getBoundingClientRect();
-              const cx = e.clientX - rect.left + el.scrollLeft;
-              const cy = e.clientY - rect.top + el.scrollTop;
-              const ratio = newZoom / zoomRef.current;
-              zoomRef.current = newZoom;
-              setZoomState(newZoom);
-              requestAnimationFrame(() => {
-                el.scrollLeft = cx * ratio - (e.clientX - rect.left);
-                el.scrollTop = cy * ratio - (e.clientY - rect.top);
-              });
-            } else {
-              setZoom(newZoom);
-            }
-          }
-        } } as any : {})}
       >
         {/* Canvas content with zoom and optional rotation */}
         <View
