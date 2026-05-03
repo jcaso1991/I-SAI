@@ -15,6 +15,7 @@ export type PermissionKey =
   | "planos.view" | "planos.edit"
   | "presupuestos.view" | "presupuestos.edit"
   | "sat.view" | "sat.edit"
+  | "chat.view"
   | "users.manage" | "roles.manage" | "onedrive.manage";
 
 export type Me = {
@@ -60,7 +61,7 @@ export function usePermissions() {
  */
 export type NavItem =
   | "home" | "calendario" | "planos" | "proyectos"
-  | "presupuestos" | "sat" | "ajustes";
+  | "presupuestos" | "chat" | "sat" | "ajustes";
 
 export function visibleNav(perms: string[]): NavItem[] {
   const items: NavItem[] = ["home"]; // home is always visible
@@ -68,6 +69,7 @@ export function visibleNav(perms: string[]): NavItem[] {
   if (perms.includes("planos.view")) items.push("planos");
   if (perms.includes("proyectos.view")) items.push("proyectos");
   if (perms.includes("presupuestos.view")) items.push("presupuestos");
+  if (perms.includes("chat.view")) items.push("chat");
   if (perms.includes("sat.view")) items.push("sat");
   // Ajustes is visible to everyone (theme + portfolio etc)
   items.push("ajustes");

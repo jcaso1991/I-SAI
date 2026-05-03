@@ -187,6 +187,7 @@ PERMISSIONS_CATALOG = [
     {"key": "users.manage", "label": "Gestionar usuarios", "module": "Administración"},
     {"key": "roles.manage", "label": "Gestionar roles y permisos", "module": "Administración"},
     {"key": "onedrive.manage", "label": "Conectar/Sincronizar OneDrive", "module": "Administración"},
+    {"key": "chat.view", "label": "Usar el chat", "module": "Chat"},
 ]
 ALL_PERMS = [p["key"] for p in PERMISSIONS_CATALOG]
 
@@ -200,9 +201,9 @@ NOTIFICATION_CATALOG = [
 ALL_NOTIFS = [n["key"] for n in NOTIFICATION_CATALOG]
 
 NON_ADMIN_PERMS = [p for p in ALL_PERMS if p not in ("users.manage", "roles.manage")]
-TECNICO_PERMS = ["proyectos.view", "proyectos.edit", "calendario.view", "calendario.edit", "planos.view", "planos.edit"]
-COMERCIAL_PERMS = ["presupuestos.view", "presupuestos.edit", "proyectos.view"]
-SAT_PERMS = ["sat.view", "sat.edit"]
+TECNICO_PERMS = ["proyectos.view", "proyectos.edit", "calendario.view", "calendario.edit", "planos.view", "planos.edit", "chat.view"]
+COMERCIAL_PERMS = ["presupuestos.view", "presupuestos.edit", "proyectos.view", "chat.view"]
+SAT_PERMS = ["sat.view", "sat.edit", "chat.view"]
 
 # System roles seeded on startup. Admin role can NEVER be modified or deleted.
 DEFAULT_ROLES = [
@@ -2820,6 +2821,121 @@ async def portfolio_demo_video(request: Request):
 
     return FileResponse(p, media_type="video/mp4", headers={"Accept-Ranges": "bytes"})
 
+
+# ====================  CHAT — mensajería entre usuarios  ====================
+class ChatCreate(BaseModel):
+    participant_ids: List[str]  # must include current user
+    name: Optional[str] = None  # for group chats
+    project_id: Optional[str] = None
+    event_id: Optional[str] = None
+
+class MessageCreate(BaseModel):
+    text: str = Field(..., min_length=1, max_length=4000)
+
+@api_router.post("/chats")
+async def chat_create(payload: ChatCreate, user: dict = Depends(current_user)):
+    if user["id"] not in payload.participant_ids:
+        payload.participant_ids.append(user["id"])
+    pids = list(dict.fromkeys(payload.participant_ids))
+    if len(pids) < 2:
+        raise HTTPException(400, "Mínimo 2 participantes")
+    # For 1-on-1 chats, check if chat already exists
+    if len(pids) == 2 and not payload.name:
+        existing = await db.chats.find_one({
+            "participant_ids": {"$all": pids, "$size": 2},
+            "name": {"$in": [None, ""]},
+        })
+        if existing:
+            existing.pop("_id", None)
+            return existing
+    now = datetime.now(timezone.utc).isoformat()
+    chat = {
+        "id": str(uuid.uuid4()),
+        "participant_ids": pids,
+        "name": payload.name or None,
+        "project_id": payload.project_id,
+        "event_id": payload.event_id,
+        "created_by": user["id"],
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.chats.insert_one(chat)
+    chat.pop("_id", None)
+    return chat
+
+@api_router.get("/chats")
+async def chat_list(user: dict = Depends(current_user)):
+    chats = await db.chats.find(
+        {"participant_ids": user["id"]},
+        {"_id": 0},
+    ).sort("updated_at", -1).to_list(200)
+    # Enrich with last message, participant names, and unread count
+    out = []
+    for c in chats:
+        last_msg = await db.messages.find_one(
+            {"chat_id": c["id"]},
+            {"_id": 0},
+            sort=[("created_at", -1)],
+        )
+        c["last_message"] = last_msg
+        unread = await db.messages.count_documents({
+            "chat_id": c["id"],
+            "sender_id": {"$ne": user["id"]},
+            "read_by": {"$ne": user["id"]},
+        })
+        c["unread"] = unread
+        # Participant names
+        users = await db.users.find(
+            {"id": {"$in": c["participant_ids"]}},
+            {"_id": 0, "id": 1, "name": 1, "email": 1, "color": 1},
+        ).to_list(50)
+        c["participants"] = users
+        out.append(c)
+    return out
+
+@api_router.get("/chats/{cid}/messages")
+async def chat_messages(cid: str, user: dict = Depends(current_user), limit: int = 50, before: Optional[str] = None):
+    chat = await db.chats.find_one({"id": cid})
+    if not chat or user["id"] not in chat.get("participant_ids", []):
+        raise HTTPException(404, "Chat no encontrado")
+    q: dict = {"chat_id": cid}
+    if before:
+        q["created_at"] = {"$lt": before}
+    msgs = await db.messages.find(q, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    # Mark as read
+    await db.messages.update_many(
+        {"chat_id": cid, "sender_id": {"$ne": user["id"]}, "read_by": {"$ne": user["id"]}},
+        {"$push": {"read_by": user["id"]}},
+    )
+    return list(reversed(msgs))
+
+@api_router.post("/chats/{cid}/messages")
+async def chat_send_message(cid: str, payload: MessageCreate, user: dict = Depends(current_user)):
+    chat = await db.chats.find_one({"id": cid})
+    if not chat or user["id"] not in chat.get("participant_ids", []):
+        raise HTTPException(404, "Chat no encontrado")
+    now = datetime.now(timezone.utc).isoformat()
+    msg = {
+        "id": str(uuid.uuid4()),
+        "chat_id": cid,
+        "sender_id": user["id"],
+        "sender_name": user.get("name") or user.get("email"),
+        "text": payload.text.strip(),
+        "created_at": now,
+        "read_by": [user["id"]],
+    }
+    await db.messages.insert_one(msg)
+    await db.chats.update_one({"id": cid}, {"$set": {"updated_at": now}})
+    msg.pop("_id", None)
+    return msg
+
+@api_router.get("/chats/unread-total")
+async def chat_unread_total(user: dict = Depends(current_user)):
+    total = await db.messages.count_documents({
+        "sender_id": {"$ne": user["id"]},
+        "read_by": {"$ne": user["id"]},
+    })
+    return {"unread": total}
 
 app.include_router(api_router)
 

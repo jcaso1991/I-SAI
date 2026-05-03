@@ -64,6 +64,7 @@ export default function HomeScreen() {
   const showCalendario = has("calendario.view");
   const showPlanos = has("planos.view");
   const showPresupuestos = has("presupuestos.view");
+  const showChat = has("chat.view");
   const showSat = has("sat.view");
 
   /** iOS-style tile (rounded square + icon + title). */
@@ -171,6 +172,15 @@ export default function HomeScreen() {
                 title="Presupuestos"
                 accent={ios.colors.purple}
                 onPress={() => router.push("/presupuestos")}
+              />
+            )}
+            {showChat && (
+              <Tile
+                testID="circle-chat"
+                icon="chatbubbles"
+                title="Chat"
+                accent={ios.colors.green}
+                onPress={() => router.push("/chat")}
               />
             )}
             {showSat && (

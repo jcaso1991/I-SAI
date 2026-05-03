@@ -14,16 +14,17 @@ import { api, COLORS } from "../api";
 
 export type BottomTab =
   | "home" | "proyectos" | "calendario" | "planos"
-  | "presupuestos" | "ajustes" | "sat";
+  | "presupuestos" | "chat" | "ajustes" | "sat";
 
 const TAB_PERM_MAP: Record<BottomTab, string | null> = {
-  home: null,                // always visible
+  home: null,
   proyectos: "proyectos.view",
   calendario: "calendario.view",
   planos: "planos.view",
   presupuestos: "presupuestos.view",
+  chat: "chat.view",
   sat: "sat.view",
-  ajustes: null,             // always visible
+  ajustes: null,
 };
 
 const TAB_ROUTES: Record<BottomTab, string> = {
@@ -32,6 +33,7 @@ const TAB_ROUTES: Record<BottomTab, string> = {
   calendario: "/calendario",
   planos: "/planos",
   presupuestos: "/presupuestos",
+  chat: "/chat",
   sat: "/sat",
   ajustes: "/admin",
 };
@@ -42,6 +44,7 @@ const LABELS: Record<BottomTab, string> = {
   calendario: "Calendario",
   planos: "Planos",
   presupuestos: "Presupuestos",
+  chat: "Chat",
   ajustes: "Ajustes",
   sat: "CRM SAT",
 };
@@ -98,7 +101,7 @@ export default function IOSTabBar({ active, isAdmin: _isAdmin }: { active: Botto
       });
 
   // Order: Home leftmost, then functional tabs, Settings rightmost.
-  const ORDER: BottomTab[] = ["home", "calendario", "planos", "proyectos", "presupuestos", "sat", "ajustes"];
+  const ORDER: BottomTab[] = ["home", "calendario", "planos", "proyectos", "presupuestos", "chat", "sat", "ajustes"];
   const ordered = ORDER.filter((t) => visibleTabs.includes(t));
 
   return (

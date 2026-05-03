@@ -277,6 +277,13 @@ export const api = {
 
   // Microsoft login (Entra ID)
   microsoftLoginUrl: () => request("/auth/microsoft/login"),
+
+  // Chat
+  chatList: () => request("/chats"),
+  chatMessages: (cid: string, before?: string) => request(`/chats/${cid}/messages${before ? `?before=${before}` : ""}`),
+  chatSend: (cid: string, text: string) => request(`/chats/${cid}/messages`, { method: "POST", body: JSON.stringify({ text }) }),
+  chatCreate: (body: { participant_ids: string[]; name?: string; project_id?: string; event_id?: string }) => request("/chats", { method: "POST", body: JSON.stringify(body) }),
+  chatUnreadTotal: () => request("/chats/unread-total"),
 };
 
 export const COLORS = {

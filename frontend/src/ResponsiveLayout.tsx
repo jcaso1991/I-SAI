@@ -104,6 +104,9 @@ export default function ResponsiveLayout({
         {has("presupuestos.view") && (
           <SideLink active={active === "presupuestos"} label="Presupuestos" icon="document-text" to="/presupuestos" />
         )}
+        {has("chat.view") && (
+          <SideLink active={active === "chat"} label="Chat" icon="chatbubbles" to="/chat" />
+        )}
         {has("sat.view") && (
           <SideLink active={active === "sat"} label="CRM SAT" icon="headset" to="/sat" />
         )}
