@@ -55,6 +55,26 @@ railway logs --service backend --environment poc
 railway logs --service frontend --environment poc
 ```
 
+### Recorrido demo
+
+Una vez ambos servicios están corriendo, confirmá que las partes clave funcionan:
+
+1. **Login**: entrá al frontend e iniciá sesión con las credenciales demo (`DEMO_ADMIN_EMAIL` y `DEMO_ADMIN_PASSWORD`).
+2. **Clientes/incidencias**: navegá a clientes y técnicos; verificá que los datos demo se cargan y podés crear o editar registros.
+3. **Calendario desde hoy 8-18**: revisá que el calendario muestre eventos o citas en el rango laboral.
+4. **Presupuestos con estados**: abrí presupuestos y confirmá que se visualizan, editan y cambian de estado correctamente.
+5. **Proyectos/materiales desde OneDrive**: verificá que la integración con OneDrive lista carpetas, archivos o proyectos según corresponda, sin depender de `demo-material`.
+
+### Verificación CORS
+
+**`FRONTEND_URL` debe ser exactamente la URL pública del frontend** (la que devuelve `railway domain --service frontend --environment poc`). El backend la incluye automáticamente en CORS.
+
+**`CORS_ORIGINS` es solo para dominios extra** (ej. un dominio personalizado, un staging). No dupliques `FRONTEND_URL` en `CORS_ORIGINS`, no hace falta y puede causar confusión.
+
+Si las llamadas del frontend al backend fallan con errores de CORS:
+- Verificá que `FRONTEND_URL` coincida con la URL real del frontend (protocolo `https://` incluido, sin barra al final).
+- Confirmá que `CORS_ORIGINS` no tenga valores repetidos ni la misma URL que `FRONTEND_URL`.
+
 ## Variables necesarias
 
 ### Backend
@@ -69,6 +89,7 @@ railway logs --service frontend --environment poc
 - `DEMO_ADMIN_PASSWORD`: password del usuario admin demo; requerida para crearlo.
 - `DEMO_ADMIN_NAME`: nombre visible del admin demo.
 - `DEMO_USER_PASSWORD`: password compartida para usuarios demo no admin; requerida para crearlos.
+- `CORS_ORIGINS`: opcional. Orígenes adicionales separados por coma (ej. `https://otro-dominio.com,https://staging.app.com`). `FRONTEND_URL` se incluye siempre automáticamente.
 
 ### Frontend
 

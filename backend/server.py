@@ -50,6 +50,7 @@ GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 # Microsoft user-authentication redirect URIs
 MS_AUTH_REDIRECT_URI = os.environ.get('MS_AUTH_REDIRECT_URI', 'http://localhost:8000/api/auth/microsoft/callback')
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:8081')
+CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '')
 
 # Demo seed config
 ENABLE_DEMO_SEED = os.environ.get('ENABLE_DEMO_SEED', 'false').lower() == 'true'
@@ -3222,10 +3223,14 @@ async def portfolio_demo_video(request: Request):
 
 app.include_router(api_router)
 
+cors_origins = [FRONTEND_URL]
+if CORS_ORIGINS:
+    cors_origins.extend(o.strip() for o in CORS_ORIGINS.split(',') if o.strip())
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -11,6 +11,7 @@ SIEMPRE responde en español. Nunca uses jerga técnica sin explicarla con una a
 - No uses pull requests salvo cuando la persona invoque `/pedir-ayuda`.
 - No uses `git restore`, `git reset` ni `git revert` para deshacer; usá snapshot/OpenCode `/undo`.
 - No hagas commits salvo cuando la persona invoque `/guardar` o `/pedir-ayuda` y confirme cuando corresponda.
+- Los mensajes de commit deben estar en español y seguir conventional commits (ej. `feat:`, `fix:`, `docs:`).
 - Explicá riesgos en lenguaje claro: como si marcaras zonas peligrosas en una obra antes de entrar.
 
 ## Forma de comunicarse
