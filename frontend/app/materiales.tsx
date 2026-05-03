@@ -30,10 +30,12 @@ export default function Materiales() {
 
   const PROJECT_STATUSES = [
     { key: "pendiente", label: "Pendiente", color: "#F59E0B" },
-    { key: "a_facturar", label: "A facturar", color: "#8B5CF6" },
     { key: "planificado", label: "Planificado", color: "#3B82F6" },
-    { key: "terminado", label: "Terminado", color: "#10B981" },
-    { key: "anulado", label: "Anulado", color: "#EF4444" },
+    { key: "a_facturar", label: "A facturar", color: "#8B5CF6" },
+    { key: "facturado", label: "Facturado", color: "#10B981" },
+    { key: "terminado", label: "Terminado", color: "#6366F1" },
+    { key: "bloqueado", label: "Bloqueado", color: "#EF4444" },
+    { key: "anulado", label: "Anulado", color: "#6B7280" },
   ];
 
   // Persist manager and status filters
@@ -112,8 +114,10 @@ export default function Materiales() {
     const statusColors: Record<string, { bg: string; fg: string; label: string }> = {
       a_facturar: { bg: "#EDE9FE", fg: "#5B21B6", label: "Facturar" },
       planificado: { bg: "#DBEAFE", fg: "#1E40AF", label: "Planif." },
-      terminado: { bg: "#DCFCE7", fg: "#166534", label: "Terminado" },
-      anulado: { bg: "#FEE2E2", fg: "#991B1B", label: "Anulado" },
+      facturado: { bg: "#DCFCE7", fg: "#166534", label: "Facturado" },
+      terminado: { bg: "#E0E7FF", fg: "#3730A3", label: "Terminado" },
+      bloqueado: { bg: "#FEE2E2", fg: "#991B1B", label: "Bloqueado" },
+      anulado: { bg: "#F3F4F6", fg: "#6B7280", label: "Anulado" },
     };
     const st = item.project_status && item.project_status !== "pendiente" ? statusColors[item.project_status] : null;
     return (

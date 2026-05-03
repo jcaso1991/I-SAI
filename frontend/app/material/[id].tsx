@@ -216,8 +216,10 @@ export default function MaterialDetail() {
                   {projectStatus === "pendiente" ? "🟡 Pendiente"
                     : projectStatus === "a_facturar" ? "🟣 A facturar"
                     : projectStatus === "planificado" ? "🔵 Planificado"
-                    : projectStatus === "terminado" ? "🟢 Terminado"
-                    : projectStatus === "anulado" ? "🔴 Anulado"
+                    : projectStatus === "facturado" ? "🟢 Facturado"
+                    : projectStatus === "terminado" ? "🔷 Terminado"
+                    : projectStatus === "bloqueado" ? "🔴 Bloqueado"
+                    : projectStatus === "anulado" ? "⚫ Anulado"
                     : "Selecciona estado..."}
                 </Text>
               </View>
@@ -546,10 +548,12 @@ export default function MaterialDetail() {
             <ScrollView style={{ maxHeight: 400 }}>
               {[
                 { key: "pendiente", label: "🟡 Pendiente", color: "#F59E0B" },
-                { key: "a_facturar", label: "🟣 A facturar", color: "#8B5CF6" },
                 { key: "planificado", label: "🔵 Planificado", color: "#3B82F6" },
-                { key: "terminado", label: "🟢 Terminado", color: "#10B981" },
-                { key: "anulado", label: "🔴 Anulado", color: "#EF4444" },
+                { key: "a_facturar", label: "🟣 A facturar", color: "#8B5CF6" },
+                { key: "facturado", label: "🟢 Facturado", color: "#10B981" },
+                { key: "terminado", label: "🔷 Terminado", color: "#6366F1" },
+                { key: "bloqueado", label: "🔴 Bloqueado", color: "#EF4444" },
+                { key: "anulado", label: "⚫ Anulado", color: "#6B7280" },
               ].map((st) => {
                 const active = projectStatus === st.key;
                 return (
