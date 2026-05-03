@@ -1,0 +1,160 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "lider-producto",
+  "share": "disabled",
+  "snapshot": true,
+  "agent": {
+    "lider-producto": {
+      "mode": "primary",
+      "model": "deepseek/deepseek-v4-pro",
+      "permission": {
+        "edit": "ask"
+      }
+    },
+    "explorador": {
+      "mode": "subagent",
+      "hidden": true,
+      "model": "deepseek/deepseek-v4-flash",
+      "permission": {
+        "task": { "*": "deny" }
+      }
+    },
+    "implementador": {
+      "mode": "subagent",
+      "hidden": true,
+      "model": "deepseek/deepseek-v4-pro",
+      "permission": {
+        "task": { "*": "deny" }
+      }
+    },
+    "qa": {
+      "mode": "subagent",
+      "hidden": true,
+      "model": "deepseek/deepseek-v4-flash",
+      "permission": {
+        "task": { "*": "deny" }
+      }
+    },
+    "disenador-ui": {
+      "mode": "subagent",
+      "hidden": true,
+      "model": "deepseek/deepseek-v4-flash",
+      "permission": {
+        "task": { "*": "deny" }
+      }
+    }
+  },
+  "permission": {
+    "read": {
+      "*": "allow",
+      "*.env": "deny",
+      "*.env.*": "deny",
+      "*.env.example": "allow",
+      "*credentials*": "deny",
+      "*.pem": "deny",
+      "*.key": "deny"
+    },
+    "edit": {
+      "*.env": "deny",
+      "*.env.*": "deny",
+      "*credentials*": "deny",
+      "*.pem": "deny",
+      "*.key": "deny"
+    },
+    "grep": {
+      "*": "allow",
+      "*.env*": "deny"
+    },
+    "glob": {
+      "*": "allow",
+      "**/*.env*": "deny"
+    },
+    "task": {
+      "*": "deny",
+      "explorador": "allow",
+      "implementador": "allow",
+      "qa": "allow",
+      "disenador-ui": "allow"
+    },
+    "skill": {
+      "*": "deny",
+      "dominio-proyecto": "allow",
+      "frontend-expo-industrial": "allow",
+      "backend-fastapi-datos": "allow",
+      "qa-seguro": "allow",
+      "comunicacion-usuario": "allow"
+    },
+    "bash": {
+      "pwd*": "allow",
+      "ls*": "allow",
+      "git status*": "allow",
+      "git diff*": "allow",
+      "git log*": "allow",
+      "git branch*": "allow",
+      "git checkout -b*": "allow",
+      "git add*": "allow",
+      "git commit*": "allow",
+      "git push*": "allow",
+      "gh pr create*": "allow",
+      "gh issue create*": "allow",
+      "pytest*": "ask",
+      "python -m pytest*": "ask",
+      "python -m py_compile *": "ask",
+      "python*": "ask",
+      "python -m pip install*": "ask",
+      "yarn*": "ask",
+      "yarn add*": "ask",
+      "yarn remove*": "ask",
+      "npm*": "ask",
+      "npx expo*": "ask",
+      "cat*": "ask",
+      "sed*": "ask",
+      "grep*": "ask",
+      "rg*": "ask",
+      "find*": "ask",
+      "git push": "ask",
+      "git push origin HEAD*": "ask",
+      "yarn install*": "allow",
+      "yarn list*": "allow",
+      "npm install*": "allow",
+      "npm ls*": "allow",
+      "npm list*": "allow",
+      ".opencode/scripts/safe-backend-pytest.sh*": "allow",
+      "./.opencode/scripts/safe-backend-pytest.sh*": "allow",
+      "python -m py_compile backend/*": "allow",
+      "python -m py_compile frontend/*": "allow",
+      "git push * main": "deny",
+      "git push * main:*": "deny",
+      "git push * *:main": "deny",
+      "git push * master": "deny",
+      "git push * master:*": "deny",
+      "git push * *:master": "deny",
+      "gh pr merge*": "deny",
+      "gh pr close*": "deny",
+      "npm run build*": "deny",
+      "yarn build*": "deny",
+      "yarn deploy*": "deny",
+      "npm run deploy*": "deny",
+      "vercel*": "deny",
+      "netlify*": "deny",
+      "eas build*": "deny",
+      "expo build*": "deny",
+      "expo export*": "deny",
+      "npx expo export*": "deny",
+      "npx expo build*": "deny",
+      "cat *.env": "deny",
+      "cat *.env.*": "deny",
+      "cat *credentials*": "deny",
+      "cat *secret*": "deny",
+      "cat *.pem": "deny",
+      "cat *.key": "deny",
+      "head *.env*": "deny",
+      "tail *.env*": "deny",
+      "sed * *.env*": "deny",
+      "grep * *.env*": "deny",
+      "rg * *.env*": "deny",
+      "find * -name *.env*": "deny",
+      "rm*": "deny"
+    }
+  }
+}
