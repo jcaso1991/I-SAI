@@ -82,6 +82,7 @@
       "frontend-expo-industrial": "allow",
       "backend-fastapi-datos": "allow",
       "qa-seguro": "allow",
+      "railway-skills": "allow",
       "comunicacion-usuario": "allow"
     },
     "bash": {
@@ -107,10 +108,19 @@
       "yarn remove*": "ask",
       "npm*": "ask",
       "npx expo*": "ask",
+      "npx skills add*": "allow",
       "cat*": "ask",
       "sed*": "ask",
       "grep*": "ask",
       "rg*": "ask",
+      "railway add*": "allow",
+      "railway environment*": "allow",
+      "railway service*": "allow",
+      "railway status*": "allow",
+      "railway up backend --path-as-root --service backend --environment poc*": "allow",
+      "railway up frontend --path-as-root --service frontend --environment poc*": "allow",
+      "railway up*": "ask",
+      "railway variable*": "allow",
       "find*": "ask",
       "git push": "ask",
       "git push origin HEAD*": "ask",
@@ -155,6 +165,12 @@
       "rg * *.env*": "deny",
       "find * -name *.env*": "deny",
       "rm*": "deny"
+    }
+  },
+  "mcp": {
+    "railway": {
+      "type": "local",
+      "command": ["npx", "-y", "@railway/mcp-server"]
     }
   }
 }
