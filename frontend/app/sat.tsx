@@ -1399,13 +1399,12 @@ const s = StyleSheet.create({
   viewSelectorText: { fontSize: 12, fontWeight: "900", color: COLORS.primary, letterSpacing: 0.3 },
 
   copyBtn: {
-    flexDirection: "row", alignItems: "center", gap: 6,
-    paddingHorizontal: 10, height: 38, borderRadius: 10,
+    flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 8, height: 32, borderRadius: 8,
     backgroundColor: COLORS.primarySoft,
     borderWidth: 1.5, borderColor: COLORS.primary,
-    maxWidth: 170,
   },
-  copyBtnText: { color: COLORS.primary, fontWeight: "900", fontSize: 12 },
+  copyBtnText: { color: COLORS.primary, fontWeight: "800", fontSize: 10 },
 
   dropdownBackdrop: {
     position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 20,
