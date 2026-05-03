@@ -52,6 +52,7 @@ export const api = {
   getMaterial: (id: string) => request(`/materiales/${id}`),
   updateMaterial: (id: string, body: any) =>
     request(`/materiales/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  getMaterialHistory: (id: string) => request(`/materiales/${id}/history`),
   stats: () => request("/stats"),
   getDashboard: () => request("/dashboard"),
   exportProjectsExcel: async () => {
@@ -299,6 +300,7 @@ export const api = {
   chatList: () => request("/chats"),
   chatMessages: (cid: string, before?: string) => request(`/chats/${cid}/messages${before ? `?before=${before}` : ""}`),
   chatSend: (cid: string, text: string) => request(`/chats/${cid}/messages`, { method: "POST", body: JSON.stringify({ text }) }),
+  chatSendFile: (cid: string, fileBase64: string, fileName: string, fileMime: string) => request(`/chats/${cid}/messages`, { method: "POST", body: JSON.stringify({ text: "", file_base64: fileBase64, file_name: fileName, file_mime: fileMime }) }),
   chatCreate: (body: { participant_ids: string[]; name?: string; project_id?: string; event_id?: string }) => request("/chats", { method: "POST", body: JSON.stringify(body) }),
   chatUnreadTotal: () => request("/chats/unread-total"),
 };

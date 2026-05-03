@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Alert,
+  TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import { api, COLORS } from "../../src/api";
 
 type Message = {
@@ -16,6 +18,9 @@ type Message = {
   text: string;
   created_at: string;
   read_by: string[];
+  file_base64?: string;
+  file_name?: string;
+  file_mime?: string;
 };
 
 export default function ChatDetail() {
@@ -67,6 +72,44 @@ export default function ChatDetail() {
     } finally { setSending(false); }
   };
 
+  const pickAndSendFile = async () => {
+    try {
+      let fileBase64 = "";
+      let fileName = "";
+      let mimeType = "";
+      if (Platform.OS === "web") {
+        const file = await new Promise<File | null>((resolve) => {
+          const input = document.createElement("input");
+          input.type = "file";
+          input.accept = "image/*,application/pdf";
+          input.onchange = (e: any) => resolve(e.target.files?.[0] || null);
+          input.click();
+        });
+        if (!file) return;
+        fileName = file.name;
+        mimeType = file.type;
+        fileBase64 = await new Promise<string>((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => { const s = r.result as string; resolve(s.split(",")[1]); };
+          r.onerror = () => reject(r.error);
+          r.readAsDataURL(file);
+        });
+      } else {
+        const res = await DocumentPicker.getDocumentAsync({ type: ["image/*", "application/pdf"], copyToCacheDirectory: true });
+        if (res.canceled || !res.assets?.[0]) return;
+        const asset = res.assets[0];
+        fileName = asset.name;
+        mimeType = asset.mimeType || "application/octet-stream";
+        fileBase64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
+      }
+      setSending(true);
+      await api.chatSendFile(id, fileBase64, fileName, mimeType);
+      await loadMessages();
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "No se pudo enviar el archivo");
+    } finally { setSending(false); }
+  };
+
   const formatTime = (ts: string) => {
     const d = new Date(ts);
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -110,7 +153,28 @@ export default function ChatDetail() {
                     </Text>
                   )}
                   <View style={[s.bubble, isMine ? s.bubbleMine : s.bubbleOther]}>
-                    <Text style={[s.bubbleText, isMine && { color: "#fff" }]}>{msg.text}</Text>
+                    {msg.file_base64 && (
+                      <TouchableOpacity onPress={() => {
+                        if (msg.file_mime?.startsWith("image/")) {
+                          window.open(`data:${msg.file_mime};base64,${msg.file_base64}`, "_blank");
+                        } else {
+                          const a = document.createElement("a");
+                          a.href = `data:${msg.file_mime};base64,${msg.file_base64}`;
+                          a.download = msg.file_name || "archivo";
+                          a.click();
+                        }
+                      }}>
+                        {msg.file_mime?.startsWith("image/") ? (
+                          <Image source={{ uri: `data:${msg.file_mime};base64,${msg.file_base64}` }} style={{ width: 200, height: 150, borderRadius: 8, marginBottom: 4 }} resizeMode="cover" />
+                        ) : (
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, padding: 8, backgroundColor: "rgba(0,0,0,0.05)", borderRadius: 6, marginBottom: 4 }}>
+                            <Ionicons name="document" size={20} color={isMine ? "#fff" : COLORS.text} />
+                            <Text style={{ fontSize: 12, color: isMine ? "#fff" : COLORS.text }} numberOfLines={1}>{msg.file_name || "Archivo"}</Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    )}
+                    {msg.text ? <Text style={[s.bubbleText, isMine && { color: "#fff" }]}>{msg.text}</Text> : null}
                     <Text style={[s.bubbleTime, isMine && { color: "rgba(255,255,255,0.7)" }]}>
                       {formatTime(msg.created_at)}
                       {isMine && msg.read_by.length > 1 ? " ✓✓" : isMine ? " ✓" : ""}
@@ -123,6 +187,9 @@ export default function ChatDetail() {
         )}
 
         <View style={s.inputRow}>
+          <TouchableOpacity style={s.attachBtn} onPress={pickAndSendFile}>
+            <Ionicons name="attach" size={22} color={COLORS.textSecondary} />
+          </TouchableOpacity>
           <TextInput
             style={s.input}
             value={text}
@@ -162,10 +229,11 @@ const s = StyleSheet.create({
   bubbleText: { fontSize: 15, color: COLORS.text, lineHeight: 20 },
   bubbleTime: { fontSize: 10, color: COLORS.textSecondary, alignSelf: "flex-end" },
   inputRow: {
-    flexDirection: "row", alignItems: "flex-end", gap: 8,
+    flexDirection: "row", alignItems: "flex-end", gap: 6,
     padding: 10, backgroundColor: COLORS.surface,
     borderTopWidth: 1, borderTopColor: COLORS.border,
   },
+  attachBtn: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
   input: {
     flex: 1, minHeight: 40, maxHeight: 120,
     backgroundColor: COLORS.bg, borderRadius: 20,

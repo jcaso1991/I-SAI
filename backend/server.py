@@ -1957,6 +1957,9 @@ async def get_material(mid: str, user: dict = Depends(current_user)):
 
 @api_router.patch("/materiales/{mid}", response_model=Material)
 async def update_material(mid: str, payload: MaterialUpdate, user: dict = Depends(current_user)):
+    old = await db.materiales.find_one({"id": mid})
+    if not old:
+        raise HTTPException(404, "Material no encontrado")
     upd = {k: v for k, v in payload.dict().items() if v is not None}
     if not upd:
         raise HTTPException(400, "Nada que actualizar")
@@ -1966,11 +1969,31 @@ async def update_material(mid: str, payload: MaterialUpdate, user: dict = Depend
     res = await db.materiales.update_one({"id": mid}, {"$set": upd})
     if res.matched_count == 0:
         raise HTTPException(404, "Material no encontrado")
+    # Log changes to history
+    for field, new_val in upd.items():
+        if field in ("sync_status", "updated_at", "updated_by"):
+            continue
+        old_val = old.get(field)
+        if str(old_val) != str(new_val):
+            await db.project_history.insert_one({
+                "id": str(uuid.uuid4()),
+                "project_id": mid,
+                "field": field,
+                "old_value": str(old_val or ""),
+                "new_value": str(new_val or ""),
+                "changed_by": user.get("name") or user.get("email"),
+                "changed_by_id": user["id"],
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
     doc = await db.materiales.find_one({"id": mid}, {"_id": 0})
-    # schedule automatic push to OneDrive (debounced)
     if await _has_onedrive_link():
         schedule_auto_push()
     return doc
+
+@api_router.get("/materiales/{mid}/history")
+async def get_material_history(mid: str, user: dict = Depends(current_user)):
+    items = await db.project_history.find({"project_id": mid}, {"_id": 0}).sort("created_at", -1).limit(50).to_list(50)
+    return items
 
 # ---------------- Stats ----------------
 @api_router.get("/stats")
@@ -2907,7 +2930,10 @@ class ChatCreate(BaseModel):
     event_id: Optional[str] = None
 
 class MessageCreate(BaseModel):
-    text: str = Field(..., min_length=1, max_length=4000)
+    text: str = Field("", max_length=4000)
+    file_base64: Optional[str] = None
+    file_name: Optional[str] = None
+    file_mime: Optional[str] = None
 
 @api_router.post("/chats")
 async def chat_create(payload: ChatCreate, user: dict = Depends(current_user)):
@@ -2997,10 +3023,16 @@ async def chat_send_message(cid: str, payload: MessageCreate, user: dict = Depen
         "chat_id": cid,
         "sender_id": user["id"],
         "sender_name": user.get("name") or user.get("email"),
-        "text": payload.text.strip(),
+        "text": (payload.text or "").strip(),
         "created_at": now,
         "read_by": [user["id"]],
     }
+    if payload.file_base64 and payload.file_name:
+        msg["file_base64"] = payload.file_base64
+        msg["file_name"] = payload.file_name
+        msg["file_mime"] = payload.file_mime or "application/octet-stream"
+    if not msg["text"] and not msg.get("file_base64"):
+        raise HTTPException(400, "El mensaje no puede estar vacío")
     await db.messages.insert_one(msg)
     await db.chats.update_one({"id": cid}, {"$set": {"updated_at": now}})
     msg.pop("_id", None)

@@ -96,6 +96,8 @@ export default function MaterialDetail() {
   const [managers, setManagers] = useState<{ id: string; name: string; email: string }[]>([]);
   const [managerId, setManagerId] = useState("");
   const [projectStatus, setProjectStatus] = useState("pendiente");
+  const [history, setHistory] = useState<any[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const [showTechPicker, setShowTechPicker] = useState(false);
   const [showManagerPicker, setShowManagerPicker] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
@@ -337,7 +339,7 @@ export default function MaterialDetail() {
           <TouchableOpacity
             testID="btn-save"
             style={[s.btnPrimary, (!dirty || saving) && s.btnDisabled]}
-            onPress={save}
+            onPress={async () => { await save(); setHistory(await api.getMaterialHistory(id).catch(() => [])); }}
             disabled={!dirty || saving}
           >
             {saving ? (
@@ -348,7 +350,29 @@ export default function MaterialDetail() {
               </Text>
             )}
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.btnPrimarySmall, { backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border }]}
+            onPress={async () => { setShowHistory(!showHistory); if (!showHistory) setHistory(await api.getMaterialHistory(id).catch(() => [])); }}
+          >
+            <Ionicons name="time-outline" size={18} color={COLORS.textSecondary} />
+            <Text style={[s.btnPrimaryText, { color: COLORS.textSecondary }]}>Historial</Text>
+          </TouchableOpacity>
         </View>
+        {showHistory && (
+          <View style={{ padding: 4 }}>
+            {history.length === 0 ? (
+              <Text style={{ color: COLORS.textDisabled, fontStyle: "italic", padding: 8, fontSize: 12 }}>Sin cambios registrados</Text>
+            ) : history.map((h, i) => (
+              <View key={h.id || i} style={{ flexDirection: "row", padding: 6, gap: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
+                <Text style={{ fontSize: 10, color: COLORS.textDisabled, minWidth: 50 }}>{(h.created_at || "").slice(0, 16).replace("T", " ")}</Text>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.primary, minWidth: 80 }}>{h.changed_by?.split("@")[0]}</Text>
+                <Text style={{ fontSize: 11, color: COLORS.text, flex: 1 }} numberOfLines={2}>
+                  <Text style={{ fontWeight: "600" }}>{h.field}</Text>: {h.old_value || "—"} → {h.new_value || "—"}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
       </KeyboardAvoidingView>
 
       <Modal
