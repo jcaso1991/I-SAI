@@ -14,6 +14,7 @@ import { api, COLORS } from "../../src/api";
 import { BUILTIN_STAMPS, STAMP_STROKE, CATEGORY_ORDER } from "../../src/stamps";
 import { captureCanvasJpegBase64, captureCanvasPngBase64, shareOrDownloadBase64 } from "../../src/canvasCapture";
 import { useBreakpoint } from "../../src/useBreakpoint";
+import SignaturePad from "../../src/SignaturePad";
 
 type Pt = { x: number; y: number };
 type LineShape = { id: string; type: "line"; points: Pt[]; stroke: string; strokeWidth: number; rotation?: number };
@@ -28,7 +29,7 @@ type StampShape = {
 };
 type Shape = LineShape | RectShape | CircleShape | StraightLineShape | TextShape | StampShape;
 
-type Tool = "pencil" | "straight" | "rect" | "circle" | "text" | "stamp" | "eraser" | "select";
+type Tool = "pencil" | "straight" | "rect" | "circle" | "text" | "stamp" | "signature" | "eraser" | "select";
 type StampItem = { id: string; name: string; is_builtin: boolean; image_base64?: string | null; icon_key?: string | null };
 
 // Color palette for drawing tools (stroke color)
@@ -106,6 +107,7 @@ export default function PlanEditor() {
   const [stamps, setStamps] = useState<StampItem[]>([]);
   const [showStampPicker, setShowStampPicker] = useState(false);
   const [showStampManager, setShowStampManager] = useState(false);
+  const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [me, setMe] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -910,6 +912,7 @@ export default function PlanEditor() {
           <ToolBtn icon="square-outline" active={tool === "rect"} onPress={() => { setTool("rect"); clearSelection(); }} label="Cuadro" />
           <ToolBtn icon="ellipse-outline" active={tool === "circle"} onPress={() => { setTool("circle"); clearSelection(); }} label="Círculo" />
           <ToolBtn icon="text" active={tool === "text"} onPress={() => { setTool("text"); clearSelection(); }} label="Texto" />
+          <ToolBtn icon="create" active={false} onPress={() => { setShowSignatureModal(true); }} label="Firma" />
           <ToolBtn icon="cube" active={tool === "stamp"} onPress={() => { setTool("stamp"); clearSelection(); setShowStampPicker(true); }} label={currentStamp?.name || "Pieza"} />
           <ToolBtn icon="trash-outline" active={tool === "eraser"} onPress={() => { setTool("eraser"); clearSelection(); }} label="Borrar" />
           <ToolBtn icon="hand-left-outline" active={tool === "select"} onPress={() => { setTool("select"); }} label="Seleccionar" />
@@ -943,6 +946,7 @@ export default function PlanEditor() {
             { icon: "square-outline", tool: "rect" as Tool, label: "Cuadro" },
             { icon: "ellipse-outline", tool: "circle" as Tool, label: "Círculo" },
             { icon: "text", tool: "text" as Tool, label: "Texto" },
+            { icon: "create", tool: "signature" as Tool, label: "Firma" },
             { icon: "cube", tool: "stamp" as Tool, label: currentStamp?.name || "Pieza" },
             { icon: "trash-outline", tool: "eraser" as Tool, label: "Borrar" },
             { icon: "hand-left-outline", tool: "select" as Tool, label: "Seleccionar" },
@@ -1301,6 +1305,36 @@ export default function PlanEditor() {
         onClose={() => setShowStampManager(false)}
         onRefresh={async () => setStamps(await api.listStamps())}
       />
+
+      {/* Signature modal */}
+      <Modal visible={showSignatureModal} transparent animationType="slide" onRequestClose={() => setShowSignatureModal(false)}>
+        <View style={s.modalRoot}>
+          <View style={[s.modalCard, { maxHeight: "60%" }]}>
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitle}>Añadir firma</Text>
+              <TouchableOpacity onPress={() => setShowSignatureModal(false)}>
+                <Ionicons name="close" size={26} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+            <SignaturePad
+              label="Firma aquí"
+              onChange={(b64) => {
+                if (b64) {
+                  const newShape: StampShape = {
+                    id: uid(), type: "stamp",
+                    x: 50, y: 50, w: 220, h: 80,
+                    stampId: uid(),
+                    image_base64: b64,
+                  };
+                  setShapes((s) => [...s, newShape]);
+                  markDirty();
+                  setShowSignatureModal(false);
+                }
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
 
       {/* Text tool editor modal:
           opened when the user taps on the canvas with the text tool active,
