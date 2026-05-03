@@ -17,7 +17,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const HOUR_START = 7;
-const HOUR_END = 18;
+const HOUR_END = 20;
 const HOURS = HOUR_END - HOUR_START;
 const HOUR_H = 56;
 const TIME_COL_W = 52;
