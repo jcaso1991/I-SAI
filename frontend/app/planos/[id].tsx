@@ -13,6 +13,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import { api, COLORS } from "../../src/api";
 import { BUILTIN_STAMPS, STAMP_STROKE, CATEGORY_ORDER } from "../../src/stamps";
 import { captureCanvasJpegBase64, captureCanvasPngBase64, shareOrDownloadBase64 } from "../../src/canvasCapture";
+import { useBreakpoint } from "../../src/useBreakpoint";
 
 type Pt = { x: number; y: number };
 type LineShape = { id: string; type: "line"; points: Pt[]; stroke: string; strokeWidth: number; rotation?: number };
@@ -67,6 +68,7 @@ const BOTTOM_H = 84;
 export default function PlanEditor() {
   const { id, export: exportParam } = useLocalSearchParams<{ id: string; export?: string }>();
   const router = useRouter();
+  const { isWide } = useBreakpoint();
   const autoExportRef = useRef(false);
 
   const [loading, setLoading] = useState(true);
@@ -108,6 +110,7 @@ export default function PlanEditor() {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ w: 1000, h: 1000 });
+  const [toolbarOpen, setToolbarOpen] = useState(false);
   const [zoom, setZoomState] = useState(1);
   const MIN_ZOOM = 0.15;
   const MAX_ZOOM = 5;
@@ -822,7 +825,21 @@ export default function PlanEditor() {
         )}
       </View>
 
-      {/* Toolbar */}
+      {/* Toolbar — collapsible on mobile for cleaner view */}
+      {!isWide && (
+        <TouchableOpacity
+          testID="btn-toggle-toolbar"
+          style={s.toolbarToggle}
+          onPress={() => setToolbarOpen((v) => !v)}
+        >
+          <Ionicons name={toolbarOpen ? "chevron-up" : "hammer-outline"} size={18} color={COLORS.primary} />
+          <Text style={s.toolbarToggleText}>
+            {toolbarOpen ? "Ocultar herramientas" : `Herramientas · ${tool === "stamp" ? (currentStamp?.name || "Pieza") : tool.charAt(0).toUpperCase() + tool.slice(1)}`}
+          </Text>
+          {!toolbarOpen && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: strokeColor }} />}
+        </TouchableOpacity>
+      )}
+      {(isWide || toolbarOpen) && (
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -859,6 +876,7 @@ export default function PlanEditor() {
           </TouchableOpacity>
         )}
       </ScrollView>
+      )}
 
       {/* Sub-toolbar for the Seleccionar tool: choose between tapping
           individual shapes or painting a marquee rectangle. */}
@@ -1761,6 +1779,12 @@ const s = StyleSheet.create({
   saveBackBtnTxt: { color: "#fff", fontWeight: "800", fontSize: 13, letterSpacing: 0.3 },
   headerTitle: { fontSize: 16, fontWeight: "800", color: COLORS.text },
   headerSub: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
+  toolbarToggle: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingHorizontal: 12, paddingVertical: 8,
+    backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  toolbarToggleText: { fontSize: 12, fontWeight: "700", color: COLORS.primary, flex: 1 },
   toolbar: {
     maxHeight: TOOLBAR_H, minHeight: TOOLBAR_H,
     backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
