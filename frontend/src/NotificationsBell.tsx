@@ -35,6 +35,7 @@ type Notif = {
   event_id?: string;
   from_user_name?: string;
   type?: string;
+  link?: string;
 };
 
 /** Cross-platform confirmation. On web uses window.confirm (works reliably
@@ -108,6 +109,12 @@ export default function NotificationsBell({
       load();
     }
     setOpen(false);
+    if (n.link && n.type === "chat_message") {
+      setTimeout(() => {
+        router.push(n.link as any);
+      }, 80);
+      return;
+    }
     if (n.event_id) {
       // Navigate to calendar with the target event id so the calendar screen
       // can auto-open its EventDetailsModal. Using a URL string keeps the
