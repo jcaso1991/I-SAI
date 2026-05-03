@@ -146,6 +146,7 @@ export default function PlanEditor() {
   const [textFontSize, setTextFontSize] = useState<number>(18);
 
   const canvasRef = useRef<View>(null);
+  const scrollRef = useRef<any>(null);
   const saveTimer = useRef<any>(null);
   const currentDrawingRef = useRef<Shape | null>(null);
   const lastDragRef = useRef<Pt | null>(null);
@@ -1059,12 +1060,32 @@ export default function PlanEditor() {
             e.preventDefault();
             e.stopPropagation();
             const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
-            setZoom(zoomRef.current + delta);
+            const newZoom = Math.round(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomRef.current + delta)) * 100) / 100;
+            if (newZoom === zoomRef.current) return;
+            // Zoom toward cursor position
+            const el = scrollRef.current as HTMLElement | null;
+            if (el) {
+              const rect = el.getBoundingClientRect();
+              const cx = e.clientX - rect.left + el.scrollLeft;
+              const cy = e.clientY - rect.top + el.scrollTop;
+              const ratio = newZoom / zoomRef.current;
+              zoomRef.current = newZoom;
+              setZoomState(newZoom);
+              requestAnimationFrame(() => {
+                el.scrollLeft = cx * ratio - (e.clientX - rect.left);
+                el.scrollTop = cy * ratio - (e.clientY - rect.top);
+              });
+            } else {
+              setZoom(newZoom);
+            }
           }
         } } as any : {})}
       >
         {/* Canvas content with zoom and optional rotation */}
-        <View style={s.canvasScrollOuter}>
+        <View
+          ref={scrollRef}
+          style={s.canvasScrollOuter}
+        >
           {Platform.OS === "web" ? (
             <View
               style={{
