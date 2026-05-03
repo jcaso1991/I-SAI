@@ -488,7 +488,7 @@ from collections import defaultdict
 
 _rate_window = 60  # seconds
 _rate_max = 30     # max requests per window per IP
-_rate_store: Dict[str, List[float]] = defaultdict(list)
+_rate_store: dict[str, list[float]] = defaultdict(list)
 
 async def _rate_limit(request: Request, max_req: int = _rate_max):
     if not hasattr(request, "client"):
