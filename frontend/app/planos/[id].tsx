@@ -840,43 +840,96 @@ export default function PlanEditor() {
         </TouchableOpacity>
       )}
       {(isWide || toolbarOpen) && (
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={s.toolbar}
-        contentContainerStyle={{ gap: 8, paddingHorizontal: 12, alignItems: "center" }}
-      >
-        <ToolBtn icon="pencil" active={tool === "pencil"} onPress={() => { setTool("pencil"); clearSelection(); if (!isWide) setToolbarOpen(false); }} label="Lápiz" />
-        <ToolBtn icon="remove-outline" active={tool === "straight"} onPress={() => { setTool("straight"); clearSelection(); if (!isWide) setToolbarOpen(false); }} label="Línea" />
-        <ToolBtn icon="square-outline" active={tool === "rect"} onPress={() => { setTool("rect"); clearSelection(); if (!isWide) setToolbarOpen(false); }} label="Cuadro" />
-        <ToolBtn icon="ellipse-outline" active={tool === "circle"} onPress={() => { setTool("circle"); clearSelection(); if (!isWide) setToolbarOpen(false); }} label="Círculo" />
-        <ToolBtn icon="text" active={tool === "text"} onPress={() => { setTool("text"); clearSelection(); if (!isWide) setToolbarOpen(false); }} label="Texto" />
-        <ToolBtn icon="cube" active={tool === "stamp"} onPress={() => { setTool("stamp"); clearSelection(); setShowStampPicker(true); if (!isWide) setToolbarOpen(false); }} label={currentStamp?.name || "Pieza"} />
-        <ToolBtn icon="trash-outline" active={tool === "eraser"} onPress={() => { setTool("eraser"); clearSelection(); if (!isWide) setToolbarOpen(false); }} label="Borrar" />
-        <ToolBtn icon="hand-left-outline" active={tool === "select"} onPress={() => { setTool("select"); if (!isWide) setToolbarOpen(false); }} label="Seleccionar" />
-        <View style={{ width: 1, height: 28, backgroundColor: COLORS.border, marginHorizontal: 4 }} />
-        <TouchableOpacity style={s.toolBtn} onPress={background ? removeBackground : pickBackground} disabled={bgUploading}>
-          {bgUploading ? (
-            <ActivityIndicator color={COLORS.primary} />
-          ) : (
-            <Ionicons name={background ? "close-circle" : "image"} size={20} color={background ? COLORS.errorText : COLORS.primary} />
-          )}
-          <Text style={[s.toolBtnLabel, { color: background ? COLORS.errorText : COLORS.primary }]}>
-            {background ? "Sin fondo" : "Fondo"}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={s.toolBtn} onPress={clearAll}>
-          <Ionicons name="refresh" size={20} color={COLORS.errorText} />
-          <Text style={[s.toolBtnLabel, { color: COLORS.errorText }]}>Limpiar</Text>
-        </TouchableOpacity>
-        {isAdmin && (
-          <TouchableOpacity style={s.toolBtn} onPress={() => setShowStampManager(true)}>
-            <Ionicons name="add-circle" size={20} color={COLORS.primary} />
-            <Text style={[s.toolBtnLabel, { color: COLORS.primary }]}>Sellos</Text>
+      isWide ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={s.toolbar}
+          contentContainerStyle={{ gap: 8, paddingHorizontal: 12, alignItems: "center" }}
+        >
+          <ToolBtn icon="pencil" active={tool === "pencil"} onPress={() => { setTool("pencil"); clearSelection(); }} label="Lápiz" />
+          <ToolBtn icon="remove-outline" active={tool === "straight"} onPress={() => { setTool("straight"); clearSelection(); }} label="Línea" />
+          <ToolBtn icon="square-outline" active={tool === "rect"} onPress={() => { setTool("rect"); clearSelection(); }} label="Cuadro" />
+          <ToolBtn icon="ellipse-outline" active={tool === "circle"} onPress={() => { setTool("circle"); clearSelection(); }} label="Círculo" />
+          <ToolBtn icon="text" active={tool === "text"} onPress={() => { setTool("text"); clearSelection(); }} label="Texto" />
+          <ToolBtn icon="cube" active={tool === "stamp"} onPress={() => { setTool("stamp"); clearSelection(); setShowStampPicker(true); }} label={currentStamp?.name || "Pieza"} />
+          <ToolBtn icon="trash-outline" active={tool === "eraser"} onPress={() => { setTool("eraser"); clearSelection(); }} label="Borrar" />
+          <ToolBtn icon="hand-left-outline" active={tool === "select"} onPress={() => { setTool("select"); }} label="Seleccionar" />
+          <View style={{ width: 1, height: 28, backgroundColor: COLORS.border, marginHorizontal: 4 }} />
+          <TouchableOpacity style={s.toolBtn} onPress={background ? removeBackground : pickBackground} disabled={bgUploading}>
+            {bgUploading ? (
+              <ActivityIndicator color={COLORS.primary} />
+            ) : (
+              <Ionicons name={background ? "close-circle" : "image"} size={20} color={background ? COLORS.errorText : COLORS.primary} />
+            )}
+            <Text style={[s.toolBtnLabel, { color: background ? COLORS.errorText : COLORS.primary }]}>
+              {background ? "Sin fondo" : "Fondo"}
+            </Text>
           </TouchableOpacity>
-        )}
-      </ScrollView>
-      )}
+          <TouchableOpacity style={s.toolBtn} onPress={clearAll}>
+            <Ionicons name="refresh" size={20} color={COLORS.errorText} />
+            <Text style={[s.toolBtnLabel, { color: COLORS.errorText }]}>Limpiar</Text>
+          </TouchableOpacity>
+          {isAdmin && (
+            <TouchableOpacity style={s.toolBtn} onPress={() => setShowStampManager(true)}>
+              <Ionicons name="add-circle" size={20} color={COLORS.primary} />
+              <Text style={[s.toolBtnLabel, { color: COLORS.primary }]}>Sellos</Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+      ) : (
+        <View style={s.toolDropdown}>
+          {[
+            { icon: "pencil", tool: "pencil" as Tool, label: "Lápiz" },
+            { icon: "remove-outline", tool: "straight" as Tool, label: "Línea" },
+            { icon: "square-outline", tool: "rect" as Tool, label: "Cuadro" },
+            { icon: "ellipse-outline", tool: "circle" as Tool, label: "Círculo" },
+            { icon: "text", tool: "text" as Tool, label: "Texto" },
+            { icon: "cube", tool: "stamp" as Tool, label: currentStamp?.name || "Pieza" },
+            { icon: "trash-outline", tool: "eraser" as Tool, label: "Borrar" },
+            { icon: "hand-left-outline", tool: "select" as Tool, label: "Seleccionar" },
+          ].map(({ icon, tool: t, label }) => (
+            <TouchableOpacity
+              key={t}
+              testID={`tool-${label}`}
+              style={[s.toolDropdownItem, tool === t && s.toolDropdownItemActive]}
+              onPress={() => {
+                if (t === "stamp") { setTool("stamp"); setShowStampPicker(true); }
+                else { setTool(t); }
+                if (t !== "select") clearSelection();
+                setToolbarOpen(false);
+              }}
+            >
+              <View style={[s.toolDropdownIcon, tool === t && { backgroundColor: COLORS.primary }]}>
+                <Ionicons name={icon as any} size={18} color={tool === t ? "#fff" : COLORS.navy} />
+              </View>
+              <Text style={[s.toolDropdownItemText, tool === t && { color: COLORS.primary, fontWeight: "800" }]}>{label}</Text>
+              {tool === t && <Ionicons name="checkmark" size={18} color={COLORS.primary} />}
+            </TouchableOpacity>
+          ))}
+          <View style={{ height: 1, backgroundColor: COLORS.border, marginVertical: 4 }} />
+          <TouchableOpacity style={s.toolDropdownItem} onPress={() => { background ? removeBackground() : pickBackground(); setToolbarOpen(false); }}>
+            <View style={s.toolDropdownIcon}>
+              <Ionicons name={background ? "close-circle" : "image"} size={18} color={background ? COLORS.errorText : COLORS.primary} />
+            </View>
+            <Text style={[s.toolDropdownItemText, { color: background ? COLORS.errorText : COLORS.primary }]}>{background ? "Quitar fondo" : "Añadir fondo"}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.toolDropdownItem} onPress={() => { clearAll(); setToolbarOpen(false); }}>
+            <View style={s.toolDropdownIcon}>
+              <Ionicons name="refresh" size={18} color={COLORS.errorText} />
+            </View>
+            <Text style={[s.toolDropdownItemText, { color: COLORS.errorText }]}>Limpiar todo</Text>
+          </TouchableOpacity>
+          {isAdmin && (
+            <TouchableOpacity style={s.toolDropdownItem} onPress={() => { setShowStampManager(true); setToolbarOpen(false); }}>
+              <View style={s.toolDropdownIcon}>
+                <Ionicons name="add-circle" size={18} color={COLORS.primary} />
+              </View>
+              <Text style={[s.toolDropdownItemText, { color: COLORS.primary }]}>Gestionar sellos</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ))}
 
       {/* Sub-toolbar for the Seleccionar tool: choose between tapping
           individual shapes or painting a marquee rectangle. */}
@@ -1785,6 +1838,21 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
   toolbarToggleText: { fontSize: 12, fontWeight: "700", color: COLORS.primary, flex: 1 },
+  toolDropdown: {
+    backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    padding: 8, gap: 2,
+  },
+  toolDropdownItem: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    paddingVertical: 9, paddingHorizontal: 8, borderRadius: 8,
+  },
+  toolDropdownItemActive: { backgroundColor: COLORS.primarySoft },
+  toolDropdownIcon: {
+    width: 34, height: 34, borderRadius: 8,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: COLORS.bg,
+  },
+  toolDropdownItemText: { fontSize: 14, fontWeight: "600", color: COLORS.navy, flex: 1 },
   toolbar: {
     maxHeight: TOOLBAR_H, minHeight: TOOLBAR_H,
     backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
