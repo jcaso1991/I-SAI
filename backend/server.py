@@ -30,8 +30,14 @@ load_dotenv(ROOT_DIR / '.env')
 # ---------------- Config ----------------
 MONGO_URL = os.environ['MONGO_URL']
 DB_NAME = os.environ['DB_NAME']
-JWT_SECRET = os.environ['JWT_SECRET']
+JWT_SECRET = os.environ.get('JWT_SECRET', '')
+if not JWT_SECRET:
+    import secrets
+    JWT_SECRET = secrets.token_hex(32)
+    logging.warning("JWT_SECRET not configured. Using auto-generated key. Set it in .env for persistence.")
 JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', 'HS256')
+if JWT_ALGORITHM not in ('HS256', 'HS384', 'HS512'):
+    raise ValueError("JWT_ALGORITHM must be HS256, HS384, or HS512")
 JWT_EXPIRE_HOURS = int(os.environ.get('JWT_EXPIRE_HOURS', '24'))
 
 MS_TENANT_ID = os.environ.get('MS_TENANT_ID', '')
@@ -66,7 +72,7 @@ api_router = APIRouter(prefix="/api")
 # ---------------- Models ----------------
 class UserRegister(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(..., min_length=8, max_length=128)
     name: Optional[str] = None
 
 class UserLogin(BaseModel):
@@ -454,7 +460,7 @@ async def _download_excel_from_onedrive() -> bytes:
         url = f"{GRAPH_BASE}/me/drive/root:{ONEDRIVE_FILE_PATH}:/content"
     r = await _graph_get(url, token)
     if r.status_code not in (200, 302):
-        raise HTTPException(r.status_code, f"No se pudo descargar Excel: {r.text}")
+        raise HTTPException(r.status_code, "Error al descargar el archivo de OneDrive")
     return r.content
 
 async def _upload_excel_to_onedrive(xlsx_bytes: bytes) -> None:
@@ -476,7 +482,29 @@ async def _upload_excel_to_onedrive(xlsx_bytes: bytes) -> None:
     if r.status_code not in (200, 201):
         raise HTTPException(r.status_code, f"No se pudo subir Excel: {r.text}")
 
-# ---------------- Auto-sync internals ----------------
+# ---------------- Rate limiter (simple in-memory) ----------------
+import time as _time
+from collections import defaultdict
+
+_rate_window = 60  # seconds
+_rate_max = 30     # max requests per window per IP
+_rate_store: Dict[str, List[float]] = defaultdict(list)
+
+async def _rate_limit(request: Request, max_req: int = _rate_max):
+    if not hasattr(request, "client"):
+        return
+    ip = request.client.host if request.client else "unknown"
+    now = _time.time()
+    _rate_store[ip] = [t for t in _rate_store[ip] if t > now - _rate_window]
+    if len(_rate_store[ip]) >= max_req:
+        raise HTTPException(429, "Demasiadas peticiones. Espera unos segundos.")
+    _rate_store[ip].append(now)
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    await _rate_limit(request, 60)
+    return await call_next(request)
 import asyncio as _asyncio
 
 _sync_lock = _asyncio.Lock()
@@ -1714,22 +1742,31 @@ async def onedrive_disconnect(user: dict = Depends(require_permission("onedrive.
 @api_router.get("/auth/microsoft/login")
 async def microsoft_login():
     """Return the Microsoft OAuth URL for user login (Entra ID / Azure AD)."""
+    state = str(uuid.uuid4())
+    await db.oauth_states.insert_one({
+        "_id": state,
+        "created_at": datetime.now(timezone.utc),
+    })
     app_msal = _msal_app()
     auth_url = app_msal.get_authorization_request_url(
         scopes=["User.Read"],
         redirect_uri=MS_AUTH_REDIRECT_URI,
-        state=str(uuid.uuid4()),
+        state=state,
         prompt="select_account",
     )
     return {"auth_url": auth_url}
 
 @api_router.get("/auth/microsoft/callback", response_class=HTMLResponse)
 async def microsoft_callback(code: str, state: Optional[str] = None, error: Optional[str] = None):
-    """Handle Microsoft OAuth callback for user login.
-    Creates the user on first login (auto-register), then returns HTML that
-    posts the JWT back to the frontend (popup message on web, redirect on native)."""
+    """Handle Microsoft OAuth callback for user login."""
     if error:
-        return HTMLResponse(f"<h2>Error</h2><p>{error}</p>", status_code=400)
+        return HTMLResponse("<h2>Error</h2><p>Autenticación cancelada</p>", status_code=400)
+    if state:
+        st = await db.oauth_states.find_one_and_delete({"_id": state})
+        if not st:
+            return HTMLResponse("<h2>Error de seguridad</h2><p>Estado de autenticación inválido</p>", status_code=400)
+    else:
+        return HTMLResponse("<h2>Error</h2><p>Falta el parámetro de estado</p>", status_code=400)
 
     app_msal = _msal_app()
     result = app_msal.acquire_token_by_authorization_code(
@@ -1739,7 +1776,7 @@ async def microsoft_callback(code: str, state: Optional[str] = None, error: Opti
     )
     if "error" in result:
         return HTMLResponse(
-            f"<h2>Error de autenticación</h2><p>{result.get('error_description', result['error'])}</p>",
+            "<h2>Error de autenticación</h2><p>No se pudo completar el inicio de sesión.</p>",
             status_code=400,
         )
 
@@ -2192,14 +2229,19 @@ async def seed_initial_data():
     logging.getLogger(__name__).info(f"Seeded {len(docs)} materials from {path}")
 
 async def seed_admin_user():
-    existing = await db.users.find_one({"email": "admin@materiales.com"})
+    admin_email = os.environ.get("ADMIN_EMAIL", "admin@materiales.com")
+    admin_pass = os.environ.get("ADMIN_PASSWORD", "")
+    if not admin_pass:
+        admin_pass = secrets.token_hex(12)
+        logging.getLogger(__name__).warning(f"ADMIN_PASSWORD not set. Admin password: {admin_pass}")
+    existing = await db.users.find_one({"email": admin_email})
     if existing:
         return
     user = {
         "id": str(uuid.uuid4()),
-        "email": "admin@materiales.com",
+        "email": admin_email,
         "name": "Administrador",
-        "password": hash_password("Admin1234"),
+        "password": hash_password(admin_pass),
         "role": "admin",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -2962,7 +3004,7 @@ app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=["*"],
+    allow_origins=[FRONTEND_URL],
     allow_methods=["*"],
     allow_headers=["*"],
 )
