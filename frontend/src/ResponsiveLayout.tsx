@@ -5,6 +5,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { COLORS, api } from "./api";
 import BottomNav, { BottomTab } from "./BottomNav";
 import { useBreakpoint } from "./useBreakpoint";
+import { useTheme } from "./theme";
 
 // Build a 2-letter avatar string from a full name.
 function initials(name?: string): string {
@@ -30,6 +31,7 @@ export default function ResponsiveLayout({
   const { isWide } = useBreakpoint();
   const [perms, setPerms] = useState<string[]>([]);
   const [roleName, setRoleName] = useState<string | null>(null);
+  const { theme, toggle: toggleTheme } = useTheme();
 
   useEffect(() => {
     let alive = true;
@@ -134,6 +136,11 @@ export default function ResponsiveLayout({
 
         <View style={{ flex: 1 }} />
 
+        <TouchableOpacity style={s.themeToggle} onPress={toggleTheme}>
+          <Ionicons name={theme === "dark" ? "sunny" : "moon"} size={18} color={COLORS.textSecondary} />
+          <Text style={s.themeToggleTxt}>{theme === "dark" ? "Modo claro" : "Modo oscuro"}</Text>
+        </TouchableOpacity>
+
         {onLogout && (
           <TouchableOpacity style={s.logout} onPress={onLogout}>
             <Ionicons name="log-out-outline" size={18} color={COLORS.errorText} />
@@ -235,6 +242,13 @@ const s = StyleSheet.create({
   linkIconActive: { backgroundColor: "transparent" },
   linkTxt: { fontSize: 13.5, fontWeight: "600", color: COLORS.textSecondary, flex: 1 },
   linkTxtActive: { color: COLORS.primary, fontWeight: "800" },
+
+  themeToggle: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    paddingHorizontal: 14, paddingVertical: 10, marginHorizontal: 8, marginBottom: 4,
+    borderRadius: 10, backgroundColor: COLORS.bg,
+  },
+  themeToggleTxt: { fontSize: 13, color: COLORS.textSecondary, fontWeight: "600" },
 
   logout: {
     flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14,
