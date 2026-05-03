@@ -104,7 +104,18 @@ export default function CalendarScreen() {
   const { isWide } = useBreakpoint();
   const params = useLocalSearchParams<{ openEvent?: string }>();
   const [me, setMe] = useState<any>(null);
-  const [view, setView] = useState<ViewMode>("week");
+  const [view, setViewState] = useState<ViewMode>("week");
+  const setView = (v: ViewMode) => {
+    setViewState(v);
+    AsyncStorage.setItem("cal_view", v).catch(() => {});
+  };
+
+  // Restore persisted view and user filter on mount
+  useEffect(() => {
+    AsyncStorage.getItem("cal_view").then((v) => {
+      if (v === "day" || v === "week" || v === "month" || v === "multi") setViewState(v);
+    }).catch(() => {});
+  }, []);
   const [anchor, setAnchor] = useState<Date>(new Date());
   const [events, setEvents] = useState<EventT[]>([]);
   const [loading, setLoading] = useState(true);
