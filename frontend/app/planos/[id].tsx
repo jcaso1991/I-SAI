@@ -166,7 +166,12 @@ export default function PlanEditor() {
         ]);
         setTitle(plan.title);
         setShapes((plan.data?.shapes || []) as Shape[]);
-        if (plan.data?.background) setBackground(plan.data.background);
+        if (plan.data?.background) {
+          setBackground(plan.data.background);
+          if (plan.data.background.width && plan.data.background.height) {
+            setCanvasSize({ w: plan.data.background.width, h: plan.data.background.height });
+          }
+        }
         if (plan.data?.rotation) {
           const r = plan.data.rotation === 90 ? 90 : 0;
           setCanvasRotation(r as 0 | 90);
@@ -602,6 +607,9 @@ export default function PlanEditor() {
         file_base64: fileBase64, mime_type: mimeType,
       });
       setBackground(bg);
+      if (bg.width && bg.height) {
+        setCanvasSize({ w: bg.width, h: bg.height });
+      }
     } catch (e: any) {
       Alert.alert("Error al subir fondo", e.message);
     } finally {
@@ -1070,7 +1078,7 @@ export default function PlanEditor() {
                 } as any : {})}
               >
                 <View
-                  style={[s.canvasPaper, { width: canvasSize.w * zoom, height: canvasSize.h * zoom }]}
+                  style={[s.canvasPaper, { width: canvasSize.w * zoom, height: canvasSize.h * zoom, backgroundColor: background ? "#FFFFFF" : COLORS.canvasPaper }]}
                   {...panResponder.panHandlers}
                 >
                   <Svg width="100%" height="100%" viewBox={`0 0 ${canvasSize.w} ${canvasSize.h}`} pointerEvents="none">
@@ -1104,7 +1112,7 @@ export default function PlanEditor() {
             <View
               style={[
                 s.canvasPaper,
-                { transform: [{ scale: zoom }, { rotate: canvasRotation === 90 ? "90deg" : "0deg" }] },
+                { transform: [{ scale: zoom }, { rotate: canvasRotation === 90 ? "90deg" : "0deg" }], backgroundColor: background ? "#FFFFFF" : COLORS.canvasPaper },
               ]}
               {...panResponder.panHandlers}
             >
