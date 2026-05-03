@@ -180,7 +180,7 @@ export default function Materiales() {
           <Text style={s.headerTitle}>Proyectos</Text>
           <Text style={s.headerSubHint}>
             {(managerFilterIds.length > 0 || statusFilterIds.length > 0)
-              ? `${items.length} proyecto${items.length !== 1 ? "s" : ""} · ${items.reduce((sum: number, it: any) => sum + (parseFloat(it.horas_prev) || 0), 0)}h totales`
+              ? `${items.length} proyecto${items.length !== 1 ? "s" : ""} · ${items.reduce((sum: number, it: any) => { const v = parseFloat(it.horas_prev); return isNaN(v) ? sum : sum + v; }, 0)}h totales`
               : "Base sincronizada con OneDrive"}
           </Text>
         </View>

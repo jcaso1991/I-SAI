@@ -357,6 +357,13 @@ def _clean(v):
     s = str(v).strip()
     return s if s and s.lower() != "nan" else None
 
+def _safe_float(v) -> float:
+    """Parse float safely, returning 0 on any error."""
+    try:
+        return float(v or 0)
+    except (ValueError, TypeError):
+        return 0.0
+
 # ---------------- Excel parsing ----------------
 # Column mapping (A..M in the Excel):
 # A=Materiales, B=CLIENTE, C=Ubicación Cliente, D=Horas PREV, E=Comercial,
@@ -1982,14 +1989,13 @@ async def dashboard(user: dict = Depends(current_user)):
     for st in statuses:
         count = await db.materiales.count_documents({"project_status": st})
         projects_by_status[st] = count
-        total_hours += count
 
     # Hours by manager
     manager_hours = []
     managers = await db.users.find({"role": "admin"}, {"_id": 0, "id": 1, "name": 1, "email": 1, "color": 1}).to_list(50)
     for mgr in managers:
         mats = await db.materiales.find({"manager_id": mgr["id"]}, {"horas_prev": 1}).to_list(5000)
-        hours = sum(float(m.get("horas_prev") or 0) for m in mats)
+        hours = sum(_safe_float(m.get("horas_prev")) for m in mats)
         if hours > 0:
             manager_hours.append({
                 "name": mgr.get("name") or mgr.get("email", ""),
