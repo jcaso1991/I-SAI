@@ -17,8 +17,22 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [msLoading, setMsLoading] = useState(false);
+  const [msEnabled, setMsEnabled] = useState<boolean | null>(null);
 
   const backendOrigin = BACKEND_URL.replace(/\/+$/, "");
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await api.microsoftStatus();
+        if (active) setMsEnabled(Boolean(res.enabled));
+      } catch {
+        if (active) setMsEnabled(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
 
   // Listen for postMessage from popup (web flow)
   useEffect(() => {
@@ -44,6 +58,10 @@ export default function Login() {
   }, []);
 
   const microsoftLogin = async () => {
+    if (msEnabled === false) {
+      Alert.alert("Login Microsoft", "El inicio de sesión con Microsoft no está configurado en este entorno.");
+      return;
+    }
     setMsLoading(true);
     try {
       const { auth_url, state } = await api.microsoftLoginUrl();
@@ -154,14 +172,14 @@ export default function Login() {
 
             <TouchableOpacity
               testID="btn-ms-login"
-              style={[s.btnMicrosoft, msLoading && s.btnDisabled]}
+              style={[s.btnMicrosoft, (msLoading || msEnabled === false) && s.btnDisabled]}
               onPress={microsoftLogin}
-              disabled={msLoading}
+              disabled={msLoading || msEnabled === false}
             >
               {msLoading ? (
                 <ActivityIndicator color={COLORS.text} />
               ) : (
-                <Text style={s.btnMicrosoftText}>Iniciar sesión con Microsoft</Text>
+                <Text style={s.btnMicrosoftText}>{msEnabled === false ? "Microsoft no configurado" : "Iniciar sesión con Microsoft"}</Text>
               )}
             </TouchableOpacity>
 

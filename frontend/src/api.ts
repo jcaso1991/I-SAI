@@ -277,6 +277,7 @@ export const api = {
   deleteStamp: (id: string) => request(`/stamps/${id}`, { method: "DELETE" }),
 
   // Microsoft login (Entra ID)
+  microsoftStatus: () => request("/auth/microsoft/status", {}, false),
   microsoftLoginUrl: () => request("/auth/microsoft/login"),
   microsoftExchange: (code: string, state: string) =>
     request("/auth/microsoft/exchange", { method: "POST", body: JSON.stringify({ code, state }) }, false),

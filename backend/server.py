@@ -54,6 +54,9 @@ MS_AUTH_REDIRECT_URI = os.environ.get('MS_AUTH_REDIRECT_URI', 'http://localhost:
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:8081')
 CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '')
 
+def _microsoft_login_enabled() -> bool:
+    return bool(MS_CLIENT_ID and MS_CLIENT_SECRET and MS_AUTH_REDIRECT_URI)
+
 # Demo seed config
 ENABLE_DEMO_SEED = os.environ.get('ENABLE_DEMO_SEED', 'false').lower() == 'true'
 DEMO_ADMIN_EMAIL = os.environ.get('DEMO_ADMIN_EMAIL', 'admin@materiales.com')
@@ -1743,10 +1746,16 @@ async def onedrive_disconnect(user: dict = Depends(require_permission("onedrive.
     return {"ok": True}
 
 # ---------------- Microsoft user authentication (Entra ID / Azure AD) ----------------
+@api_router.get("/auth/microsoft/status")
+async def microsoft_status():
+    return {"enabled": _microsoft_login_enabled()}
+
 @api_router.get("/auth/microsoft/login")
 async def microsoft_login():
     """Return the Microsoft OAuth URL for user login (Entra ID / Azure AD).
     Generates a signed, expirable state JWT to protect the callback."""
+    if not _microsoft_login_enabled():
+        raise HTTPException(503, "Login Microsoft no configurado en este entorno")
     app_msal = _msal_app()
     state_id = str(uuid.uuid4())
     state_jwt = pyjwt.encode(
@@ -1767,6 +1776,8 @@ async def microsoft_callback(code: str, state: Optional[str] = None, error: Opti
     """Handle Microsoft OAuth callback for user login.
     Creates the user on first login (auto-register), then returns HTML that
     posts the JWT back to the frontend (popup message on web, redirect on native)."""
+    if not _microsoft_login_enabled():
+        return HTMLResponse("<h2>Error de autenticación</h2><p>Login Microsoft no configurado en este entorno.</p>", status_code=503)
     if error:
         return HTMLResponse(f"<h2>Error</h2><p>{error}</p>", status_code=400)
 
