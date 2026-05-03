@@ -13,8 +13,8 @@ from datetime import datetime
 
 BASE = os.environ.get("BACKEND_URL", "http://localhost:8001") + "/api"
 
-ADMIN_EMAIL = "admin@materiales.com"
-ADMIN_PASS = "Admin1234"
+ADMIN_EMAIL = os.environ.get("DEMO_ADMIN_EMAIL", "admin@materiales.com")
+ADMIN_PASS = os.environ["DEMO_ADMIN_PASSWORD"]
 
 ts = int(time.time())
 TECH_ASSIGNED_EMAIL = f"tech_assigned_{ts}@materiales.com"

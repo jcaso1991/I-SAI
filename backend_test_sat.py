@@ -16,8 +16,8 @@ import requests
 from typing import List
 
 BASE = "https://excel-form-sync-1.preview.emergentagent.com/api"
-ADMIN_EMAIL = "admin@materiales.com"
-ADMIN_PASS = "Admin1234"
+ADMIN_EMAIL = os.environ.get("DEMO_ADMIN_EMAIL", "admin@materiales.com")
+ADMIN_PASS = os.environ["DEMO_ADMIN_PASSWORD"]
 
 created_incident_ids: List[str] = []
 created_user_ids: List[str] = []

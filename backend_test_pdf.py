@@ -5,8 +5,7 @@ Backend tests for iteration 3 PDF-related endpoints:
   - GET  /api/budgets/{bid}/pdf
 Plus regression sanity on budgets CRUD, /api/events and /api/plans.
 
-Targets http://localhost:8001/api and uses admin credentials from
-/app/memory/test_credentials.md.
+Targets http://localhost:8001/api and uses admin credentials from env vars.
 """
 import base64
 import io
@@ -19,8 +18,8 @@ import requests
 from PIL import Image
 
 BASE = os.environ.get("BACKEND_URL", "http://localhost:8001/api")
-ADMIN_EMAIL = "admin@materiales.com"
-ADMIN_PASS = "Admin1234"
+ADMIN_EMAIL = os.environ.get("DEMO_ADMIN_EMAIL", "admin@materiales.com")
+ADMIN_PASS = os.environ["DEMO_ADMIN_PASSWORD"]
 
 PASS = 0
 FAIL = 0

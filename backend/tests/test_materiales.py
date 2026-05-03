@@ -3,8 +3,8 @@ import os, uuid, pytest, requests
 BASE_URL = os.environ['EXPO_PUBLIC_BACKEND_URL'].rstrip('/') if os.environ.get('EXPO_PUBLIC_BACKEND_URL') else "https://excel-form-sync-1.preview.emergentagent.com"
 API = f"{BASE_URL}/api"
 
-ADMIN_EMAIL = "admin@materiales.com"
-ADMIN_PASS = "Admin1234"
+ADMIN_EMAIL = os.environ.get("DEMO_ADMIN_EMAIL", "admin@materiales.com")
+ADMIN_PASS = os.environ["DEMO_ADMIN_PASSWORD"]
 
 
 @pytest.fixture(scope="module")

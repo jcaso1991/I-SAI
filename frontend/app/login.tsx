@@ -11,8 +11,8 @@ import { api, setToken, COLORS } from "../src/api";
 export default function Login() {
   const router = useRouter();
   const params = useLocalSearchParams<{ microsoft_token?: string }>();
-  const [email, setEmail] = useState("admin@materiales.com");
-  const [password, setPassword] = useState("Admin1234");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [msLoading, setMsLoading] = useState(false);
 

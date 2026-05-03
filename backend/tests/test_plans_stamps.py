@@ -4,8 +4,8 @@ import pytest
 import requests
 
 BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://excel-form-sync-1.preview.emergentagent.com").rstrip("/")
-ADMIN_EMAIL = "admin@materiales.com"
-ADMIN_PASSWORD = "Admin1234"
+ADMIN_EMAIL = os.environ.get("DEMO_ADMIN_EMAIL", "admin@materiales.com")
+ADMIN_PASSWORD = os.environ["DEMO_ADMIN_PASSWORD"]
 
 # Tiny 1x1 transparent PNG
 TINY_PNG_B64 = (

@@ -35,6 +35,6 @@
   "seed_data_creation": "Test plans/stamps are created with 'TEST_' prefix and cleaned up within pytest fixtures. One UI-created plan (TEST_UI_<ts>) was left in DB — safe to delete manually if desired.",
   "retest_needed": false,
   "should_main_agent_self_test": true,
-  "context_for_next_testing_agent": "Auth: admin@materiales.com / Admin1234 (seeded on startup). A plan named 'Oficina prueba' already exists in the DB from earlier manual testing. Backend env var for tests is EXPO_PUBLIC_BACKEND_URL. Backend auto-seeds admin user on startup. Drawing + Export (JPG/PDF) flows are not covered by automation — they need on-device manual QA.",
+  "context_for_next_testing_agent": "Auth: use DEMO_ADMIN_EMAIL / DEMO_ADMIN_PASSWORD env vars for PoC demo credentials. A plan named 'Oficina prueba' already exists in the DB from earlier manual testing. Backend env var for tests is EXPO_PUBLIC_BACKEND_URL. Backend seeds demo data only when ENABLE_DEMO_SEED=true. Drawing + Export (JPG/PDF) flows are not covered by automation — they need on-device manual QA.",
   "rca_of_issue": "No bugs found in this iteration."
 }
