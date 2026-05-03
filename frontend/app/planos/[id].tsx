@@ -846,14 +846,14 @@ export default function PlanEditor() {
         style={s.toolbar}
         contentContainerStyle={{ gap: 8, paddingHorizontal: 12, alignItems: "center" }}
       >
-        <ToolBtn icon="pencil" active={tool === "pencil"} onPress={() => { setTool("pencil"); clearSelection(); }} label="Lápiz" />
-        <ToolBtn icon="remove-outline" active={tool === "straight"} onPress={() => { setTool("straight"); clearSelection(); }} label="Línea" />
-        <ToolBtn icon="square-outline" active={tool === "rect"} onPress={() => { setTool("rect"); clearSelection(); }} label="Cuadro" />
-        <ToolBtn icon="ellipse-outline" active={tool === "circle"} onPress={() => { setTool("circle"); clearSelection(); }} label="Círculo" />
-        <ToolBtn icon="text" active={tool === "text"} onPress={() => { setTool("text"); clearSelection(); }} label="Texto" />
-        <ToolBtn icon="cube" active={tool === "stamp"} onPress={() => { setTool("stamp"); clearSelection(); setShowStampPicker(true); }} label={currentStamp?.name || "Pieza"} />
-        <ToolBtn icon="trash-outline" active={tool === "eraser"} onPress={() => { setTool("eraser"); clearSelection(); }} label="Borrar" />
-        <ToolBtn icon="hand-left-outline" active={tool === "select"} onPress={() => { setTool("select"); }} label="Seleccionar" />
+        <ToolBtn icon="pencil" active={tool === "pencil"} onPress={() => { setTool("pencil"); clearSelection(); if (!isWide) setToolbarOpen(false); }} label="Lápiz" />
+        <ToolBtn icon="remove-outline" active={tool === "straight"} onPress={() => { setTool("straight"); clearSelection(); if (!isWide) setToolbarOpen(false); }} label="Línea" />
+        <ToolBtn icon="square-outline" active={tool === "rect"} onPress={() => { setTool("rect"); clearSelection(); if (!isWide) setToolbarOpen(false); }} label="Cuadro" />
+        <ToolBtn icon="ellipse-outline" active={tool === "circle"} onPress={() => { setTool("circle"); clearSelection(); if (!isWide) setToolbarOpen(false); }} label="Círculo" />
+        <ToolBtn icon="text" active={tool === "text"} onPress={() => { setTool("text"); clearSelection(); if (!isWide) setToolbarOpen(false); }} label="Texto" />
+        <ToolBtn icon="cube" active={tool === "stamp"} onPress={() => { setTool("stamp"); clearSelection(); setShowStampPicker(true); if (!isWide) setToolbarOpen(false); }} label={currentStamp?.name || "Pieza"} />
+        <ToolBtn icon="trash-outline" active={tool === "eraser"} onPress={() => { setTool("eraser"); clearSelection(); if (!isWide) setToolbarOpen(false); }} label="Borrar" />
+        <ToolBtn icon="hand-left-outline" active={tool === "select"} onPress={() => { setTool("select"); if (!isWide) setToolbarOpen(false); }} label="Seleccionar" />
         <View style={{ width: 1, height: 28, backgroundColor: COLORS.border, marginHorizontal: 4 }} />
         <TouchableOpacity style={s.toolBtn} onPress={background ? removeBackground : pickBackground} disabled={bgUploading}>
           {bgUploading ? (
