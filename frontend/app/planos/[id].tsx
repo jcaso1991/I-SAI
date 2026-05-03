@@ -143,35 +143,51 @@ export default function PlanEditor() {
   // Native wheel event listener for zoom (needs passive: false to preventDefault)
   useEffect(() => {
     if (Platform.OS !== "web") return;
-    const canvasEl = document.getElementById("plan-canvas");
-    if (!canvasEl) return;
-    const handler = (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
-        const newZoom = Math.round(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomRef.current + delta)) * 100) / 100;
-        if (newZoom === zoomRef.current) return;
-        const scrollEl = scrollRef.current as HTMLElement | null;
-        if (scrollEl) {
-          const rect = scrollEl.getBoundingClientRect();
-          const cx = e.clientX - rect.left + scrollEl.scrollLeft;
-          const cy = e.clientY - rect.top + scrollEl.scrollTop;
-          const ratio = newZoom / zoomRef.current;
-          zoomRef.current = newZoom;
-          setZoomState(newZoom);
-          requestAnimationFrame(() => {
-            scrollEl.scrollLeft = cx * ratio - (e.clientX - rect.left);
-            scrollEl.scrollTop = cy * ratio - (e.clientY - rect.top);
-          });
-        } else {
-          zoomRef.current = newZoom;
-          setZoomState(newZoom);
-        }
+    let node: HTMLElement | null = null;
+    let cleanup: (() => void) | null = null;
+    const tryAttach = () => {
+      const el = canvasRef.current as any;
+      if (el instanceof HTMLElement) {
+        node = el;
+      } else if (el?._nativeTag) {
+        node = document.getElementById(el._nativeTag);
+      }
+      if (node) {
+        const handler = (e: WheelEvent) => {
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+            const newZoom = Math.round(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomRef.current + delta)) * 100) / 100;
+            if (newZoom === zoomRef.current) return;
+            const scrollEl = scrollRef.current as HTMLElement | null;
+            if (scrollEl) {
+              const rect = scrollEl.getBoundingClientRect();
+              const cx = e.clientX - rect.left + scrollEl.scrollLeft;
+              const cy = e.clientY - rect.top + scrollEl.scrollTop;
+              const ratio = newZoom / zoomRef.current;
+              zoomRef.current = newZoom;
+              setZoomState(newZoom);
+              requestAnimationFrame(() => {
+                scrollEl.scrollLeft = cx * ratio - (e.clientX - rect.left);
+                scrollEl.scrollTop = cy * ratio - (e.clientY - rect.top);
+              });
+            } else {
+              zoomRef.current = newZoom;
+              setZoomState(newZoom);
+            }
+          }
+        };
+        node.addEventListener("wheel", handler, { passive: false });
+        cleanup = () => node?.removeEventListener("wheel", handler);
       }
     };
-    canvasEl.addEventListener("wheel", handler, { passive: false });
-    return () => canvasEl.removeEventListener("wheel", handler);
+    tryAttach();
+    if (!node) {
+      const t = setTimeout(tryAttach, 100);
+      return () => { clearTimeout(t); if (cleanup) cleanup(); };
+    }
+    return () => { if (cleanup) cleanup(); };
   }, []);
   const [textModal, setTextModal] = useState<{ x: number; y: number; editingId?: string } | null>(null);
   const [textDraft, setTextDraft] = useState("");
@@ -1085,7 +1101,6 @@ export default function PlanEditor() {
       <View
         ref={canvasRef}
         style={s.canvasWrap}
-        nativeID="plan-canvas"
         onLayout={(e) => setCanvasSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
         collapsable={false}
       >
