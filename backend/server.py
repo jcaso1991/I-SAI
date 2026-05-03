@@ -51,6 +51,13 @@ GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 MS_AUTH_REDIRECT_URI = os.environ.get('MS_AUTH_REDIRECT_URI', 'http://localhost:8000/api/auth/microsoft/callback')
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:8081')
 
+# Demo seed config
+ENABLE_DEMO_SEED = os.environ.get('ENABLE_DEMO_SEED', 'false').lower() == 'true'
+DEMO_ADMIN_EMAIL = os.environ.get('DEMO_ADMIN_EMAIL', 'admin@materiales.com')
+DEMO_ADMIN_PASSWORD = os.environ.get('DEMO_ADMIN_PASSWORD', '')
+DEMO_ADMIN_NAME = os.environ.get('DEMO_ADMIN_NAME', 'Administrador')
+DEMO_USER_PASSWORD = os.environ.get('DEMO_USER_PASSWORD', '')
+
 # Auto-sync config
 AUTO_IMPORT_INTERVAL_SEC = 300  # re-import OneDrive file every 5 min on read
 AUTO_PUSH_DELAY_SEC = 6         # debounce pushes: wait 6s after last edit
@@ -493,9 +500,15 @@ async def _do_import() -> int:
         docs = []
         for r in rows:
             old = existing.get(r["row_index"])
+            preserved = {}
+            if old:
+                for key in ("manager_id", "manager_name", "project_status", "tecnicos", "demo_seed"):
+                    if key in old:
+                        preserved[key] = old[key]
             docs.append({
                 "id": old["id"] if old else str(uuid.uuid4()),
                 **r,
+                **preserved,
                 "sync_status": "synced",
                 "updated_at": datetime.now(timezone.utc).isoformat(),
                 "updated_by": old.get("updated_by", "onedrive") if old else "onedrive",
@@ -2024,15 +2037,6 @@ async def update_budget_status(bid: str, user: dict = Depends(current_admin_or_c
     await db.budgets.update_one({"id": bid}, {"$set": {"status": new_status, "updated_at": datetime.now(timezone.utc).isoformat()}})
     return {"ok": True, "status": new_status}
 
-@api_router.patch("/budgets/{bid}/status")
-async def update_budget_status(bid: str, user: dict = Depends(current_admin_or_comercial)):
-    b = await db.budgets.find_one({"id": bid})
-    if not b:
-        raise HTTPException(404, "Presupuesto no encontrado")
-    new_status = "aceptado" if b.get("status") != "aceptado" else "pendiente"
-    await db.budgets.update_one({"id": bid}, {"$set": {"status": new_status, "updated_at": datetime.now(timezone.utc).isoformat()}})
-    return {"ok": True, "status": new_status}
-
 @api_router.patch("/budgets/{bid}")
 async def update_budget(bid: str, payload: BudgetPatch, user: dict = Depends(current_admin_or_comercial)):
     upd = {k: v for k, v in payload.dict().items() if v is not None}
@@ -2190,18 +2194,413 @@ async def seed_initial_data():
     logging.getLogger(__name__).info(f"Seeded {len(docs)} materials from {path}")
 
 async def seed_admin_user():
-    existing = await db.users.find_one({"email": "admin@materiales.com"})
+    if not ENABLE_DEMO_SEED:
+        return
+    existing = await db.users.find_one({"email": DEMO_ADMIN_EMAIL})
     if existing:
         return
+    if not DEMO_ADMIN_PASSWORD:
+        logging.getLogger(__name__).warning(
+            "DEMO_ADMIN_PASSWORD no configurada; no se puede crear el usuario admin de demo"
+        )
+        return
+    role = await db.roles.find_one({"key": "admin"})
     user = {
         "id": str(uuid.uuid4()),
-        "email": "admin@materiales.com",
-        "name": "Administrador",
-        "password": hash_password("Admin1234"),
+        "email": DEMO_ADMIN_EMAIL,
+        "name": DEMO_ADMIN_NAME,
+        "password": hash_password(DEMO_ADMIN_PASSWORD),
         "role": "admin",
+        "role_id": role.get("id") if role else None,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.users.insert_one(user)
+
+async def _seed_demo_user(email: str, name: str, role_key: str, color: str) -> Optional[str]:
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        return existing.get("id")
+    if not DEMO_USER_PASSWORD:
+        logging.getLogger(__name__).warning(
+            "DEMO_USER_PASSWORD no configurada; no se crean usuarios demo adicionales"
+        )
+        return None
+    role = await db.roles.find_one({"key": role_key})
+    legacy_role = "admin" if role_key in ("admin", "gestor") else ("comercial" if role_key == "comercial" else "user")
+    user_slug = email.split("@", 1)[0].replace(".", "-").replace("_", "-")
+    user_id = f"demo-user-{user_slug}"
+    await db.users.insert_one({
+        "id": user_id,
+        "email": email,
+        "name": name,
+        "password": hash_password(DEMO_USER_PASSWORD),
+        "role": legacy_role,
+        "role_id": role.get("id") if role else None,
+        "color": color,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "demo_seed": True,
+    })
+    return user_id
+
+async def seed_demo_data():
+    if not ENABLE_DEMO_SEED:
+        return
+
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    admin = await db.users.find_one({"email": DEMO_ADMIN_EMAIL}, {"_id": 0})
+    manager_id = admin.get("id") if admin else None
+    gestor_id = await _seed_demo_user("gestor.demo@materiales.com", "Gestor Demo", "gestor", "#3B82F6")
+    gestor_obras_id = await _seed_demo_user("gestor.obras.demo@materiales.com", "Gestor Obras Demo", "gestor", "#06B6D4")
+    tecnico_id = await _seed_demo_user("tecnico.demo@materiales.com", "Tecnico Demo", "tecnico", "#10B981")
+    tecnico_refuerzo_id = await _seed_demo_user("tecnico.refuerzo.demo@materiales.com", "Tecnico Refuerzo Demo", "tecnico", "#14B8A6")
+    tecnico_mantenimiento_id = await _seed_demo_user("tecnico.mantenimiento.demo@materiales.com", "Tecnico Mantenimiento Demo", "tecnico", "#84CC16")
+    await _seed_demo_user("comercial.demo@materiales.com", "Comercial Demo", "comercial", "#F59E0B")
+    await _seed_demo_user("comercial.obras.demo@materiales.com", "Comercial Obras Demo", "comercial", "#F97316")
+    sat_id = await _seed_demo_user("sat.demo@materiales.com", "SAT Demo", "sat", "#8B5CF6")
+    await _seed_demo_user("sat.guardias.demo@materiales.com", "SAT Guardias Demo", "sat", "#EC4899")
+
+    await db.materiales.delete_many({"demo_seed": True, "id": {"$regex": "^demo-material-"}})
+    await db.budgets.update_many({"demo_seed": True, "material_id": {"$regex": "^demo-material-"}}, {"$set": {"material_id": None}})
+    await db.events.update_many({"demo_seed": True, "material_id": {"$regex": "^demo-material-"}}, {"$set": {"material_id": None}})
+
+    budget_id = "demo-budget-oficina-centro"
+    await db.budgets.update_one(
+        {"id": budget_id},
+        {"$setOnInsert": {
+            "id": budget_id,
+            "n_proyecto": "POC-001",
+            "cliente": "Comunidad Edificio Centro",
+            "nombre_instalacion": "PCI zonas comunes y garaje",
+            "direccion": "Av. Principal 123",
+            "contacto_1": "Administracion Fincas Centro",
+            "contacto_2": "600 123 456",
+            "observaciones_presupuesto": "Presupuesto demo para mostrar flujo comercial, ejecucion y SAT.",
+            "fecha_inicio": (now + timedelta(days=3)).date().isoformat(),
+            "fecha_fin": (now + timedelta(days=5)).date().isoformat(),
+            "observaciones_ejecucion": "Coordinar acceso a garaje con conserjeria.",
+            "equipos": [
+                {"elemento": "Central PCI", "cantidad": "1", "ubicacion": "Cuarto tecnico", "observaciones": "Incluye configuracion inicial"},
+                {"elemento": "Detector optico", "cantidad": "18", "ubicacion": "Zonas comunes", "observaciones": "Reposicion por sectores"},
+                {"elemento": "Sirena interior", "cantidad": "4", "ubicacion": "Escaleras", "observaciones": "Prueba acustica final"},
+            ],
+            "entrega_tarjeta_mantenimiento": True,
+            "entrega_llave_salto": False,
+            "entrega_eps100": True,
+            "firma_isai": "",
+            "nombre_isai": DEMO_ADMIN_NAME,
+            "cargo_isai": "Responsable tecnico",
+            "firma_cliente": "",
+            "nombre_cliente": "Administracion Fincas Centro",
+            "cargo_cliente": "Cliente",
+            "material_id": None,
+            "created_at": now_iso,
+            "updated_at": now_iso,
+            "created_by": DEMO_ADMIN_EMAIL,
+            "created_by_name": DEMO_ADMIN_NAME,
+            "status": "pendiente",
+            "demo_seed": True,
+        }},
+        upsert=True,
+    )
+
+    demo_budgets = [
+        ("demo-budget-hotel-aurora", "POC-002", "Hotel Aurora", "Renovacion PCI recepcion y parking", "pendiente", 2),
+        ("demo-budget-talleres-meridian", "POC-003", "Talleres Meridian", "Adecuacion nave industrial", "aceptado", -6),
+        ("demo-budget-logistica-eurosur", "POC-004", "Logistica Eurosur", "Ampliacion deteccion muelles", "aceptado", -14),
+        ("demo-budget-colegio-san-mateo", "POC-005", "Colegio San Mateo", "Revision anual y mejoras evacuacion", "pendiente", 7),
+        ("demo-budget-reformas-horizonte", "POC-006", "Reformas Horizonte", "Instalacion oficinas nueva sede", "pendiente", 12),
+    ]
+    for demo_budget_id, project_number, cliente, instalacion, status, day_offset in demo_budgets:
+        await db.budgets.update_one(
+            {"id": demo_budget_id},
+            {"$setOnInsert": {
+                "id": demo_budget_id,
+                "n_proyecto": project_number,
+                "cliente": cliente,
+                "nombre_instalacion": instalacion,
+                "direccion": "Direccion demo PoC",
+                "contacto_1": f"Responsable {cliente}",
+                "contacto_2": "600 000 000",
+                "observaciones_presupuesto": "Presupuesto demo con estado y proyecto vinculado.",
+                "fecha_inicio": (now + timedelta(days=day_offset)).date().isoformat(),
+                "fecha_fin": (now + timedelta(days=day_offset + 3)).date().isoformat(),
+                "observaciones_ejecucion": "Coordinar accesos, cortes y pruebas con cliente.",
+                "equipos": [
+                    {"elemento": "Central PCI", "cantidad": "1", "ubicacion": "Cuarto tecnico", "observaciones": "Configuracion demo"},
+                    {"elemento": "Detector optico", "cantidad": "12", "ubicacion": "Zonas comunes", "observaciones": "Instalacion por sectores"},
+                    {"elemento": "Prueba funcional", "cantidad": "1", "ubicacion": "Toda la instalacion", "observaciones": "Acta final"},
+                ],
+                "entrega_tarjeta_mantenimiento": status == "aceptado",
+                "entrega_llave_salto": False,
+                "entrega_eps100": status == "aceptado",
+                "firma_isai": "",
+                "nombre_isai": DEMO_ADMIN_NAME,
+                "cargo_isai": "Responsable tecnico",
+                "firma_cliente": "",
+                "nombre_cliente": f"Responsable {cliente}",
+                "cargo_cliente": "Cliente",
+                "material_id": None,
+                "created_at": now_iso,
+                "updated_at": now_iso,
+                "created_by": DEMO_ADMIN_EMAIL,
+                "created_by_name": DEMO_ADMIN_NAME,
+                "status": status,
+                "demo_seed": True,
+            }},
+            upsert=True,
+        )
+
+    event_id = "demo-event-instalacion-centro"
+    start_at = (now + timedelta(days=3)).replace(hour=9, minute=0, second=0, microsecond=0)
+    end_at = start_at + timedelta(hours=4)
+    await db.events.update_one(
+        {"id": event_id},
+        {"$setOnInsert": {
+            "id": event_id,
+            "title": "Instalacion PCI - Comunidad Edificio Centro",
+            "start_at": start_at.isoformat(),
+            "end_at": end_at.isoformat(),
+            "description": "Demo PoC: instalacion planificada con tecnico asignado y presupuesto vinculado.",
+            "material_id": None,
+            "assigned_user_ids": [uid for uid in [tecnico_id, tecnico_refuerzo_id] if uid],
+            "manager_id": gestor_id or manager_id,
+            "recurrence": None,
+            "attachments": [],
+            "created_by": DEMO_ADMIN_EMAIL,
+            "created_at": now_iso,
+            "status": "in_progress",
+            "seguimiento": "Pendiente de confirmar acceso a garaje.",
+            "budget_id": budget_id,
+            "demo_seed": True,
+        }},
+        upsert=True,
+    )
+
+    tech_pool = [uid for uid in [tecnico_id, tecnico_refuerzo_id, tecnico_mantenimiento_id] if uid]
+    manager_pool = [uid for uid in [gestor_id, gestor_obras_id, manager_id] if uid]
+    if tech_pool and manager_pool:
+        await db.events.delete_many({"demo_seed": True, "id": {"$regex": "^demo-calendar-"}})
+        calendar_start = now.replace(hour=8, minute=0, second=0, microsecond=0)
+        calendar_end = calendar_start + timedelta(days=29)
+        workdays = []
+        cursor = calendar_start
+        while cursor <= calendar_end:
+            if cursor.weekday() < 5:
+                workdays.append(cursor)
+            cursor += timedelta(days=1)
+
+        event_templates = [
+            ("Revision trimestral PCI", "Mantenimiento preventivo y checklist de central.", 8, 0, 150, "in_progress"),
+            ("Instalacion detectores", "Montaje y prueba por sectores.", 10, 30, 180, "in_progress"),
+            ("Puesta en marcha", "Configuracion final, pruebas y entrega al cliente.", 13, 30, 150, "pending_completion"),
+            ("Visita SAT programada", "Revision correctiva con parte de trabajo.", 16, 0, 120, "in_progress"),
+        ]
+        client_names = [
+            "Comunidad Edificio Centro",
+            "Hotel Aurora",
+            "Talleres Meridian",
+            "Logistica Eurosur",
+            "Colegio San Mateo",
+            "Reformas Horizonte",
+        ]
+
+        for day_idx, day in enumerate(workdays):
+            for block_idx, (title, description, hour, minute, duration_minutes, status) in enumerate(event_templates):
+                start = day.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                end = start + timedelta(minutes=duration_minutes)
+                assigned_count = ((day_idx + block_idx) % min(3, len(tech_pool))) + 1
+                assigned = [tech_pool[(day_idx + block_idx + offset) % len(tech_pool)] for offset in range(assigned_count)]
+                manager = manager_pool[(day_idx + block_idx) % len(manager_pool)]
+                client = client_names[(day_idx + block_idx) % len(client_names)]
+                event_id_block = f"demo-calendar-workday-{day.date().isoformat()}-{block_idx + 1}"
+                await db.events.update_one(
+                    {"id": event_id_block},
+                    {"$setOnInsert": {
+                        "id": event_id_block,
+                        "title": f"{title} - {client}",
+                        "start_at": start.isoformat(),
+                        "end_at": end.isoformat(),
+                        "description": description,
+                        "material_id": None,
+                        "assigned_user_ids": assigned,
+                        "manager_id": manager,
+                        "recurrence": None,
+                        "attachments": [],
+                        "created_by": DEMO_ADMIN_EMAIL,
+                        "created_at": now_iso,
+                        "status": status,
+                        "seguimiento": "Bloque laboral demo para calendario PoC.",
+                        "budget_id": budget_id if block_idx == 0 and day_idx % 3 == 0 else None,
+                        "demo_seed": True,
+                    }},
+                    upsert=True,
+                )
+
+        recurrent_specs = [
+            ("demo-calendar-daily-standup", "Coordinacion diaria de tecnicos", "Revision de agenda, materiales y accesos del dia.", "daily", calendar_start, 8, 0, 30, tech_pool[:1], manager_pool[0]),
+            ("demo-calendar-weekly-planning", "Planificacion semanal de obras", "Reunion semanal de gestor con equipo tecnico.", "weekly", calendar_start, 12, 30, 60, tech_pool[:min(3, len(tech_pool))], manager_pool[min(1, len(manager_pool) - 1)]),
+            ("demo-calendar-monthly-review", "Revision mensual de cartera", "Seguimiento mensual de presupuestos, SAT y obras activas.", "monthly", calendar_start, 9, 30, 90, tech_pool[:min(2, len(tech_pool))], manager_pool[0]),
+        ]
+        for event_id_rec, title, description, recurrence_type, base_day, hour, minute, duration_minutes, assigned, manager in recurrent_specs:
+            start = base_day.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            end = start + timedelta(minutes=duration_minutes)
+            await db.events.update_one(
+                {"id": event_id_rec},
+                {"$setOnInsert": {
+                    "id": event_id_rec,
+                    "title": title,
+                    "start_at": start.isoformat(),
+                    "end_at": end.isoformat(),
+                    "description": description,
+                    "material_id": None,
+                    "assigned_user_ids": assigned,
+                    "manager_id": manager,
+                    "recurrence": {"type": recurrence_type, "until": calendar_end.date().isoformat()},
+                    "attachments": [],
+                    "created_by": DEMO_ADMIN_EMAIL,
+                    "created_at": now_iso,
+                    "status": "in_progress",
+                    "seguimiento": "Evento recurrente demo para calendario PoC.",
+                    "budget_id": None,
+                    "demo_seed": True,
+                }},
+                upsert=True,
+            )
+
+    client_id = "demo-sat-client-centro"
+    await db.sat_clients.update_one(
+        {"id": client_id},
+        {"$setOnInsert": {
+            "id": client_id,
+            "cliente": "Comunidad Edificio Centro",
+            "direccion": "Av. Principal 123",
+            "contacto": "Administracion Fincas Centro",
+            "telefono": "600 123 456",
+            "created_at": now_iso,
+            "updated_at": now_iso,
+            "demo_seed": True,
+        }},
+        upsert=True,
+    )
+
+    incident_id = "demo-sat-incident-centro"
+    await db.sat_incidents.update_one(
+        {"id": incident_id},
+        {"$setOnInsert": {
+            "id": incident_id,
+            "cliente": "Comunidad Edificio Centro",
+            "direccion": "Av. Principal 123",
+            "telefono": "600 123 456",
+            "observaciones": "Aviso demo: revisar sirena de garaje tras prueba de mantenimiento.",
+            "comentarios_sat": "Caso preparado para mostrar seguimiento SAT.",
+            "status": "pendiente",
+            "client_id": client_id,
+            "created_at": now_iso,
+            "updated_at": now_iso,
+            "resolved_at": None,
+            "resolved_by": None,
+            "history": [{
+                "id": "demo-sat-history-centro",
+                "action": "note",
+                "comment": "Incidencia demo generada para PoC.",
+                "user_id": sat_id,
+                "user_name": "SAT Demo",
+                "created_at": now_iso,
+            }],
+            "demo_seed": True,
+        }},
+        upsert=True,
+    )
+
+    sat_clients_demo = [
+        ("demo-sat-client-hotel-aurora", "Hotel Aurora", "C/ Marina 48", "Marta Ruiz", "600 111 222"),
+        ("demo-sat-client-talleres-meridian", "Talleres Meridian", "Poligono Norte nave 12", "Carlos Molina", "600 222 333"),
+        ("demo-sat-client-logistica-eurosur", "Logistica Eurosur", "Centro logistico Sur", "Nuria Campos", "600 333 444"),
+        ("demo-sat-client-colegio-san-mateo", "Colegio San Mateo", "Av. Educacion 22", "Secretaria tecnica", "600 444 555"),
+        ("demo-sat-client-reformas-horizonte", "Reformas Horizonte", "C/ Norte 7", "Sergio Vidal", "600 555 666"),
+        ("demo-sat-client-clinica-norte", "Clinica Norte", "Paseo Salud 3", "Recepcion mantenimiento", "600 666 777"),
+    ]
+    for client_id_demo, cliente, direccion, contacto, telefono in sat_clients_demo:
+        await db.sat_clients.update_one(
+            {"id": client_id_demo},
+            {"$setOnInsert": {
+                "id": client_id_demo,
+                "cliente": cliente,
+                "direccion": direccion,
+                "contacto": contacto,
+                "telefono": telefono,
+                "created_at": now_iso,
+                "updated_at": now_iso,
+                "demo_seed": True,
+            }},
+            upsert=True,
+        )
+
+    sat_incidents_demo = [
+        ("demo-sat-incident-hotel-pendiente", "demo-sat-client-hotel-aurora", "Hotel Aurora", "C/ Marina 48", "600 111 222", "Fallo intermitente en sirena de parking durante prueba semanal.", "pendiente", None, None, None, 0),
+        ("demo-sat-incident-taller-resuelta", "demo-sat-client-talleres-meridian", "Talleres Meridian", "Poligono Norte nave 12", "600 222 333", "Pulsador golpeado en zona de carga. Sustituido y probado.", "resuelta", None, True, sat_id, -3),
+        ("demo-sat-incident-logistica-agendada", "demo-sat-client-logistica-eurosur", "Logistica Eurosur", "Centro logistico Sur", "600 333 444", "Detector lineal con falsas alarmas en muelle 4. Visita programada.", "agendada", now + timedelta(days=2, hours=9), None, None, -1),
+        ("demo-sat-incident-colegio-pendiente", "demo-sat-client-colegio-san-mateo", "Colegio San Mateo", "Av. Educacion 22", "600 444 555", "Revision de senaletica de evacuacion tras inspeccion interna.", "pendiente", None, None, None, -2),
+        ("demo-sat-incident-reformas-resuelta", "demo-sat-client-reformas-horizonte", "Reformas Horizonte", "C/ Norte 7", "600 555 666", "Central sin alimentacion auxiliar. Bateria sustituida.", "resuelta", None, False, sat_id, -7),
+        ("demo-sat-incident-clinica-agendada", "demo-sat-client-clinica-norte", "Clinica Norte", "Paseo Salud 3", "600 666 777", "Comprobar sectorizacion de zona consultas antes de auditoria.", "agendada", now + timedelta(days=5, hours=10), None, None, -4),
+    ]
+    for incident_demo_id, client_id_demo, cliente, direccion, telefono, observaciones, status, scheduled_for, facturable, resolved_by, created_offset in sat_incidents_demo:
+        created_at = (now + timedelta(days=created_offset)).isoformat()
+        history = [{
+            "id": f"{incident_demo_id}-history-open",
+            "action": "created",
+            "comment": "Incidencia demo creada para mostrar flujo SAT.",
+            "user_id": None,
+            "user_name": cliente,
+            "created_at": created_at,
+        }]
+        if status == "resuelta":
+            history.append({
+                "id": f"{incident_demo_id}-history-resolved",
+                "action": "status_change",
+                "from_status": "pendiente",
+                "to_status": "resuelta",
+                "comment": "Caso resuelto en visita demo.",
+                "facturable": facturable,
+                "user_id": sat_id,
+                "user_name": "SAT Demo",
+                "created_at": now_iso,
+            })
+        if status == "agendada":
+            history.append({
+                "id": f"{incident_demo_id}-history-scheduled",
+                "action": "scheduled",
+                "from_status": "pendiente",
+                "to_status": "agendada",
+                "scheduled_for": scheduled_for.isoformat() if scheduled_for else None,
+                "comment": "Visita agendada para resolver incidencia demo.",
+                "user_id": sat_id,
+                "user_name": "SAT Demo",
+                "created_at": now_iso,
+            })
+        await db.sat_incidents.update_one(
+            {"id": incident_demo_id},
+            {"$setOnInsert": {
+                "id": incident_demo_id,
+                "cliente": cliente,
+                "direccion": direccion,
+                "telefono": telefono,
+                "observaciones": observaciones,
+                "comentarios_sat": "Caso demo con historial para CRM SAT.",
+                "status": status,
+                "client_id": client_id_demo,
+                "scheduled_for": scheduled_for.isoformat() if scheduled_for else None,
+                "facturable": facturable,
+                "created_at": created_at,
+                "updated_at": now_iso,
+                "resolved_at": now_iso if status == "resuelta" else None,
+                "resolved_by": resolved_by,
+                "history": history,
+                "demo_seed": True,
+            }},
+            upsert=True,
+        )
 
 # ---------------- Root/Health ----------------
 @api_router.get("/")
@@ -2839,10 +3238,11 @@ logger = logging.getLogger(__name__)
 
 @app.on_event("startup")
 async def on_startup():
+    await ensure_default_roles_and_migrate()
     await seed_admin_user()
     await seed_initial_data()
     await backfill_user_colors()
-    await ensure_default_roles_and_migrate()
+    await seed_demo_data()
 
 async def backfill_user_colors():
     """Assign a color to any user that doesn't have one."""

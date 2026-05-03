@@ -55,12 +55,34 @@ railway logs --service backend --environment poc
 railway logs --service frontend --environment poc
 ```
 
+## Variables necesarias
+
+### Backend
+
+- `MONGO_URL`: URL de MongoDB inyectada por Railway.
+- `DB_NAME`: nombre de la base de datos de la PoC.
+- `JWT_SECRET`: secreto para firmar sesiones.
+- `FRONTEND_URL`: URL publica del frontend.
+- `INITIAL_EXCEL_PATH`: ruta del Excel inicial de materiales, si se usa.
+- `ENABLE_DEMO_SEED`: poner `true` solo en PoC si queres cargar datos demo.
+- `DEMO_ADMIN_EMAIL`: email del usuario admin demo.
+- `DEMO_ADMIN_PASSWORD`: password del usuario admin demo; requerida para crearlo.
+- `DEMO_ADMIN_NAME`: nombre visible del admin demo.
+- `DEMO_USER_PASSWORD`: password compartida para usuarios demo no admin; requerida para crearlos.
+
+### Frontend
+
+- `EXPO_PUBLIC_BACKEND_URL`: URL publica del backend.
+- `HOST`: usar `0.0.0.0` en Railway.
+- `PORT`: puerto usado por el servicio frontend.
+
 ## Riesgos
 
 - **No es producción real**: el entorno `poc` es para pruebas. No usarlo con datos reales ni clientes.
 - **No exponer secretos**: nunca commities ni subas `.env`, credenciales o claves privadas.
 - **Confirmar entorno**: siempre verificá que `--environment poc` esté presente. Equivocarse puede pisar otro entorno.
 - **Variables de entorno**: si tocaste variables en Railway (panel web), asegurate de que el deploy no las sobrescriba ni las duplique.
+- **Seeds demo**: `ENABLE_DEMO_SEED=true` crea datos de muestra. No lo actives en entornos con datos reales.
 
 ## Nota sobre GitHub auto-deploy
 
