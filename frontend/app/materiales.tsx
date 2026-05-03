@@ -416,9 +416,9 @@ const s = StyleSheet.create({
   metaRow: { flexDirection: "row", alignItems: "center", gap: 12, flexWrap: "wrap" },
   metaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
   metaText: { fontSize: 13, color: COLORS.textSecondary, fontWeight: "500" },
-  infoGrid: { flexDirection: "row", marginTop: 6, gap: 4 },
+  infoGrid: { flexDirection: "row", flexWrap: "wrap", marginTop: 6, gap: 4 },
   infoCell: {
-    flex: 1, backgroundColor: COLORS.bg, borderRadius: 6,
+    flex: 1, minWidth: 70, backgroundColor: COLORS.bg, borderRadius: 6,
     paddingVertical: 6, paddingHorizontal: 6, alignItems: "center",
   },
   infoLabel: { fontSize: 10, color: COLORS.textDisabled, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 },
