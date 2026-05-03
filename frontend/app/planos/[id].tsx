@@ -1079,7 +1079,12 @@ export default function PlanEditor() {
                 } as any : {})}
               >
                 <View
-                  style={[s.canvasPaper, { width: canvasSize.w * zoom, height: canvasSize.h * zoom, backgroundColor: background ? "#FFFFFF" : COLORS.canvasPaper }]}
+                  style={[s.canvasPaper, {
+                    width: canvasSize.w * zoom, height: canvasSize.h * zoom,
+                    backgroundColor: background ? "#FFFFFF" : COLORS.canvasPaper,
+                    // Prevent browser scroll when drawing (pencil/line/rect/circle/text/stamp)
+                    touchAction: tool !== "select" ? "none" : "auto",
+                  } as any]}
                   {...panResponder.panHandlers}
                 >
                   <Svg width="100%" height="100%" viewBox={`0 0 ${canvasSize.w} ${canvasSize.h}`} pointerEvents="none">
