@@ -197,6 +197,7 @@ NOTIFICATION_CATALOG = [
     {"key": "event_updated", "label": "Estado de evento actualizado", "module": "Calendario"},
     {"key": "sat_new", "label": "Nueva incidencia SAT", "module": "CRM SAT"},
     {"key": "sat_revived", "label": "Incidencia SAT reactivada", "module": "CRM SAT"},
+    {"key": "chat_message", "label": "Mensajes de chat", "module": "Chat"},
 ]
 ALL_NOTIFS = [n["key"] for n in NOTIFICATION_CATALOG]
 
@@ -209,9 +210,9 @@ SAT_PERMS = ["sat.view", "sat.edit", "chat.view"]
 DEFAULT_ROLES = [
     {"key": "admin", "name": "Administrador principal", "permissions": ALL_PERMS, "notification_prefs": ALL_NOTIFS, "system": True, "locked": True},
     {"key": "gestor", "name": "Gestor", "permissions": NON_ADMIN_PERMS, "notification_prefs": ALL_NOTIFS, "system": True, "locked": False},
-    {"key": "tecnico", "name": "Técnico", "permissions": TECNICO_PERMS, "notification_prefs": ["event_completed", "event_pending_completion"], "system": True, "locked": False},
-    {"key": "comercial", "name": "Comercial", "permissions": COMERCIAL_PERMS, "notification_prefs": ["event_completed"], "system": True, "locked": False},
-    {"key": "sat", "name": "SAT", "permissions": SAT_PERMS, "notification_prefs": ["sat_new", "sat_revived"], "system": True, "locked": False},
+    {"key": "tecnico", "name": "Técnico", "permissions": TECNICO_PERMS, "notification_prefs": ["event_completed", "event_pending_completion", "chat_message"], "system": True, "locked": False},
+    {"key": "comercial", "name": "Comercial", "permissions": COMERCIAL_PERMS, "notification_prefs": ["event_completed", "chat_message"], "system": True, "locked": False},
+    {"key": "sat", "name": "SAT", "permissions": SAT_PERMS, "notification_prefs": ["sat_new", "sat_revived", "chat_message"], "system": True, "locked": False},
 ]
 
 # Map legacy `role` field -> new role key
@@ -2927,6 +2928,25 @@ async def chat_send_message(cid: str, payload: MessageCreate, user: dict = Depen
     await db.messages.insert_one(msg)
     await db.chats.update_one({"id": cid}, {"$set": {"updated_at": now}})
     msg.pop("_id", None)
+    # Notify other participants
+    sender_name = user.get("name") or user.get("email")
+    for pid in chat["participant_ids"]:
+        if pid == user["id"]:
+            continue
+        if await should_notify_user(pid, "chat_message"):
+            await db.notifications.insert_one({
+                "id": str(uuid.uuid4()),
+                "user_id": pid,
+                "event_id": None,
+                "type": "chat_message",
+                "title": f"💬 {sender_name}",
+                "message": payload.text.strip()[:200],
+                "read": False,
+                "created_at": now,
+                "from_user_id": user["id"],
+                "from_user_name": sender_name,
+                "link": f"/chat/{cid}",
+            })
     return msg
 
 @api_router.get("/chats/unread-total")
