@@ -25,6 +25,7 @@ import pypdfium2 as pdfium
 from PIL import Image
 from fastapi.responses import Response
 from pdf_filler import build_budget_pdf
+from cryptography.fernet import Fernet
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -48,6 +49,27 @@ INITIAL_EXCEL_PATH = os.environ.get('INITIAL_EXCEL_PATH', '/app/backend/Material
 MS_AUTHORITY = "https://login.microsoftonline.com/common"
 MS_SCOPES = ["Files.ReadWrite.All", "User.Read"]  # offline_access added automatically by MSAL
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
+
+ONEDRIVE_TOKEN_ENCRYPTION_KEY = os.environ.get('ONEDRIVE_TOKEN_ENCRYPTION_KEY', '')
+
+def _onedrive_fernet() -> Fernet:
+    if not ONEDRIVE_TOKEN_ENCRYPTION_KEY:
+        raise HTTPException(500, "ONEDRIVE_TOKEN_ENCRYPTION_KEY no configurada. Contactá al administrador del sistema.")
+    try:
+        return Fernet(ONEDRIVE_TOKEN_ENCRYPTION_KEY.encode())
+    except Exception:
+        raise HTTPException(500, "ONEDRIVE_TOKEN_ENCRYPTION_KEY inválida. Generá una clave Fernet válida.")
+
+def _encrypt_onedrive_token(token: str) -> str:
+    return _onedrive_fernet().encrypt(token.encode()).decode()
+
+def _decrypt_onedrive_token(token_enc: str) -> str:
+    try:
+        return _onedrive_fernet().decrypt(token_enc.encode()).decode()
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(500, "No se pudo descifrar el token de OneDrive. Revisá la clave de cifrado o reconectá OneDrive.")
 
 # Microsoft user-authentication redirect URIs
 MS_AUTH_REDIRECT_URI = os.environ.get('MS_AUTH_REDIRECT_URI', 'http://localhost:8000/api/auth/microsoft/callback')
@@ -419,20 +441,43 @@ def _msal_app():
     )
 
 async def _get_onedrive_token() -> str:
-    """Return a fresh access token using the stored refresh token."""
+    """Return a fresh access token using the stored refresh token (encrypted)."""
     doc = await db.onedrive_tokens.find_one({"_id": "admin"})
     if not doc:
         raise HTTPException(400, "OneDrive no conectado. El admin debe vincular OneDrive primero.")
+
+    access_token_enc = doc.get("access_token_enc")
+    refresh_token_enc = doc.get("refresh_token_enc")
+
+    if access_token_enc and refresh_token_enc:
+        refresh_token = _decrypt_onedrive_token(refresh_token_enc)
+    elif "access_token" in doc and "refresh_token" in doc:
+        access_token = doc["access_token"]
+        refresh_token = doc["refresh_token"]
+        await db.onedrive_tokens.update_one(
+            {"_id": "admin"},
+            {"$set": {
+                "access_token_enc": _encrypt_onedrive_token(access_token),
+                "refresh_token_enc": _encrypt_onedrive_token(refresh_token),
+            },
+            "$unset": {"access_token": "", "refresh_token": ""}}
+        )
+    else:
+        raise HTTPException(400, "OneDrive no conectado. El admin debe vincular OneDrive primero.")
+
     app_msal = _msal_app()
-    result = app_msal.acquire_token_by_refresh_token(doc["refresh_token"], scopes=MS_SCOPES)
+    result = app_msal.acquire_token_by_refresh_token(refresh_token, scopes=MS_SCOPES)
     if "error" in result:
         raise HTTPException(401, f"Error refrescando token OneDrive: {result.get('error_description')}")
-    # save new refresh token if provided
-    update = {"access_token": result["access_token"]}
-    if result.get("refresh_token"):
-        update["refresh_token"] = result["refresh_token"]
+    if not result.get("access_token"):
+        raise HTTPException(401, "Microsoft no devolvió access token al refrescar OneDrive")
+    new_access = result["access_token"]
+    new_refresh = result.get("refresh_token")
+    update = {"access_token_enc": _encrypt_onedrive_token(new_access)}
+    if new_refresh:
+        update["refresh_token_enc"] = _encrypt_onedrive_token(new_refresh)
     await db.onedrive_tokens.update_one({"_id": "admin"}, {"$set": update})
-    return result["access_token"]
+    return new_access
 
 async def _graph_get(url: str, token: str) -> httpx.Response:
     async with httpx.AsyncClient(timeout=60) as c:
@@ -1702,15 +1747,25 @@ async def onedrive_callback(code: str, state: Optional[str] = None, error: Optio
     if "error" in result:
         return HTMLResponse(f"<h2>Error</h2><p>{result.get('error_description')}</p>", status_code=400)
     admin_email = result.get("id_token_claims", {}).get("preferred_username") or result.get("id_token_claims", {}).get("email", "unknown")
+    access_token = result["access_token"]
+    refresh_token = result.get("refresh_token", "")
+    if not refresh_token:
+        return HTMLResponse("<h2>Error</h2><p>Microsoft no devolvió refresh token. Volvé a vincular OneDrive.</p>", status_code=400)
+    try:
+        access_token_enc = _encrypt_onedrive_token(access_token)
+        refresh_token_enc = _encrypt_onedrive_token(refresh_token)
+    except HTTPException as exc:
+        return HTMLResponse(f"<h2>Error del servidor</h2><p>{exc.detail}</p>", status_code=exc.status_code)
     await db.onedrive_tokens.update_one(
         {"_id": "admin"},
         {"$set": {
             "_id": "admin",
-            "access_token": result["access_token"],
-            "refresh_token": result.get("refresh_token", ""),
+            "access_token_enc": access_token_enc,
+            "refresh_token_enc": refresh_token_enc,
             "admin_email": admin_email,
             "connected_at": datetime.now(timezone.utc).isoformat(),
-        }},
+        },
+        "$unset": {"access_token": "", "refresh_token": ""}},
         upsert=True,
     )
     return HTMLResponse(
@@ -1723,7 +1778,7 @@ async def onedrive_callback(code: str, state: Optional[str] = None, error: Optio
 
 @api_router.get("/auth/onedrive/status", response_model=OneDriveStatus)
 async def onedrive_status(user: dict = Depends(current_user)):
-    doc = await db.onedrive_tokens.find_one({"_id": "admin"}, {"_id": 0, "access_token": 0, "refresh_token": 0})
+    doc = await db.onedrive_tokens.find_one({"_id": "admin"}, {"_id": 0, "access_token": 0, "refresh_token": 0, "access_token_enc": 0, "refresh_token_enc": 0})
     if not doc:
         return OneDriveStatus(connected=False)
     meta = await db.sync_meta.find_one({"_id": "meta"}, {"_id": 0}) or {}
@@ -2282,6 +2337,22 @@ async def seed_admin_user():
         return
     existing = await db.users.find_one({"email": DEMO_ADMIN_EMAIL})
     if existing:
+        if DEMO_ADMIN_PASSWORD:
+            role = await db.roles.find_one({"key": "admin"})
+            await db.users.update_one(
+                {"email": DEMO_ADMIN_EMAIL},
+                {"$set": {
+                    "password": hash_password(DEMO_ADMIN_PASSWORD),
+                    "name": DEMO_ADMIN_NAME,
+                    "role": "admin",
+                    "role_id": role.get("id") if role else None,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }}
+            )
+        else:
+            logging.getLogger(__name__).warning(
+                "DEMO_ADMIN_PASSWORD no configurada; no se puede actualizar el password del usuario admin de demo"
+            )
         return
     if not DEMO_ADMIN_PASSWORD:
         logging.getLogger(__name__).warning(

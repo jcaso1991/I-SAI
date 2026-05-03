@@ -1,5 +1,5 @@
 ---
-description: Guardar cambios con commit directo tras confirmación humana.
+description: Guardar cambios con commit y push directos.
 ---
 
 Flujo obligatorio:
@@ -7,7 +7,7 @@ Flujo obligatorio:
 1. Ejecutá `git status`.
 2. Si no hay cambios, respondé exactamente: "No hay nada para guardar todavía. Podés seguir trabajando y usar `/guardar` más tarde."
 3. Si hay cambios, mostrale a la persona un resumen humano de lo que se va a guardar.
-4. Pedí confirmación antes de hacer `git add` y `git commit`.
-5. Si confirma, ejecutá `git add` y `git commit` con mensaje conventional commit.
+4. No pidas confirmación extra: la invocación de `/guardar` ya confirma `git add`, `git commit` y `git push`.
+5. Ejecutá `git add`, `git commit` con mensaje conventional commit en español y después `git push`.
 6. No agregues atribución de IA ni `Co-Authored-By`.
-7. No pushees.
+7. Si detectás secretos, credenciales o archivos sensibles, frená antes de agregarlos y avisá el riesgo en lenguaje claro.

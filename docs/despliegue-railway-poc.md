@@ -89,6 +89,7 @@ Si las llamadas del frontend al backend fallan con errores de CORS:
 - `DEMO_ADMIN_PASSWORD`: password del usuario admin demo; requerida para crearlo.
 - `DEMO_ADMIN_NAME`: nombre visible del admin demo.
 - `DEMO_USER_PASSWORD`: password compartida para usuarios demo no admin; requerida para crearlos.
+- `ONEDRIVE_TOKEN_ENCRYPTION_KEY`: clave de 32 bytes en base64 (url-safe) usada para cifrar los tokens de OneDrive en la base de datos. Generala con `python -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"`. **⚠️ No la pierdas. Si se pierde o rota, hay que volver a vincular OneDrive desde cero porque los tokens guardados no se pueden descifrar.**
 - `CORS_ORIGINS`: opcional. Orígenes adicionales separados por coma (ej. `https://otro-dominio.com,https://staging.app.com`). `FRONTEND_URL` se incluye siempre automáticamente.
 
 ### Frontend
