@@ -19,17 +19,20 @@ Actualizar el entorno de PoC en Railway con los cambios locales, **sin usar GitH
 | Entorno      | `poc`                               |
 | Backend      | servicio `backend`                  |
 | Frontend     | servicio `frontend`                 |
+| Landing      | servicio `landing`                  |
 
 ### URLs de verificación
 
 - **Backend**: la que genere Railway para el servicio `backend`.
 - **Frontend**: la que genere Railway para el servicio `frontend`.
+- **Landing**: la que genere Railway para el servicio `landing`.
 
 Podés obtener las URLs con:
 
 ```bash
 railway domain --service backend --environment poc
 railway domain --service frontend --environment poc
+railway domain --service landing --environment poc
 ```
 
 ## Comandos de deploy
@@ -44,6 +47,14 @@ railway up backend --path-as-root --service backend --environment poc --ci
 
 ```bash
 railway up frontend --path-as-root --service frontend --environment poc --ci
+```
+
+### Landing
+
+La landing es un despliegue separado y estático. Usá `landing/` como raíz del servicio y `python main.py` como comando de inicio.
+
+```bash
+railway up landing --path-as-root --service landing --environment poc --ci
 ```
 
 ## Verificación
@@ -64,6 +75,7 @@ Una vez ambos servicios están corriendo, confirmá que las partes clave funcion
 3. **Calendario desde hoy 8-18**: revisá que el calendario muestre eventos o citas en el rango laboral.
 4. **Presupuestos con estados**: abrí presupuestos y confirmá que se visualizan, editan y cambian de estado correctamente.
 5. **Proyectos/materiales desde OneDrive**: verificá que la integración con OneDrive lista carpetas, archivos o proyectos según corresponda, sin depender de `demo-material`.
+6. **Landing pública**: abrí la URL del servicio `landing`, verificá que carga el video y que “Entrar a la app” abre el frontend.
 
 ### Verificación CORS
 
@@ -95,8 +107,13 @@ Si las llamadas del frontend al backend fallan con errores de CORS:
 ### Frontend
 
 - `EXPO_PUBLIC_BACKEND_URL`: URL publica del backend.
+- `EXPO_PUBLIC_PORTFOLIO_URL`: URL publica de la landing.
 - `HOST`: usar `0.0.0.0` en Railway.
 - `PORT`: puerto usado por el servicio frontend.
+
+### Landing
+
+- `PORT`: puerto usado por Railway. Si no se define, `landing/main.py` usa `8000`.
 
 ## Riesgos
 
