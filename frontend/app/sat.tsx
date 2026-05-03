@@ -229,23 +229,26 @@ export default function SATScreen() {
           )}
           <View style={{ flex: 1 }}>
             <Text style={s.title}>CRM SAT</Text>
-            {/* View selector dropdown */}
-            <TouchableOpacity
-              testID="btn-view-selector"
-              style={s.viewSelector}
-              onPress={() => setShowViewMenu((v) => !v)}
-            >
-              <Ionicons
-                name={view === "incidencias" ? "alert-circle" : "people"}
-                size={14}
-                color={COLORS.primary}
-              />
-              <Text style={s.viewSelectorText}>
-                {view === "incidencias" ? "Incidencias" : "Clientes"}
-              </Text>
-              <Ionicons name={showViewMenu ? "chevron-up" : "chevron-down"} size={14} color={COLORS.primary} />
-            </TouchableOpacity>
           </View>
+          <NotificationsBell style={{ marginLeft: 0 }} />
+        </View>
+        <View style={s.subHeader}>
+          <TouchableOpacity
+            testID="btn-view-selector"
+            style={s.viewSelector}
+            onPress={() => setShowViewMenu((v) => !v)}
+          >
+            <Ionicons
+              name={view === "incidencias" ? "alert-circle" : "people"}
+              size={14}
+              color={COLORS.primary}
+            />
+            <Text style={s.viewSelectorText}>
+              {view === "incidencias" ? "Incidencias" : "Clientes"}
+            </Text>
+            <Ionicons name={showViewMenu ? "chevron-up" : "chevron-down"} size={14} color={COLORS.primary} />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
           {view === "incidencias" && (
             <>
             <TouchableOpacity
@@ -255,7 +258,7 @@ export default function SATScreen() {
             >
               <Ionicons
                 name={copied ? "checkmark-circle" : "copy-outline"}
-                size={16}
+                size={14}
                 color={copied ? "#fff" : COLORS.primary}
               />
               <Text style={[s.copyBtnText, copied && { color: "#fff" }]} numberOfLines={1}>
@@ -270,7 +273,7 @@ export default function SATScreen() {
                 catch (e: any) { Alert.alert("Error", e.message || "No se pudo exportar"); }
               }}
             >
-              <Ionicons name="download-outline" size={16} color="#166534" />
+              <Ionicons name="download-outline" size={14} color="#166534" />
               <Text style={[s.copyBtnText, { color: "#166534" }]} numberOfLines={1}>Exportar Excel</Text>
             </TouchableOpacity>
             </>
@@ -285,14 +288,13 @@ export default function SATScreen() {
               {importing ? (
                 <ActivityIndicator size="small" color={COLORS.primary} />
               ) : (
-                <Ionicons name="cloud-upload-outline" size={16} color={COLORS.primary} />
+                <Ionicons name="cloud-upload-outline" size={14} color={COLORS.primary} />
               )}
               <Text style={s.copyBtnText} numberOfLines={1}>
                 {importing ? "Importando..." : "Cargar Excel"}
               </Text>
             </TouchableOpacity>
           )}
-          <NotificationsBell style={{ marginLeft: 8 }} />
         </View>
 
         {/* View dropdown menu */}
@@ -1380,8 +1382,13 @@ const s = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 30, gap: 8 },
 
   header: {
-    flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap",
-    paddingHorizontal: 16, paddingVertical: 14,
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6,
+    backgroundColor: COLORS.surface,
+  },
+  subHeader: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: 16, paddingBottom: 10,
     backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
   iconBtn: {
@@ -1410,7 +1417,7 @@ const s = StyleSheet.create({
     position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 20,
   },
   viewMenu: {
-    position: "absolute", top: 76, left: 72, width: 280, zIndex: 21,
+    position: "absolute", top: 88, left: 16, width: 280, zIndex: 21,
     backgroundColor: COLORS.surface, borderRadius: 14,
     borderWidth: 1, borderColor: COLORS.border,
     padding: 6, gap: 2,
