@@ -2094,7 +2094,7 @@ async def materiales_export_excel(user: dict = Depends(current_user)):
 
     headers = ["Nº Proyecto", "Cliente", "Ubicación", "Horas PREV", "Comercial", "Gestor", "Técnicos", "Fecha", "Entrega/Recogida", "Total/Parcial", "Estado", "Comentarios"]
     for col, h in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col, value=h)
+        cell = ws.cell(row=row, column=col, value=h)
         cell.font = header_font
         cell.fill = header_fill
         cell.alignment = Alignment(horizontal="center")
