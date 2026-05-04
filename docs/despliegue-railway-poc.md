@@ -114,6 +114,7 @@ Si las llamadas del frontend al backend fallan con errores de CORS:
 ### Landing
 
 - `PORT`: puerto usado por Railway. Si no se define, `landing/main.py` usa `8000`.
+- `FRONTEND_URL`: URL publica del frontend. La landing la usa para el botón “Entrar a la app”.
 
 ## Riesgos
 
