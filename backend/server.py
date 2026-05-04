@@ -182,6 +182,12 @@ class OneDriveStatus(BaseModel):
 def hash_password(pw: str) -> str:
     return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
 
+MIN_PASSWORD_LENGTH = 8
+
+def validate_password_strength(pw: str) -> None:
+    if len(pw or "") < MIN_PASSWORD_LENGTH:
+        raise HTTPException(400, f"Contraseña demasiado corta (mín. {MIN_PASSWORD_LENGTH})")
+
 def verify_password(pw: str, hashed: str) -> bool:
     try:
         return bcrypt.checkpw(pw.encode(), hashed.encode())
@@ -671,6 +677,7 @@ async def register(payload: UserRegister):
     # Only allow public register when DB is empty (bootstrap first admin).
     if count > 0:
         raise HTTPException(403, "Registro público deshabilitado. Pide a un administrador que cree tu cuenta.")
+    validate_password_strength(payload.password)
     user = {
         "id": str(uuid.uuid4()),
         "email": payload.email.lower(),
@@ -819,6 +826,7 @@ async def create_user(payload: UserCreate, admin: dict = Depends(require_permiss
     existing = await db.users.find_one({"email": payload.email.lower()})
     if existing:
         raise HTTPException(400, "Email ya registrado")
+    validate_password_strength(payload.password)
     role = await _resolve_role_for_user(payload.role_id, payload.role)
     # Pick a unique default color if none provided
     if payload.color:
@@ -877,8 +885,7 @@ async def reset_password(uid: str, payload: PasswordReset, admin: dict = Depends
     target = await db.users.find_one({"id": uid})
     if not target:
         raise HTTPException(404, "Usuario no encontrado")
-    if len(payload.password) < 4:
-        raise HTTPException(400, "Contraseña demasiado corta (mín. 4)")
+    validate_password_strength(payload.password)
     await db.users.update_one({"id": uid}, {"$set": {"password": hash_password(payload.password)}})
     return {"ok": True}
 
