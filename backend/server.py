@@ -559,6 +559,8 @@ async def _do_import() -> int:
         rows = parse_workbook(xlsx_bytes)
         existing = {m["row_index"]: m for m in await db.materiales.find({}, {"_id": 0}).to_list(10000)}
         docs = []
+        imported_row_indexes = []
+        imported_at = datetime.now(timezone.utc).isoformat()
         for r in rows:
             old = existing.get(r["row_index"])
             preserved = {}
@@ -571,15 +573,24 @@ async def _do_import() -> int:
                 **r,
                 **preserved,
                 "sync_status": "synced",
-                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": imported_at,
                 "updated_by": old.get("updated_by", "onedrive") if old else "onedrive",
             })
-        await db.materiales.delete_many({})
-        if docs:
-            await db.materiales.insert_many(docs)
+            imported_row_indexes.append(r["row_index"])
+
+        if not docs:
+            raise HTTPException(400, "El Excel de OneDrive no contiene filas para importar; no se modificaron los materiales actuales.")
+
+        for doc in docs:
+            await db.materiales.update_one(
+                {"row_index": doc["row_index"]},
+                {"$set": doc},
+                upsert=True,
+            )
+        await db.materiales.delete_many({"row_index": {"$nin": imported_row_indexes}})
         await db.sync_meta.update_one(
             {"_id": "meta"},
-            {"$set": {"_id": "meta", "last_import_at": datetime.now(timezone.utc).isoformat()}},
+            {"$set": {"_id": "meta", "last_import_at": imported_at}},
             upsert=True,
         )
         return len(docs)
