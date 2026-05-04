@@ -1168,6 +1168,7 @@ class EventCreate(BaseModel):
     #   pending_completion — pendiente de terminar (resalta el evento)
     status: Optional[str] = "in_progress"
     seguimiento: Optional[str] = None  # observaciones del técnico
+    hours: Optional[float] = None  # horas asignadas al evento
 
 class EventPatch(BaseModel):
     title: Optional[str] = None
@@ -1180,6 +1181,7 @@ class EventPatch(BaseModel):
     recurrence: Optional[RecurrenceRule] = None
     status: Optional[str] = None
     seguimiento: Optional[str] = None
+    hours: Optional[float] = None
     budget_id: Optional[str] = None
 
 class EventOut(BaseModel):
@@ -1201,6 +1203,7 @@ class EventOut(BaseModel):
     created_at: str
     status: Optional[str] = "in_progress"
     seguimiento: Optional[str] = None
+    hours: Optional[float] = None
     budget_id: Optional[str] = None
 
 class AttachmentUpload(BaseModel):

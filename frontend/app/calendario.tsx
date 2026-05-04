@@ -49,6 +49,7 @@ type EventT = {
   status?: string;          // in_progress | completed | pending_completion
   seguimiento?: string;
   budget_id?: string | null;
+  hours?: number | null;
 };
 
 // Date helpers
@@ -1450,6 +1451,8 @@ function CreateEventModal({
   const [showTechList, setShowTechList] = useState(false);
   const [recurrence, setRecurrence] = useState<RecurrenceType>("none");
   const [until, setUntil] = useState<string>("");
+  const [hours, setHours] = useState<string>("");
+  const [showHours, setShowHours] = useState(false);
 
   const startDate = dateAt(range.day, range.startMin);
   const endDate = dateAt(range.day, range.endMin);
@@ -1459,7 +1462,7 @@ function CreateEventModal({
       setMode("texto"); setTitle(""); setDescription("");
       setMaterialId(null); setMaterialObj(null); setShowMatList(false);
       setAssignedIds([]); setManagerId(null); setShowManagerList(false); setShowTechList(false);
-      setRecurrence("none"); setUntil("");
+      setRecurrence("none"); setUntil(""); setHours(""); setShowHours(false);
       (async () => {
         try { setTechs(await api.listTechnicians()); } catch {}
         try { setManagers(await api.listManagers()); } catch {}
@@ -1500,6 +1503,7 @@ function CreateEventModal({
         assigned_user_ids: assignedIds,
         manager_id: managerId || undefined,
         recurrence: recurrence !== "none" ? { type: recurrence, until: until || null } : undefined,
+        hours: hours ? parseFloat(hours) : undefined,
       } as any);
       onDone();
     } catch (e: any) { Alert.alert("Error", e.message); }
@@ -1665,6 +1669,29 @@ function CreateEventModal({
                 </View>
               )}
 
+              <Text style={s.mLabel}>Horas asignadas</Text>
+              <TouchableOpacity
+                style={s.pickMatBtn}
+                onPress={() => setShowHours((v) => !v)}
+              >
+                <Ionicons name="time-outline" size={20} color={COLORS.primary} />
+                <Text style={{ color: hours ? COLORS.navy : COLORS.primary, fontWeight: "700", flex: 1 }}>{hours ? `${hours}h` : "Sin asignar"}</Text>
+                <Ionicons name={showHours ? "chevron-up" : "chevron-down"} size={18} color={COLORS.primary} />
+              </TouchableOpacity>
+              {showHours && (
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                  {[0.5,1,1.5,2,2.5,3,3.5,4,4.5,5,5.5,6,6.5,7,7.5,8].map((h) => (
+                    <TouchableOpacity
+                      key={h}
+                      style={[s.recChip, hours === String(h) && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}
+                      onPress={() => { setHours(String(h)); setShowHours(false); }}
+                    >
+                      <Text style={[s.recChipText, hours === String(h) && { color: "#fff" }]}>{h}h</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
               <Text style={s.mLabel}>Gestor del proyecto</Text>
               <TouchableOpacity
                 testID="btn-pick-manager"
@@ -1781,6 +1808,8 @@ function EventDetailsModal({
   // itself; when changed, the backend notifies the event's manager.
   const [status, setStatus] = useState<string>(event.status || "in_progress");
   const [seguimiento, setSeguimiento] = useState<string>(event.seguimiento || "");
+  const [eventHours, setEventHours] = useState<string>((event as any).hours ? String((event as any).hours) : "");
+  const [showEventHours, setShowEventHours] = useState(false);
 
   // Budget linking
   const [budgetObj, setBudgetObj] = useState<any>(null);
@@ -1846,6 +1875,7 @@ function EventDetailsModal({
         assigned_user_ids: assignedIds,
         status,
         seguimiento: seguimiento || undefined,
+        hours: eventHours ? parseFloat(eventHours) : null,
         budget_id: budgetObj?.id || null,
       } as any);
       onChanged();
@@ -2387,6 +2417,35 @@ function EventDetailsModal({
                   {event.recurrence.until ? ` · hasta ${event.recurrence.until}` : ""}
                 </Text>
               </>
+            )}
+
+            <Text style={s.mLabel}>Horas asignadas</Text>
+            {editing && isAdmin ? (
+              <>
+                <TouchableOpacity
+                  style={s.pickMatBtn}
+                  onPress={() => setShowEventHours((v) => !v)}
+                >
+                  <Ionicons name="time-outline" size={20} color={COLORS.primary} />
+                  <Text style={{ color: eventHours ? COLORS.navy : COLORS.primary, fontWeight: "700", flex: 1 }}>{eventHours ? `${eventHours}h` : "Sin asignar"}</Text>
+                  <Ionicons name={showEventHours ? "chevron-up" : "chevron-down"} size={18} color={COLORS.primary} />
+                </TouchableOpacity>
+                {showEventHours && (
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                    {[0.5,1,1.5,2,2.5,3,3.5,4,4.5,5,5.5,6,6.5,7,7.5,8].map((h) => (
+                      <TouchableOpacity
+                        key={h}
+                        style={[s.recChip, eventHours === String(h) && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}
+                        onPress={() => { setEventHours(String(h)); setShowEventHours(false); }}
+                      >
+                        <Text style={[s.recChipText, eventHours === String(h) && { color: "#fff" }]}>{h}h</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </>
+            ) : (
+              <Text style={s.descText}>{eventHours ? `${eventHours}h` : "Sin asignar"}</Text>
             )}
 
             <Text style={s.mLabel}>Notas</Text>
