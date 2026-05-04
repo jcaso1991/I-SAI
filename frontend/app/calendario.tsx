@@ -122,6 +122,7 @@ export default function CalendarScreen() {
   const [loading, setLoading] = useState(true);
   const [createRange, setCreateRange] = useState<{ day: Date; startMin: number; endMin: number } | null>(null);
   const [openEvent, setOpenEvent] = useState<EventT | null>(null);
+  const [copiedEvent, setCopiedEvent] = useState<EventT | null>(null);
 
   // User filter: list of all users + set of disabled user IDs (excluded)
   const [allUsers, setAllUsers] = useState<{ id: string; name: string; email: string; color?: string }[]>([]);
@@ -539,7 +540,8 @@ export default function CalendarScreen() {
           visible={!!createRange}
           range={createRange}
           onClose={() => setCreateRange(null)}
-          onDone={() => { setCreateRange(null); load(); }}
+          onDone={() => { setCreateRange(null); setCopiedEvent(null); load(); }}
+          copiedEvent={copiedEvent}
         />
       )}
       {openEvent && (
@@ -547,7 +549,8 @@ export default function CalendarScreen() {
           event={openEvent}
           isAdmin={isAdmin}
           onClose={() => setOpenEvent(null)}
-          onChanged={() => { setOpenEvent(null); load(); loadNotifications(); }}
+          onChanged={() => { load(); setOpenEvent(null); setCopiedEvent(null); }}
+          onCopy={setCopiedEvent}
         />
       )}
 
@@ -1426,12 +1429,13 @@ function DraggableEvent({
 
 // ---------------- Create event modal ----------------
 function CreateEventModal({
-  visible, range, onClose, onDone,
+  visible, range, onClose, onDone, copiedEvent,
 }: {
   visible: boolean;
   range: { day: Date; startMin: number; endMin: number };
   onClose: () => void;
   onDone: () => void;
+  copiedEvent?: EventT | null;
 }) {
   const [mode, setMode] = useState<"texto" | "proyecto">("texto");
   const [title, setTitle] = useState("");
@@ -1459,10 +1463,26 @@ function CreateEventModal({
 
   useEffect(() => {
     if (visible) {
-      setMode("texto"); setTitle(""); setDescription("");
-      setMaterialId(null); setMaterialObj(null); setShowMatList(false);
-      setAssignedIds([]); setManagerId(null); setShowManagerList(false); setShowTechList(false);
-      setRecurrence("none"); setUntil(""); setHours(""); setShowHours(false);
+      if (copiedEvent) {
+        setMode("texto");
+        setTitle(copiedEvent.title);
+        setDescription(copiedEvent.description || "");
+        setAssignedIds(copiedEvent.assigned_user_ids || []);
+        setManagerId(copiedEvent.manager_id || null);
+        setRecurrence(copiedEvent.recurrence?.type || "none");
+        setUntil(copiedEvent.recurrence?.until || "");
+        setMaterialId(copiedEvent.material_id || null);
+        setShowMatList(false); setHours(""); setShowHours(false);
+        if (copiedEvent.material_id) {
+          setMode("proyecto");
+        }
+      } else {
+        setMode("texto"); setTitle(""); setDescription("");
+        setMaterialId(null); setMaterialObj(null); setShowMatList(false);
+        setAssignedIds([]); setManagerId(null);
+        setRecurrence("none"); setUntil(""); setHours(""); setShowHours(false);
+      }
+      setShowManagerList(false); setShowTechList(false);
       (async () => {
         try { setTechs(await api.listTechnicians()); } catch {}
         try { setManagers(await api.listManagers()); } catch {}
@@ -1519,7 +1539,7 @@ function CreateEventModal({
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={s.modalRoot}>
         <View style={[s.modalCard, showMatList && { maxHeight: "88%", minHeight: "70%" }]}>
           <View style={s.modalHeader}>
-            <Text style={s.modalTitle}>Nuevo evento</Text>
+            <Text style={s.modalTitle}>{copiedEvent ? "Pegar evento" : "Nuevo evento"}</Text>
             <TouchableOpacity onPress={onClose}>
               <Ionicons name="close" size={26} color={COLORS.text} />
             </TouchableOpacity>
@@ -1784,8 +1804,8 @@ function CreateEventModal({
 
 // ---------------- Event details modal (editable) ----------------
 function EventDetailsModal({
-  event, isAdmin, onClose, onChanged,
-}: { event: EventT; isAdmin: boolean; onClose: () => void; onChanged: () => void }) {
+  event, isAdmin, onClose, onChanged, onCopy,
+}: { event: EventT; isAdmin: boolean; onClose: () => void; onChanged: () => void; onCopy: (e: EventT) => void }) {
   const router = useRouter();
   const [start, setStart] = useState<Date>(new Date(event.start_at));
   const [end, setEnd] = useState<Date>(new Date(event.end_at));
@@ -2089,6 +2109,13 @@ function EventDetailsModal({
             ) : (
               <Text style={s.modalTitle} numberOfLines={2}>{title}</Text>
             )}
+            <TouchableOpacity
+              testID="btn-copy-event"
+              style={[s.iconBtn, { marginRight: 4 }]}
+              onPress={() => { onCopy({ ...event, hours: undefined }); Alert.alert("Copiado", "Evento copiado. Usa el botón + para pegarlo en otro día."); }}
+            >
+              <Ionicons name="copy-outline" size={20} color={COLORS.primary} />
+            </TouchableOpacity>
             <TouchableOpacity onPress={onClose}>
               <Ionicons name="close" size={26} color={COLORS.text} />
             </TouchableOpacity>
