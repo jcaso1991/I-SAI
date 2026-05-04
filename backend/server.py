@@ -75,6 +75,7 @@ def _decrypt_onedrive_token(token_enc: str) -> str:
 MS_AUTH_REDIRECT_URI = os.environ.get('MS_AUTH_REDIRECT_URI', 'http://localhost:8000/api/auth/microsoft/callback')
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:8081')
 CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '')
+TRUST_PROXY_HEADERS = os.environ.get('TRUST_PROXY_HEADERS', 'false').lower() == 'true'
 
 def _microsoft_login_enabled() -> bool:
     return bool(MS_CLIENT_ID and MS_CLIENT_SECRET and MS_AUTH_REDIRECT_URI)
@@ -2838,6 +2839,13 @@ _sat_rl: dict = {}  # IP → list of epoch timestamps
 _SAT_RL_WINDOW_S = 30
 _SAT_RL_MAX = 3
 
+def _request_client_ip(request: Request) -> str:
+    if TRUST_PROXY_HEADERS:
+        forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        if forwarded:
+            return forwarded
+    return request.client.host if request.client else "unknown"
+
 def _check_sat_rate_limit(ip: str) -> None:
     now = time.monotonic()
     entries = [t for t in _sat_rl.get(ip, []) if now - t < _SAT_RL_WINDOW_S]
@@ -2850,7 +2858,7 @@ def _check_sat_rate_limit(ip: str) -> None:
 async def sat_public_create(body: SATPublicIn, request: Request):
     """Endpoint PÚBLICO — no requiere login. Lo usa el enlace que se envía
     al cliente para que abra la incidencia."""
-    ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if request.client else "unknown")
+    ip = _request_client_ip(request)
     _check_sat_rate_limit(ip)
     now = datetime.now(timezone.utc)
     doc = {
