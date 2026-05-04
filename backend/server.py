@@ -2023,7 +2023,7 @@ async def sync_push(user: dict = Depends(require_permission("onedrive.manage")))
 
 # ---------------- Materials routes ----------------
 @api_router.get("/materiales", response_model=List[Material])
-async def list_materiales(user: dict = Depends(current_user), q: Optional[str] = None, pending_only: bool = False, limit: int = 2000, manager_id: Optional[str] = None, unassigned: bool = False, project_status: Optional[str] = None):
+async def list_materiales(user: dict = Depends(require_permission("proyectos.view")), q: Optional[str] = None, pending_only: bool = False, limit: int = 2000, manager_id: Optional[str] = None, unassigned: bool = False, project_status: Optional[str] = None):
     # fire-and-forget auto-import if stale
     await maybe_auto_import()
     query: dict = {}
@@ -2066,14 +2066,14 @@ async def list_materiales(user: dict = Depends(current_user), q: Optional[str] =
     return items
 
 @api_router.get("/materiales/{mid}", response_model=Material)
-async def get_material(mid: str, user: dict = Depends(current_user)):
+async def get_material(mid: str, user: dict = Depends(require_permission("proyectos.view"))):
     doc = await db.materiales.find_one({"id": mid}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Material no encontrado")
     return doc
 
 @api_router.patch("/materiales/{mid}", response_model=Material)
-async def update_material(mid: str, payload: MaterialUpdate, user: dict = Depends(current_user)):
+async def update_material(mid: str, payload: MaterialUpdate, user: dict = Depends(require_permission("proyectos.edit"))):
     upd = {k: v for k, v in payload.dict().items() if v is not None}
     if not upd:
         raise HTTPException(400, "Nada que actualizar")
@@ -2091,7 +2091,7 @@ async def update_material(mid: str, payload: MaterialUpdate, user: dict = Depend
 
 # ---------------- Stats ----------------
 @api_router.get("/stats")
-async def stats(user: dict = Depends(current_user)):
+async def stats(user: dict = Depends(require_permission("proyectos.view"))):
     total = await db.materiales.count_documents({})
     pending = await db.materiales.count_documents({"sync_status": "pending"})
     return {"total": total, "pending": pending, "synced": total - pending}
