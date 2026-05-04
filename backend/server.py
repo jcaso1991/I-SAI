@@ -2079,6 +2079,19 @@ async def dashboard(user: dict = Depends(current_user)):
     active_projects = await db.materiales.find({"project_status": {"$in": ["pendiente", "planificado", "a_facturar"]}}, {"horas_prev": 1}).to_list(10000)
     total_active_hours = round(sum(_safe_float(m.get("horas_prev")) for m in active_projects), 1)
 
+    # Today's pending
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    today_end = datetime.now(timezone.utc).replace(hour=23, minute=59, second=59).isoformat()
+    today_events = await db.events.count_documents({
+        "$or": [
+            {"start_at": {"$gte": today_start, "$lte": today_end}},
+            {"end_at": {"$gte": today_start, "$lte": today_end}},
+        ],
+        "status": {"$ne": "completed"},
+    })
+    pending_sat = await db.sat_incidents.count_documents({"status": "pendiente"})
+    pending_budgets = await db.budgets.count_documents({"$or": [{"status": "pendiente"}, {"status": {"$exists": False}}]})
+
     return {
         "projects_by_status": projects_by_status,
         "manager_hours": manager_hours[:8],
