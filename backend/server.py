@@ -2097,11 +2097,16 @@ async def stats(user: dict = Depends(require_permission("proyectos.view"))):
     return {"total": total, "pending": pending, "synced": total - pending}
 
 # ---------------- Budgets (Presupuestos) ----------------
-async def current_admin_or_comercial(user: dict = Depends(current_user)):
-    """Backwards-compatible guard: now allows anyone with `presupuestos.view`."""
+async def current_budget_view(user: dict = Depends(current_user)):
     perms = await get_user_permissions(user)
-    if "presupuestos.view" not in perms and user.get("role") not in ("admin", "comercial"):
+    if "presupuestos.view" not in perms:
         raise HTTPException(403, "Requiere permiso de Presupuestos")
+    return user
+
+async def current_budget_edit(user: dict = Depends(current_user)):
+    perms = await get_user_permissions(user)
+    if "presupuestos.edit" not in perms:
+        raise HTTPException(403, "Requiere permiso para editar Presupuestos")
     return user
 
 class EquipmentRow(BaseModel):
@@ -2142,7 +2147,7 @@ class BudgetPatch(BudgetCreate):
     pass
 
 @api_router.post("/budgets")
-async def create_budget(payload: BudgetCreate, user: dict = Depends(current_admin_or_comercial)):
+async def create_budget(payload: BudgetCreate, user: dict = Depends(current_budget_edit)):
     now = datetime.now(timezone.utc).isoformat()
     doc = payload.dict()
     doc["equipos"] = [e if isinstance(e, dict) else e.dict() for e in (payload.equipos or [])]
@@ -2159,12 +2164,12 @@ async def create_budget(payload: BudgetCreate, user: dict = Depends(current_admi
     return doc
 
 @api_router.get("/budgets")
-async def list_budgets(user: dict = Depends(current_admin_or_comercial)):
+async def list_budgets(user: dict = Depends(current_budget_view)):
     items = await db.budgets.find({}, {"_id": 0, "firma_isai": 0, "firma_cliente": 0}).sort("updated_at", -1).to_list(500)
     return items
 
 @api_router.get("/budgets/accepted")
-async def list_accepted_budgets(user: dict = Depends(current_user)):
+async def list_accepted_budgets(user: dict = Depends(current_budget_view)):
     items = await db.budgets.find(
         {"status": "aceptado"},
         {"_id": 0, "firma_isai": 0, "firma_cliente": 0},
@@ -2172,14 +2177,14 @@ async def list_accepted_budgets(user: dict = Depends(current_user)):
     return items
 
 @api_router.get("/budgets/{bid}")
-async def get_budget(bid: str, user: dict = Depends(current_admin_or_comercial)):
+async def get_budget(bid: str, user: dict = Depends(current_budget_view)):
     b = await db.budgets.find_one({"id": bid}, {"_id": 0})
     if not b:
         raise HTTPException(404, "Presupuesto no encontrado")
     return b
 
 @api_router.patch("/budgets/{bid}/status")
-async def update_budget_status(bid: str, user: dict = Depends(current_admin_or_comercial)):
+async def update_budget_status(bid: str, user: dict = Depends(current_budget_edit)):
     b = await db.budgets.find_one({"id": bid})
     if not b:
         raise HTTPException(404, "Presupuesto no encontrado")
@@ -2188,7 +2193,7 @@ async def update_budget_status(bid: str, user: dict = Depends(current_admin_or_c
     return {"ok": True, "status": new_status}
 
 @api_router.patch("/budgets/{bid}")
-async def update_budget(bid: str, payload: BudgetPatch, user: dict = Depends(current_admin_or_comercial)):
+async def update_budget(bid: str, payload: BudgetPatch, user: dict = Depends(current_budget_edit)):
     upd = {k: v for k, v in payload.dict().items() if v is not None}
     if "equipos" in upd:
         upd["equipos"] = [e if isinstance(e, dict) else (e.dict() if hasattr(e, "dict") else e) for e in upd["equipos"]]
@@ -2200,7 +2205,7 @@ async def update_budget(bid: str, payload: BudgetPatch, user: dict = Depends(cur
     return b
 
 @api_router.delete("/budgets/{bid}")
-async def delete_budget(bid: str, user: dict = Depends(current_admin_or_comercial)):
+async def delete_budget(bid: str, user: dict = Depends(current_budget_edit)):
     res = await db.budgets.delete_one({"id": bid})
     if res.deleted_count == 0:
         raise HTTPException(404, "Presupuesto no encontrado")
@@ -2222,12 +2227,12 @@ DEFAULT_EQUIPMENT_LIST = [
 ]
 
 @api_router.get("/budgets-defaults/equipos")
-async def budgets_default_equipos(user: dict = Depends(current_admin_or_comercial)):
+async def budgets_default_equipos(user: dict = Depends(current_budget_view)):
     return {"items": DEFAULT_EQUIPMENT_LIST}
 
 
 @api_router.get("/budgets/{bid}/pdf")
-async def get_budget_pdf(bid: str, user: dict = Depends(current_admin_or_comercial)):
+async def get_budget_pdf(bid: str, user: dict = Depends(current_budget_view)):
     """
     Genera el PDF 'Hoja de instalación' rellenado con los datos del presupuesto,
     manteniendo el layout exacto del template y los campos editables (AcroForm).
@@ -2254,7 +2259,7 @@ async def get_budget_pdf(bid: str, user: dict = Depends(current_admin_or_comerci
 
 @api_router.post("/budgets/pdf-preview")
 async def post_budget_pdf_preview(payload: BudgetCreate,
-                                  user: dict = Depends(current_admin_or_comercial)):
+                                  user: dict = Depends(current_budget_edit)):
     """
     Genera el PDF sin guardar el presupuesto. Útil para previsualizar antes de
     guardar. Recibe en el body los mismos campos que BudgetCreate.
