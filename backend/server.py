@@ -2061,7 +2061,7 @@ async def dashboard(user: dict = Depends(current_user)):
         "status": {"$ne": "completed"},
     })
     pending_sat = await db.sat_incidents.count_documents({"status": "pendiente"})
-    pending_budgets = await db.budgets.count_documents({"status": "pendiente"})
+    pending_budgets = await db.budgets.count_documents({"$or": [{"status": "pendiente"}, {"status": {"$exists": False}}]})
 
     return {
         "projects_by_status": projects_by_status,
