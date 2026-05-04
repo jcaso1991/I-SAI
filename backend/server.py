@@ -1961,7 +1961,136 @@ async def materiales_export_excel(user: dict = Depends(current_user)):
 
     header_font = Font(bold=True, size=11, color="FFFFFF")
     header_fill = PatternFill(start_color="1976D2", end_color="1976D2", fill_type="solid")
+    summary_fill = PatternFill(start_color="E6F0FB", end_color="E6F0FB", fill_type="solid")
     thin_border = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
+
+    # === Summary section ===
+    row = 1
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=12)
+    cell = ws.cell(row=row, column=1, value="INFORME DE PROYECTOS")
+    cell.font = Font(bold=True, size=16, color="0B2545")
+    row += 2
+
+    # Projects by status
+    cell = ws.cell(row=row, column=1, value="PROYECTOS POR ESTADO")
+    cell.font = Font(bold=True, size=12, color="1976D2")
+    row += 1
+    for col, h in enumerate(["Estado", "Cantidad", "Horas totales"], 1):
+        cell = ws.cell(row=row, column=col, value=h)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill(start_color="475569", end_color="475569", fill_type="solid")
+        cell.border = thin_border
+    row += 1
+    statuses = ["pendiente", "planificado", "a_facturar", "facturado", "terminado", "bloqueado", "anulado"]
+    status_counts = {}
+    for st in statuses:
+        mats = [m for m in items if m.get("project_status") == st or (st == "pendiente" and not m.get("project_status"))]
+        status_counts[st] = {"count": len(mats), "hours": round(sum(_safe_float(m.get("horas_prev")) for m in mats), 1)}
+    for st in statuses:
+        sc = status_counts[st]
+        for col, v in enumerate([st.replace("_", " ").capitalize(), sc["count"], sc["hours"]], 1):
+            cell = ws.cell(row=row, column=col, value=v)
+            cell.border = thin_border
+            cell.fill = summary_fill
+        row += 1
+    row += 1
+
+    # Projects by manager
+    cell = ws.cell(row=row, column=1, value="PROYECTOS POR GESTOR")
+    cell.font = Font(bold=True, size=12, color="1976D2")
+    row += 1
+    for col, h in enumerate(["Gestor", "Total proyectos", "Horas", "Pendientes", "Planificados", "A facturar", "Facturados", "Terminados"], 1):
+        cell = ws.cell(row=row, column=col, value=h)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill(start_color="475569", end_color="475569", fill_type="solid")
+        cell.border = thin_border
+    row += 1
+    manager_ids = list({m.get("manager_id") for m in items if m.get("manager_id")})
+    managers = []
+    for mid in manager_ids:
+        mats = [m for m in items if m.get("manager_id") == mid]
+        if not mats:
+            continue
+        name = (mats[0].get("manager_name") or mats[0].get("gestor") or "Sin gestor")
+        total_h = round(sum(_safe_float(m.get("horas_prev")) for m in mats), 1)
+        pend = len([m for m in mats if m.get("project_status") in (None, "pendiente")])
+        plan = len([m for m in mats if m.get("project_status") == "planificado"])
+        fact = len([m for m in mats if m.get("project_status") == "a_facturar"])
+        factu = len([m for m in mats if m.get("project_status") == "facturado"])
+        term = len([m for m in mats if m.get("project_status") == "terminado"])
+        managers.append((name, len(mats), total_h, pend, plan, fact, factu, term))
+    managers.sort(key=lambda x: x[1], reverse=True)
+    for mgr in managers[:15]:
+        for col, v in enumerate(mgr, 1):
+            cell = ws.cell(row=row, column=col, value=v)
+            cell.border = thin_border
+            cell.fill = summary_fill
+        row += 1
+
+    row += 2
+
+    row += 1
+    # Charts
+    from openpyxl.chart import BarChart, PieChart, Reference
+    from openpyxl.chart.series import DataPoint
+
+    # Bar chart: projects by status (count + hours)
+    chart_sheet = wb.create_sheet("Gráficos")
+
+    # Status data for chart
+    chart_sheet.cell(row=1, column=1, value="Estado")
+    chart_sheet.cell(row=1, column=2, value="Cantidad")
+    chart_sheet.cell(row=1, column=3, value="Horas")
+    for i, st in enumerate(statuses):
+        sc = status_counts[st]
+        chart_sheet.cell(row=i + 2, column=1, value=st.replace("_", " ").capitalize())
+        chart_sheet.cell(row=i + 2, column=2, value=sc["count"])
+        chart_sheet.cell(row=i + 2, column=3, value=sc["hours"])
+
+    bar = BarChart()
+    bar.type = "col"
+    bar.title = "Proyectos por estado"
+    bar.y_axis.title = "Cantidad"
+    bar.x_axis.title = "Estado"
+    bar.style = 10
+    data_ref = Reference(chart_sheet, min_col=2, min_row=1, max_col=3, max_row=len(statuses) + 1)
+    cats_ref = Reference(chart_sheet, min_col=1, min_row=2, max_row=len(statuses) + 1)
+    bar.add_data(data_ref, titles_from_data=True)
+    bar.set_categories(cats_ref)
+    bar.width = 22
+    bar.height = 14
+    colors = ["F59E0B", "3B82F6", "8B5CF6", "10B981", "6366F1", "EF4444", "6B7280"]
+    for idx, color in enumerate(colors):
+        pt = DataPoint(idx=idx)
+        pt.graphicalProperties.solidFill = color
+        bar.series[0].data_points.append(pt)
+        pt2 = DataPoint(idx=idx)
+        pt2.graphicalProperties.solidFill = color
+        bar.series[1].data_points.append(pt2)
+    chart_sheet.add_chart(bar, "E1")
+
+    # Manager data for pie chart
+    mgr_row = len(statuses) + 4
+    chart_sheet.cell(row=mgr_row, column=1, value="Gestor")
+    chart_sheet.cell(row=mgr_row, column=2, value="Proyectos")
+    for i, mgr in enumerate(managers[:8]):
+        chart_sheet.cell(row=mgr_row + 1 + i, column=1, value=mgr[0])
+        chart_sheet.cell(row=mgr_row + 1 + i, column=2, value=mgr[1])
+
+    pie = PieChart()
+    pie.title = "Proyectos por gestor"
+    pie_data = Reference(chart_sheet, min_col=2, min_row=mgr_row, max_row=mgr_row + min(8, len(managers)))
+    pie_cats = Reference(chart_sheet, min_col=1, min_row=mgr_row + 1, max_row=mgr_row + min(8, len(managers)))
+    pie.add_data(pie_data, titles_from_data=True)
+    pie.set_categories(pie_cats)
+    pie.width = 18
+    pie.height = 14
+    chart_sheet.add_chart(pie, "E18")
+
+    # === Detail section ===
+    cell = ws.cell(row=row, column=1, value="DETALLE DE PROYECTOS")
+    cell.font = Font(bold=True, size=12, color="1976D2")
+    row += 1
 
     headers = ["Nº Proyecto", "Cliente", "Ubicación", "Horas PREV", "Comercial", "Gestor", "Técnicos", "Fecha", "Entrega/Recogida", "Total/Parcial", "Estado", "Comentarios"]
     for col, h in enumerate(headers, 1):
