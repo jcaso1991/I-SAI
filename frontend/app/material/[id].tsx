@@ -98,6 +98,7 @@ export default function MaterialDetail() {
   const [projectStatus, setProjectStatus] = useState("pendiente");
   const [history, setHistory] = useState<any[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [linkedEvents, setLinkedEvents] = useState<any[]>([]);
   const [showTechPicker, setShowTechPicker] = useState(false);
   const [showManagerPicker, setShowManagerPicker] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
@@ -122,6 +123,12 @@ export default function MaterialDetail() {
         setProjectStatus(data.project_status || "pendiente");
         setTechs(tlist);
         setManagers(mlist);
+        // Load linked events
+        const events = await api.listEvents(
+          new Date(new Date().getFullYear(), 0, 1).toISOString(),
+          new Date(new Date().getFullYear() + 1, 0, 1).toISOString()
+        ).catch(() => []);
+        setLinkedEvents((events || []).filter((e: any) => e.material_id === id));
         // if fecha was empty, mark dirty so user sees the default today is pending save
         if (!data.fecha) setDirty(true);
       } catch (e: any) {
@@ -369,6 +376,35 @@ export default function MaterialDetail() {
                 <Text style={{ fontSize: 11, color: COLORS.text, flex: 1 }} numberOfLines={2}>
                   <Text style={{ fontWeight: "600" }}>{h.field}</Text>: {h.old_value || "—"} → {h.new_value || "—"}
                 </Text>
+              </View>
+            ))}
+          </View>
+        )}
+        {linkedEvents.length > 0 && (
+          <View style={{ padding: 8 }}>
+            <Text style={s.fieldLabel}>Eventos vinculados</Text>
+            {linkedEvents.map((ev: any) => (
+              <View key={ev.id} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 4 }}>
+                <Text style={{ flex: 1, fontSize: 12, color: COLORS.text }} numberOfLines={1}>{ev.title}</Text>
+                <Text style={{ fontSize: 10, color: COLORS.textSecondary, minWidth: 60 }}>{ev.start_at?.slice(0, 16).replace("T", " ")}</Text>
+                <TouchableOpacity
+                  style={[s.statusChip, ev.status === "in_progress" && { backgroundColor: COLORS.primarySoft }]}
+                  onPress={async () => { await api.updateEvent(ev.id.split(":")[0], { status: "in_progress" } as any); ev.status = "in_progress"; setLinkedEvents([...linkedEvents]); }}
+                >
+                  <Text style={[s.statusChipTxt, ev.status === "in_progress" && { color: COLORS.primary }]}>Curso</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.statusChip, ev.status === "pending_completion" && { backgroundColor: "#FEF3C7" }]}
+                  onPress={async () => { await api.updateEvent(ev.id.split(":")[0], { status: "pending_completion", seguimiento: "Pendiente desde proyecto" } as any); ev.status = "pending_completion"; setLinkedEvents([...linkedEvents]); }}
+                >
+                  <Text style={[s.statusChipTxt, ev.status === "pending_completion" && { color: "#92400E" }]}>Pendiente</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.statusChip, ev.status === "completed" && { backgroundColor: "#DCFCE7" }]}
+                  onPress={async () => { await api.updateEvent(ev.id.split(":")[0], { status: "completed" } as any); ev.status = "completed"; setLinkedEvents([...linkedEvents]); }}
+                >
+                  <Text style={[s.statusChipTxt, ev.status === "completed" && { color: "#166534" }]}>Terminado</Text>
+                </TouchableOpacity>
               </View>
             ))}
           </View>
@@ -725,4 +761,9 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
   },
   techChipSmallText: { fontSize: 11, fontWeight: "600", color: COLORS.text },
+  statusChip: {
+    paddingHorizontal: 6, paddingVertical: 3, borderRadius: 4,
+    backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
+  },
+  statusChipTxt: { fontSize: 9, fontWeight: "700", color: COLORS.textSecondary },
 });
