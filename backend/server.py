@@ -1075,7 +1075,7 @@ BUILTIN_STAMPS = [
 ]
 
 @api_router.get("/plans", response_model=List[PlanListItem])
-async def list_plans(user: dict = Depends(current_user)):
+async def list_plans(user: dict = Depends(require_permission("planos.view"))):
     plans = await db.plans.find({}, {"_id": 0, "data": 0}).to_list(2000)
     out: List[PlanListItem] = []
     # fetch shape counts in one pass
@@ -1092,7 +1092,7 @@ async def list_plans(user: dict = Depends(current_user)):
     return out
 
 @api_router.post("/plans", response_model=PlanOut)
-async def create_plan(payload: PlanCreate, user: dict = Depends(current_user)):
+async def create_plan(payload: PlanCreate, user: dict = Depends(require_permission("planos.edit"))):
     now = datetime.now(timezone.utc).isoformat()
     doc = {
         "id": str(uuid.uuid4()),
@@ -1109,7 +1109,7 @@ async def create_plan(payload: PlanCreate, user: dict = Depends(current_user)):
     return PlanOut(**{k: v for k, v in doc.items() if k != "_id"})
 
 @api_router.get("/plans/{pid}", response_model=PlanOut)
-async def get_plan(pid: str, user: dict = Depends(current_user)):
+async def get_plan(pid: str, user: dict = Depends(require_permission("planos.view"))):
     p = await db.plans.find_one({"id": pid}, {"_id": 0})
     if not p:
         raise HTTPException(404, "Plano no encontrado")
@@ -1120,7 +1120,7 @@ async def get_plan(pid: str, user: dict = Depends(current_user)):
     return p
 
 @api_router.patch("/plans/{pid}", response_model=PlanOut)
-async def update_plan(pid: str, payload: PlanPatch, user: dict = Depends(current_user)):
+async def update_plan(pid: str, payload: PlanPatch, user: dict = Depends(require_permission("planos.edit"))):
     upd = {k: v for k, v in payload.dict().items() if v is not None}
     if not upd:
         raise HTTPException(400, "Nada que actualizar")
@@ -1132,7 +1132,7 @@ async def update_plan(pid: str, payload: PlanPatch, user: dict = Depends(current
     return p
 
 @api_router.delete("/plans/{pid}")
-async def delete_plan(pid: str, user: dict = Depends(current_user)):
+async def delete_plan(pid: str, user: dict = Depends(require_permission("planos.edit"))):
     res = await db.plans.delete_one({"id": pid})
     if res.deleted_count == 0:
         raise HTTPException(404, "Plano no encontrado")
@@ -1145,7 +1145,7 @@ class BackgroundUpload(BaseModel):
     mime_type: str   # "image/jpeg" | "image/png" | "application/pdf"
 
 @api_router.post("/plans/{pid}/background")
-async def upload_background(pid: str, payload: BackgroundUpload, user: dict = Depends(current_user)):
+async def upload_background(pid: str, payload: BackgroundUpload, user: dict = Depends(require_permission("planos.edit"))):
     plan = await db.plans.find_one({"id": pid})
     if not plan:
         raise HTTPException(404, "Plano no encontrado")
@@ -1192,7 +1192,7 @@ async def upload_background(pid: str, payload: BackgroundUpload, user: dict = De
     return {"ok": True, "background": bg}
 
 @api_router.delete("/plans/{pid}/background")
-async def remove_background(pid: str, user: dict = Depends(current_user)):
+async def remove_background(pid: str, user: dict = Depends(require_permission("planos.edit"))):
     plan = await db.plans.find_one({"id": pid})
     if not plan:
         raise HTTPException(404, "Plano no encontrado")
