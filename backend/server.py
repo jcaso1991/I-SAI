@@ -493,8 +493,8 @@ async def _upload_excel_to_onedrive(xlsx_bytes: bytes) -> None:
 import time as _time
 from collections import defaultdict
 
-_rate_window = 60  # seconds
-_rate_max = 30     # max requests per window per IP
+_rate_window = 10  # seconds
+_rate_max = 60     # max requests per window per IP
 _rate_store: dict[str, list[float]] = defaultdict(list)
 
 async def _rate_limit(request: Request, max_req: int = _rate_max):
@@ -510,7 +510,7 @@ async def _rate_limit(request: Request, max_req: int = _rate_max):
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    await _rate_limit(request, 60)
+    await _rate_limit(request, 200)
     return await call_next(request)
 import asyncio as _asyncio
 
