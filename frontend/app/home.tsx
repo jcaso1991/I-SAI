@@ -184,19 +184,44 @@ export default function HomeScreen() {
               {dash.manager_hours?.length > 0 && (
                 <>
                   <Text style={s.sectionSub}>Horas por gestor</Text>
-                  {dash.manager_hours.slice(0, 5).map((m: any, i: number) => (
-                    <View key={i} style={s.hourRow}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1 }}>
-                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: m.color || COLORS.primary }} />
-                        <Text style={s.hourName} numberOfLines={1}>{m.name}</Text>
+                  {dash.manager_hours.slice(0, 5).map((m: any, i: number) => {
+                    const byStatus = m.by_status || {};
+                    const statusColors: Record<string, string> = {
+                      pendiente: "#F59E0B", planificado: "#3B82F6", a_facturar: "#8B5CF6",
+                      facturado: "#10B981", terminado: "#6366F1",
+                    };
+                    const statusKeys = ["pendiente", "planificado", "a_facturar", "facturado", "terminado"];
+                    const totalH = m.hours || 1;
+                    return (
+                      <View key={i} style={{ gap: 2, paddingVertical: 2 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: m.color || COLORS.primary }} />
+                          <Text style={s.hourName} numberOfLines={1}>{m.name}</Text>
+                          <Text style={s.hourVal}>{m.hours}h</Text>
+                          <Text style={s.hourCount}>({m.count})</Text>
+                        </View>
+                        <View style={{ flexDirection: "row", height: 8, borderRadius: 4, overflow: "hidden", marginLeft: 14 }}>
+                          {statusKeys.map((st) => {
+                            const h = byStatus[st] || 0;
+                            if (h <= 0) return null;
+                            return <View key={st} style={{ width: `${(h / totalH) * 100}%`, backgroundColor: statusColors[st] || "#999", minWidth: 1 }} />;
+                          })}
+                        </View>
+                        <View style={{ flexDirection: "row", gap: 8, marginLeft: 14, flexWrap: "wrap" }}>
+                          {statusKeys.map((st) => {
+                            const h = byStatus[st] || 0;
+                            if (h <= 0) return null;
+                            return (
+                              <View key={st} style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+                                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: statusColors[st] || "#999" }} />
+                                <Text style={{ fontSize: 8, color: COLORS.textSecondary }}>{st.replace("_"," ")} {h}h</Text>
+                              </View>
+                            );
+                          })}
+                        </View>
                       </View>
-                      <Text style={s.hourVal}>{m.hours}h</Text>
-                      <Text style={s.hourCount}>({m.count})</Text>
-                      <View style={[s.hourBar, { flex: 2, maxWidth: 120 }]}>
-                        <View style={[s.hourFill, { width: `${Math.min(100, (m.hours / (dash.manager_hours[0]?.hours || 1)) * 100)}%`, backgroundColor: m.color || COLORS.primary }]} />
-                      </View>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </>
               )}
 

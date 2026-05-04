@@ -2201,16 +2201,23 @@ async def dashboard(user: dict = Depends(current_user)):
     # Hours by manager
     manager_hours = []
     managers = await db.users.find({"role": "admin"}, {"_id": 0, "id": 1, "name": 1, "email": 1, "color": 1}).to_list(50)
+    status_order = ["pendiente", "planificado", "a_facturar", "facturado", "terminado"]
     for mgr in managers:
-        mats = await db.materiales.find({"manager_id": mgr["id"]}, {"horas_prev": 1}).to_list(5000)
-        hours = sum(_safe_float(m.get("horas_prev")) for m in mats)
-        if hours > 0:
-            manager_hours.append({
-                "name": mgr.get("name") or mgr.get("email", ""),
-                "color": mgr.get("color", "#3B82F6"),
-                "hours": round(hours, 1),
-                "count": len(mats),
-            })
+        mats = await db.materiales.find({"manager_id": mgr["id"]}, {"horas_prev": 1, "project_status": 1}).to_list(5000)
+        total_h = round(sum(_safe_float(m.get("horas_prev")) for m in mats), 1)
+        if total_h <= 0:
+            continue
+        entry = {
+            "name": mgr.get("name") or mgr.get("email", ""),
+            "color": mgr.get("color", "#3B82F6"),
+            "hours": total_h,
+            "count": len(mats),
+            "by_status": {},
+        }
+        for st in status_order:
+            st_mats = [m for m in mats if (m.get("project_status") or "pendiente") == st]
+            entry["by_status"][st] = round(sum(_safe_float(m.get("horas_prev")) for m in st_mats), 1)
+        manager_hours.append(entry)
     manager_hours.sort(key=lambda x: x["hours"], reverse=True)
 
     # SAT incidents by month (last 6 months)
