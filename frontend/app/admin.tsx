@@ -52,8 +52,11 @@ export default function Admin() {
   /** Abre el portfolio público (presentación para clientes) en el navegador. */
   const openPortfolio = async () => {
     try {
-      const base = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/+$/, "");
-      const url = base ? `${base}/portfolio` : "/portfolio";
+      const url = (process.env.EXPO_PUBLIC_PORTFOLIO_URL || "").replace(/\/+$/, "");
+      if (!url) {
+        Alert.alert("Landing no configurada", "Falta configurar EXPO_PUBLIC_PORTFOLIO_URL.");
+        return;
+      }
       // En web abrimos en pestaña nueva; en iOS/Android usamos Linking.
       // @ts-ignore
       if (typeof window !== "undefined" && window.open) {

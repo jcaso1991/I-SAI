@@ -9,11 +9,12 @@ Validates:
 5. PATCH {"assigned_user_ids": []} -> 200, clears assigned users (admins-only visibility).
 6. PATCH {"recurrence": null} -> 200, clears recurrence.
 
-Credentials: admin@materiales.com / Admin1234.
+Credentials: DEMO_ADMIN_EMAIL / DEMO_ADMIN_PASSWORD env vars.
 Base URL: http://localhost:8001/api
 Cleanup: deletes all events and test users it created.
 """
 
+import os
 import sys
 import uuid
 import json
@@ -21,8 +22,8 @@ import requests
 from datetime import datetime, timedelta, timezone
 
 BASE = "http://localhost:8001/api"
-ADMIN_EMAIL = "admin@materiales.com"
-ADMIN_PASS = "Admin1234"
+ADMIN_EMAIL = os.environ.get("DEMO_ADMIN_EMAIL", "admin@materiales.com")
+ADMIN_PASS = os.environ["DEMO_ADMIN_PASSWORD"]
 
 PASS = 0
 FAIL = 0

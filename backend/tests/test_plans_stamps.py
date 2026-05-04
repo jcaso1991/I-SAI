@@ -3,9 +3,17 @@ import os
 import pytest
 import requests
 
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://excel-form-sync-1.preview.emergentagent.com").rstrip("/")
-ADMIN_EMAIL = "admin@materiales.com"
-ADMIN_PASSWORD = "Admin1234"
+def _local_base_url() -> str:
+    base_url = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "").rstrip("/")
+    if not base_url:
+        pytest.exit("EXPO_PUBLIC_BACKEND_URL debe apuntar a un backend local para correr estos tests.", returncode=1)
+    if not base_url.startswith(("http://localhost", "http://127.0.0.1", "http://[::1]")):
+        pytest.exit(f"No se corren tests contra URLs no-locales: {base_url}", returncode=1)
+    return base_url
+
+BASE_URL = _local_base_url()
+ADMIN_EMAIL = os.environ.get("DEMO_ADMIN_EMAIL", "admin@materiales.com")
+ADMIN_PASSWORD = os.environ["DEMO_ADMIN_PASSWORD"]
 
 # Tiny 1x1 transparent PNG
 TINY_PNG_B64 = (

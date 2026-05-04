@@ -1,7 +1,19 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL;
+export const BACKEND_URL = (BASE || "").replace(/\/+$/, "");
 const TOKEN_KEY = "materiales_token";
+
+function backendBase() {
+  if (!BACKEND_URL) {
+    throw new Error("Backend no configurado: falta EXPO_PUBLIC_BACKEND_URL.");
+  }
+  return BACKEND_URL;
+}
+
+function apiUrl(path: string) {
+  return `${backendBase()}/api${path}`;
+}
 
 export async function getToken(): Promise<string | null> {
   return AsyncStorage.getItem(TOKEN_KEY);
@@ -22,7 +34,7 @@ async function request(path: string, opts: RequestInit = {}, auth = true) {
     const t = await getToken();
     if (t) headers["Authorization"] = `Bearer ${t}`;
   }
-  const res = await fetch(`${BASE}/api${path}`, { ...opts, headers });
+  const res = await fetch(apiUrl(path), { ...opts, headers });
   const txt = await res.text();
   let data: any = null;
   try { data = txt ? JSON.parse(txt) : null; } catch { data = txt; }
@@ -148,7 +160,7 @@ export const api = {
     cliente: string; direccion?: string; telefono?: string; observaciones: string;
   }) => {
     // Public endpoint: no auth header required. We still hit the /api prefix.
-    return fetch(`${BASE}/api/sat/public`, {
+    return fetch(apiUrl("/sat/public"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -189,7 +201,7 @@ export const api = {
   satClientList: () => request("/sat/clients"),
   satExportExcel: async () => {
     const token = await getToken();
-    const res = await fetch(`${BASE}/api/sat/export-excel`, {
+    const res = await fetch(apiUrl("/sat/export-excel"), {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -220,7 +232,7 @@ export const api = {
       form.append("file", { uri: (file as any).uri, name: (file as any).name, type: (file as any).mimeType || "application/vnd.ms-excel.sheet.macroenabled.12" } as any);
     }
     const token = await getToken();
-    const res = await fetch(`${BASE}/api/sat/clients/import?replace=${replace ? "true" : "false"}`, {
+    const res = await fetch(apiUrl(`/sat/clients/import?replace=${replace ? "true" : "false"}`), {
       method: "POST",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: form,
@@ -242,10 +254,10 @@ export const api = {
   deleteBudget: (id: string) => request(`/budgets/${id}`, { method: "DELETE" }),
   budgetsDefaultEquipos: () => request("/budgets-defaults/equipos"),
   // Get budget PDF URL (authenticated blob fetch)
-  getBudgetPdfUrl: (id: string) => `${BASE}/api/budgets/${id}/pdf`,
+  getBudgetPdfUrl: (id: string) => apiUrl(`/budgets/${id}/pdf`),
   getBudgetPdfBlob: async (id: string): Promise<Blob> => {
     const t = await getToken();
-    const res = await fetch(`${BASE}/api/budgets/${id}/pdf`, {
+    const res = await fetch(apiUrl(`/budgets/${id}/pdf`), {
       headers: t ? { Authorization: `Bearer ${t}` } : {},
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -253,7 +265,7 @@ export const api = {
   },
   getBudgetPdfPreviewBlob: async (body: any): Promise<Blob> => {
     const t = await getToken();
-    const res = await fetch(`${BASE}/api/budgets/pdf-preview`, {
+    const res = await fetch(apiUrl("/budgets/pdf-preview"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -270,7 +282,7 @@ export const api = {
   // Convert JPEG/PNG base64 to a single-page PDF (returns base64 of the PDF)
   imageToPdfBase64: async (base64: string, mime_type: string = "image/jpeg"): Promise<string> => {
     const t = await getToken();
-    const res = await fetch(`${BASE}/api/utils/image-to-pdf`, {
+    const res = await fetch(apiUrl("/utils/image-to-pdf"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -294,7 +306,10 @@ export const api = {
   deleteStamp: (id: string) => request(`/stamps/${id}`, { method: "DELETE" }),
 
   // Microsoft login (Entra ID)
+  microsoftStatus: () => request("/auth/microsoft/status", {}, false),
   microsoftLoginUrl: () => request("/auth/microsoft/login"),
+  microsoftExchange: (code: string, state: string) =>
+    request("/auth/microsoft/exchange", { method: "POST", body: JSON.stringify({ code, state }) }, false),
 
   // Chat
   chatList: () => request("/chats"),

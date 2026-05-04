@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Query, UploadFile, File, Request
-from fastapi.responses import RedirectResponse, HTMLResponse, FileResponse, StreamingResponse
+from fastapi.responses import RedirectResponse, HTMLResponse, StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 import re
@@ -10,7 +10,9 @@ from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Literal
 import uuid
+import secrets
 from datetime import datetime, timezone, timedelta
+import time
 import bcrypt
 import jwt as pyjwt
 import msal
@@ -23,6 +25,7 @@ import pypdfium2 as pdfium
 from PIL import Image
 from fastapi.responses import Response
 from pdf_filler import build_budget_pdf
+from cryptography.fernet import Fernet
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -53,9 +56,42 @@ MS_AUTHORITY = "https://login.microsoftonline.com/common"
 MS_SCOPES = ["Files.ReadWrite.All", "User.Read"]  # offline_access added automatically by MSAL
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
+ONEDRIVE_TOKEN_ENCRYPTION_KEY = os.environ.get('ONEDRIVE_TOKEN_ENCRYPTION_KEY', '')
+
+def _onedrive_fernet() -> Fernet:
+    if not ONEDRIVE_TOKEN_ENCRYPTION_KEY:
+        raise HTTPException(500, "ONEDRIVE_TOKEN_ENCRYPTION_KEY no configurada. Contactá al administrador del sistema.")
+    try:
+        return Fernet(ONEDRIVE_TOKEN_ENCRYPTION_KEY.encode())
+    except Exception:
+        raise HTTPException(500, "ONEDRIVE_TOKEN_ENCRYPTION_KEY inválida. Generá una clave Fernet válida.")
+
+def _encrypt_onedrive_token(token: str) -> str:
+    return _onedrive_fernet().encrypt(token.encode()).decode()
+
+def _decrypt_onedrive_token(token_enc: str) -> str:
+    try:
+        return _onedrive_fernet().decrypt(token_enc.encode()).decode()
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(500, "No se pudo descifrar el token de OneDrive. Revisá la clave de cifrado o reconectá OneDrive.")
+
 # Microsoft user-authentication redirect URIs
 MS_AUTH_REDIRECT_URI = os.environ.get('MS_AUTH_REDIRECT_URI', 'http://localhost:8000/api/auth/microsoft/callback')
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:8081')
+CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '')
+TRUST_PROXY_HEADERS = os.environ.get('TRUST_PROXY_HEADERS', 'false').lower() == 'true'
+
+def _microsoft_login_enabled() -> bool:
+    return bool(MS_CLIENT_ID and MS_CLIENT_SECRET and MS_AUTH_REDIRECT_URI)
+
+# Demo seed config
+ENABLE_DEMO_SEED = os.environ.get('ENABLE_DEMO_SEED', 'false').lower() == 'true'
+DEMO_ADMIN_EMAIL = os.environ.get('DEMO_ADMIN_EMAIL', 'admin@materiales.com')
+DEMO_ADMIN_PASSWORD = os.environ.get('DEMO_ADMIN_PASSWORD', '')
+DEMO_ADMIN_NAME = os.environ.get('DEMO_ADMIN_NAME', 'Administrador')
+DEMO_USER_PASSWORD = os.environ.get('DEMO_USER_PASSWORD', '')
 
 # Auto-sync config
 AUTO_IMPORT_INTERVAL_SEC = 300  # re-import OneDrive file every 5 min on read
@@ -64,6 +100,16 @@ AUTO_PUSH_DELAY_SEC = 6         # debounce pushes: wait 6s after last edit
 # ---------------- DB ----------------
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
+
+# In-memory one-time auth codes for Microsoft mobile login (no JWT in URL)
+# code -> {jwt, state, expires_at}
+_auth_codes: dict = {}
+
+def _cleanup_expired_codes():
+    now = time.time()
+    for k in list(_auth_codes.keys()):
+        if _auth_codes[k]["expires_at"] < now:
+            del _auth_codes[k]
 
 # ---------------- App ----------------
 app = FastAPI(title="Materiales OneDrive App")
@@ -144,6 +190,12 @@ class OneDriveStatus(BaseModel):
 # ---------------- Helpers ----------------
 def hash_password(pw: str) -> str:
     return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
+
+MIN_PASSWORD_LENGTH = 8
+
+def validate_password_strength(pw: str) -> None:
+    if len(pw or "") < MIN_PASSWORD_LENGTH:
+        raise HTTPException(400, f"Contraseña demasiado corta (mín. {MIN_PASSWORD_LENGTH})")
 
 def verify_password(pw: str, hashed: str) -> bool:
     try:
@@ -413,20 +465,43 @@ def _msal_app():
     )
 
 async def _get_onedrive_token() -> str:
-    """Return a fresh access token using the stored refresh token."""
+    """Return a fresh access token using the stored refresh token (encrypted)."""
     doc = await db.onedrive_tokens.find_one({"_id": "admin"})
     if not doc:
         raise HTTPException(400, "OneDrive no conectado. El admin debe vincular OneDrive primero.")
+
+    access_token_enc = doc.get("access_token_enc")
+    refresh_token_enc = doc.get("refresh_token_enc")
+
+    if access_token_enc and refresh_token_enc:
+        refresh_token = _decrypt_onedrive_token(refresh_token_enc)
+    elif "access_token" in doc and "refresh_token" in doc:
+        access_token = doc["access_token"]
+        refresh_token = doc["refresh_token"]
+        await db.onedrive_tokens.update_one(
+            {"_id": "admin"},
+            {"$set": {
+                "access_token_enc": _encrypt_onedrive_token(access_token),
+                "refresh_token_enc": _encrypt_onedrive_token(refresh_token),
+            },
+            "$unset": {"access_token": "", "refresh_token": ""}}
+        )
+    else:
+        raise HTTPException(400, "OneDrive no conectado. El admin debe vincular OneDrive primero.")
+
     app_msal = _msal_app()
-    result = app_msal.acquire_token_by_refresh_token(doc["refresh_token"], scopes=MS_SCOPES)
+    result = app_msal.acquire_token_by_refresh_token(refresh_token, scopes=MS_SCOPES)
     if "error" in result:
         raise HTTPException(401, f"Error refrescando token OneDrive: {result.get('error_description')}")
-    # save new refresh token if provided
-    update = {"access_token": result["access_token"]}
-    if result.get("refresh_token"):
-        update["refresh_token"] = result["refresh_token"]
+    if not result.get("access_token"):
+        raise HTTPException(401, "Microsoft no devolvió access token al refrescar OneDrive")
+    new_access = result["access_token"]
+    new_refresh = result.get("refresh_token")
+    update = {"access_token_enc": _encrypt_onedrive_token(new_access)}
+    if new_refresh:
+        update["refresh_token_enc"] = _encrypt_onedrive_token(new_refresh)
     await db.onedrive_tokens.update_one({"_id": "admin"}, {"$set": update})
-    return result["access_token"]
+    return new_access
 
 async def _graph_get(url: str, token: str) -> httpx.Response:
     async with httpx.AsyncClient(timeout=60) as c:
@@ -530,21 +605,38 @@ async def _do_import() -> int:
         rows = parse_workbook(xlsx_bytes)
         existing = {m["row_index"]: m for m in await db.materiales.find({}, {"_id": 0}).to_list(10000)}
         docs = []
+        imported_row_indexes = []
+        imported_at = datetime.now(timezone.utc).isoformat()
         for r in rows:
             old = existing.get(r["row_index"])
+            preserved = {}
+            if old:
+                for key in ("manager_id", "manager_name", "project_status", "tecnicos", "demo_seed"):
+                    if key in old:
+                        preserved[key] = old[key]
             docs.append({
                 "id": old["id"] if old else str(uuid.uuid4()),
                 **r,
+                **preserved,
                 "sync_status": "synced",
-                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": imported_at,
                 "updated_by": old.get("updated_by", "onedrive") if old else "onedrive",
             })
-        await db.materiales.delete_many({})
-        if docs:
-            await db.materiales.insert_many(docs)
+            imported_row_indexes.append(r["row_index"])
+
+        if not docs:
+            raise HTTPException(400, "El Excel de OneDrive no contiene filas para importar; no se modificaron los materiales actuales.")
+
+        for doc in docs:
+            await db.materiales.update_one(
+                {"row_index": doc["row_index"]},
+                {"$set": doc},
+                upsert=True,
+            )
+        await db.materiales.delete_many({"row_index": {"$nin": imported_row_indexes}})
         await db.sync_meta.update_one(
             {"_id": "meta"},
-            {"$set": {"_id": "meta", "last_import_at": datetime.now(timezone.utc).isoformat()}},
+            {"$set": {"_id": "meta", "last_import_at": imported_at}},
             upsert=True,
         )
         return len(docs)
@@ -625,6 +717,7 @@ async def register(payload: UserRegister):
     # Only allow public register when DB is empty (bootstrap first admin).
     if count > 0:
         raise HTTPException(403, "Registro público deshabilitado. Pide a un administrador que cree tu cuenta.")
+    validate_password_strength(payload.password)
     user = {
         "id": str(uuid.uuid4()),
         "email": payload.email.lower(),
@@ -773,6 +866,7 @@ async def create_user(payload: UserCreate, admin: dict = Depends(require_permiss
     existing = await db.users.find_one({"email": payload.email.lower()})
     if existing:
         raise HTTPException(400, "Email ya registrado")
+    validate_password_strength(payload.password)
     role = await _resolve_role_for_user(payload.role_id, payload.role)
     # Pick a unique default color if none provided
     if payload.color:
@@ -831,8 +925,7 @@ async def reset_password(uid: str, payload: PasswordReset, admin: dict = Depends
     target = await db.users.find_one({"id": uid})
     if not target:
         raise HTTPException(404, "Usuario no encontrado")
-    if len(payload.password) < 4:
-        raise HTTPException(400, "Contraseña demasiado corta (mín. 4)")
+    validate_password_strength(payload.password)
     await db.users.update_one({"id": uid}, {"$set": {"password": hash_password(payload.password)}})
     return {"ok": True}
 
@@ -1029,7 +1122,7 @@ BUILTIN_STAMPS = [
 ]
 
 @api_router.get("/plans", response_model=List[PlanListItem])
-async def list_plans(user: dict = Depends(current_user)):
+async def list_plans(user: dict = Depends(require_permission("planos.view"))):
     plans = await db.plans.find({}, {"_id": 0, "data": 0}).to_list(2000)
     out: List[PlanListItem] = []
     # fetch shape counts in one pass
@@ -1046,7 +1139,7 @@ async def list_plans(user: dict = Depends(current_user)):
     return out
 
 @api_router.post("/plans", response_model=PlanOut)
-async def create_plan(payload: PlanCreate, user: dict = Depends(current_user)):
+async def create_plan(payload: PlanCreate, user: dict = Depends(require_permission("planos.edit"))):
     now = datetime.now(timezone.utc).isoformat()
     doc = {
         "id": str(uuid.uuid4()),
@@ -1063,7 +1156,7 @@ async def create_plan(payload: PlanCreate, user: dict = Depends(current_user)):
     return PlanOut(**{k: v for k, v in doc.items() if k != "_id"})
 
 @api_router.get("/plans/{pid}", response_model=PlanOut)
-async def get_plan(pid: str, user: dict = Depends(current_user)):
+async def get_plan(pid: str, user: dict = Depends(require_permission("planos.view"))):
     p = await db.plans.find_one({"id": pid}, {"_id": 0})
     if not p:
         raise HTTPException(404, "Plano no encontrado")
@@ -1074,7 +1167,7 @@ async def get_plan(pid: str, user: dict = Depends(current_user)):
     return p
 
 @api_router.patch("/plans/{pid}", response_model=PlanOut)
-async def update_plan(pid: str, payload: PlanPatch, user: dict = Depends(current_user)):
+async def update_plan(pid: str, payload: PlanPatch, user: dict = Depends(require_permission("planos.edit"))):
     upd = {k: v for k, v in payload.dict().items() if v is not None}
     if not upd:
         raise HTTPException(400, "Nada que actualizar")
@@ -1086,25 +1179,33 @@ async def update_plan(pid: str, payload: PlanPatch, user: dict = Depends(current
     return p
 
 @api_router.delete("/plans/{pid}")
-async def delete_plan(pid: str, user: dict = Depends(current_user)):
+async def delete_plan(pid: str, user: dict = Depends(require_permission("planos.edit"))):
     res = await db.plans.delete_one({"id": pid})
     if res.deleted_count == 0:
         raise HTTPException(404, "Plano no encontrado")
     return {"ok": True}
+
+MAX_BACKGROUND_MB = 25
 
 class BackgroundUpload(BaseModel):
     file_base64: str  # raw base64 (no data URI prefix)
     mime_type: str   # "image/jpeg" | "image/png" | "application/pdf"
 
 @api_router.post("/plans/{pid}/background")
-async def upload_background(pid: str, payload: BackgroundUpload, user: dict = Depends(current_user)):
+async def upload_background(pid: str, payload: BackgroundUpload, user: dict = Depends(require_permission("planos.edit"))):
     plan = await db.plans.find_one({"id": pid})
     if not plan:
         raise HTTPException(404, "Plano no encontrado")
+    # Size check before decoding (approximate: base64 → raw is ~ 3/4 ratio)
+    est_raw = (len(payload.file_base64) * 3) // 4
+    if est_raw > MAX_BACKGROUND_MB * 1024 * 1024:
+        raise HTTPException(413, f"El archivo excede {MAX_BACKGROUND_MB}MB")
     try:
         raw = base64.b64decode(payload.file_base64)
     except Exception:
         raise HTTPException(400, "Base64 inválido")
+    if len(raw) > MAX_BACKGROUND_MB * 1024 * 1024:
+        raise HTTPException(413, f"El archivo excede {MAX_BACKGROUND_MB}MB")
     mime = payload.mime_type.lower()
     if mime == "application/pdf":
         try:
@@ -1138,7 +1239,7 @@ async def upload_background(pid: str, payload: BackgroundUpload, user: dict = De
     return {"ok": True, "background": bg}
 
 @api_router.delete("/plans/{pid}/background")
-async def remove_background(pid: str, user: dict = Depends(current_user)):
+async def remove_background(pid: str, user: dict = Depends(require_permission("planos.edit"))):
     plan = await db.plans.find_one({"id": pid})
     if not plan:
         raise HTTPException(404, "Plano no encontrado")
@@ -1336,14 +1437,15 @@ def _expand_recurrence(ev: dict, from_dt: datetime, to_dt: datetime) -> List[dic
 
 @api_router.get("/events", response_model=List[EventOut])
 async def list_events(
-    user: dict = Depends(current_user),
+    user: dict = Depends(require_permission("calendario.view")),
     from_: Optional[str] = Query(None, alias="from"),
     to: Optional[str] = None,
 ):
     query: dict = {}
-    # Filter by visibility: non-admin only sees events where they are assigned
-    is_admin = user.get("role") == "admin"
-    if not is_admin:
+    # Users who can edit calendar see the full team calendar; others see assigned work.
+    perms = await get_user_permissions(user)
+    can_edit_calendar = "calendario.edit" in perms
+    if not can_edit_calendar:
         query["assigned_user_ids"] = user["id"]
     events = await db.events.find(query, {"_id": 0}).to_list(2000)
     # Expand recurrences
@@ -1402,10 +1504,11 @@ async def update_event(eid: str, payload: EventPatch, user: dict = Depends(curre
     if not ev_current:
         raise HTTPException(404, "Evento no encontrado")
 
-    is_admin = user.get("role") == "admin"
+    perms = await get_user_permissions(user)
+    can_edit_calendar = "calendario.edit" in perms
     is_assigned = user["id"] in (ev_current.get("assigned_user_ids") or [])
-    if not is_admin:
-        # A non-admin can only modify `status` and `seguimiento`, and only
+    if not can_edit_calendar:
+        # Users without calendario.edit can only modify `status` and `seguimiento`, and only
         # if they are assigned to this event (i.e. the technician in charge).
         if not is_assigned:
             raise HTTPException(403, "No autorizado")
@@ -1504,12 +1607,13 @@ async def get_event(eid: str, user: dict = Depends(current_user)):
     ev = await db.events.find_one({"id": real_id}, {"_id": 0})
     if not ev:
         raise HTTPException(404, "Evento no encontrado")
-    # Permission: admin OR assigned user OR manager of the event
-    is_admin = user.get("role") == "admin"
+    # Permission: calendario.edit OR assigned user OR manager of the event
+    perms = await get_user_permissions(user)
+    can_edit_calendar = "calendario.edit" in perms
     allowed_ids = set((ev.get("assigned_user_ids") or []))
     if ev.get("manager_id"):
         allowed_ids.add(ev.get("manager_id"))
-    if not is_admin and user["id"] not in allowed_ids:
+    if not can_edit_calendar and user["id"] not in allowed_ids:
         raise HTTPException(403, "No autorizado")
     ev = await _attach_material(ev)
     ev = await _attach_users(ev)
@@ -1570,9 +1674,10 @@ async def upload_event_attachment(eid: str, payload: AttachmentUpload, user: dic
     ev = await db.events.find_one({"id": real_id}, {"_id": 0})
     if not ev:
         raise HTTPException(404, "Evento no encontrado")
-    # Permission: admin OR assigned user
-    is_admin = user.get("role") == "admin"
-    if not is_admin and user["id"] not in (ev.get("assigned_user_ids") or []):
+    # Permission: calendario.edit OR assigned user
+    perms = await get_user_permissions(user)
+    can_edit_calendar = "calendario.edit" in perms
+    if not can_edit_calendar and user["id"] not in (ev.get("assigned_user_ids") or []):
         raise HTTPException(403, "No autorizado")
     # Validate base64 size
     b64 = (payload.base64 or "").split(",")[-1].strip()
@@ -1614,8 +1719,9 @@ async def get_event_attachment(eid: str, aid: str, user: dict = Depends(current_
     ev = await db.events.find_one({"id": real_id}, {"_id": 0})
     if not ev:
         raise HTTPException(404, "Evento no encontrado")
-    is_admin = user.get("role") == "admin"
-    if not is_admin and user["id"] not in (ev.get("assigned_user_ids") or []):
+    perms = await get_user_permissions(user)
+    can_edit_calendar = "calendario.edit" in perms
+    if not can_edit_calendar and user["id"] not in (ev.get("assigned_user_ids") or []):
         raise HTTPException(403, "No autorizado")
     for a in (ev.get("attachments") or []):
         if a.get("id") == aid:
@@ -1636,8 +1742,9 @@ async def delete_event_attachment(eid: str, aid: str, user: dict = Depends(curre
     ev = await db.events.find_one({"id": real_id}, {"_id": 0})
     if not ev:
         raise HTTPException(404, "Evento no encontrado")
-    is_admin = user.get("role") == "admin"
-    if not is_admin and user["id"] not in (ev.get("assigned_user_ids") or []):
+    perms = await get_user_permissions(user)
+    can_edit_calendar = "calendario.edit" in perms
+    if not can_edit_calendar and user["id"] not in (ev.get("assigned_user_ids") or []):
         raise HTTPException(403, "No autorizado")
     res = await db.events.update_one(
         {"id": real_id},
@@ -1687,7 +1794,15 @@ async def delete_stamp(sid: str, admin: dict = Depends(require_permission("plano
 @api_router.get("/auth/onedrive/login")
 async def onedrive_login(user: dict = Depends(require_permission("onedrive.manage"))):
     app_msal = _msal_app()
-    state = user["id"]
+    state = pyjwt.encode(
+        {
+            "sub": user["id"],
+            "purpose": "onedrive_link",
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=10),
+        },
+        JWT_SECRET,
+        algorithm=JWT_ALGORITHM,
+    )
     auth_url = app_msal.get_authorization_request_url(
         scopes=MS_SCOPES,
         redirect_uri=MS_REDIRECT_URI,
@@ -1700,6 +1815,16 @@ async def onedrive_login(user: dict = Depends(require_permission("onedrive.manag
 async def onedrive_callback(code: str, state: Optional[str] = None, error: Optional[str] = None, error_description: Optional[str] = None):
     if error:
         return HTMLResponse(f"<h2>Error</h2><p>{error}: {error_description}</p>", status_code=400)
+    if not state:
+        return HTMLResponse("<h2>Error</h2><p>Falta state de seguridad. Volvé a iniciar la vinculación.</p>", status_code=400)
+    try:
+        state_payload = pyjwt.decode(state, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        if state_payload.get("purpose") != "onedrive_link":
+            raise ValueError("invalid purpose")
+    except pyjwt.ExpiredSignatureError:
+        return HTMLResponse("<h2>Error</h2><p>State expirado. Volvé a iniciar la vinculación de OneDrive.</p>", status_code=400)
+    except Exception:
+        return HTMLResponse("<h2>Error</h2><p>State inválido. Volvé a iniciar la vinculación de OneDrive.</p>", status_code=400)
     app_msal = _msal_app()
     result = app_msal.acquire_token_by_authorization_code(
         code, scopes=MS_SCOPES, redirect_uri=MS_REDIRECT_URI
@@ -1707,15 +1832,25 @@ async def onedrive_callback(code: str, state: Optional[str] = None, error: Optio
     if "error" in result:
         return HTMLResponse(f"<h2>Error</h2><p>{result.get('error_description')}</p>", status_code=400)
     admin_email = result.get("id_token_claims", {}).get("preferred_username") or result.get("id_token_claims", {}).get("email", "unknown")
+    access_token = result["access_token"]
+    refresh_token = result.get("refresh_token", "")
+    if not refresh_token:
+        return HTMLResponse("<h2>Error</h2><p>Microsoft no devolvió refresh token. Volvé a vincular OneDrive.</p>", status_code=400)
+    try:
+        access_token_enc = _encrypt_onedrive_token(access_token)
+        refresh_token_enc = _encrypt_onedrive_token(refresh_token)
+    except HTTPException as exc:
+        return HTMLResponse(f"<h2>Error del servidor</h2><p>{exc.detail}</p>", status_code=exc.status_code)
     await db.onedrive_tokens.update_one(
         {"_id": "admin"},
         {"$set": {
             "_id": "admin",
-            "access_token": result["access_token"],
-            "refresh_token": result.get("refresh_token", ""),
+            "access_token_enc": access_token_enc,
+            "refresh_token_enc": refresh_token_enc,
             "admin_email": admin_email,
             "connected_at": datetime.now(timezone.utc).isoformat(),
-        }},
+        },
+        "$unset": {"access_token": "", "refresh_token": ""}},
         upsert=True,
     )
     return HTMLResponse(
@@ -1728,7 +1863,7 @@ async def onedrive_callback(code: str, state: Optional[str] = None, error: Optio
 
 @api_router.get("/auth/onedrive/status", response_model=OneDriveStatus)
 async def onedrive_status(user: dict = Depends(current_user)):
-    doc = await db.onedrive_tokens.find_one({"_id": "admin"}, {"_id": 0, "access_token": 0, "refresh_token": 0})
+    doc = await db.onedrive_tokens.find_one({"_id": "admin"}, {"_id": 0, "access_token": 0, "refresh_token": 0, "access_token_enc": 0, "refresh_token_enc": 0})
     if not doc:
         return OneDriveStatus(connected=False)
     meta = await db.sync_meta.find_one({"_id": "meta"}, {"_id": 0}) or {}
@@ -1751,34 +1886,48 @@ async def onedrive_disconnect(user: dict = Depends(require_permission("onedrive.
     return {"ok": True}
 
 # ---------------- Microsoft user authentication (Entra ID / Azure AD) ----------------
+@api_router.get("/auth/microsoft/status")
+async def microsoft_status():
+    return {"enabled": _microsoft_login_enabled()}
+
 @api_router.get("/auth/microsoft/login")
 async def microsoft_login():
-    """Return the Microsoft OAuth URL for user login (Entra ID / Azure AD)."""
-    state = str(uuid.uuid4())
-    await db.oauth_states.insert_one({
-        "_id": state,
-        "created_at": datetime.now(timezone.utc),
-    })
+    """Return the Microsoft OAuth URL for user login (Entra ID / Azure AD).
+    Generates a signed, expirable state JWT to protect the callback."""
+    if not _microsoft_login_enabled():
+        raise HTTPException(503, "Login Microsoft no configurado en este entorno")
     app_msal = _msal_app()
+    state_id = str(uuid.uuid4())
+    state_jwt = pyjwt.encode(
+        {"jti": state_id, "exp": datetime.now(timezone.utc) + timedelta(minutes=5)},
+        JWT_SECRET,
+        algorithm=JWT_ALGORITHM,
+    )
     auth_url = app_msal.get_authorization_request_url(
         scopes=["User.Read"],
         redirect_uri=MS_AUTH_REDIRECT_URI,
-        state=state,
+        state=state_jwt,
         prompt="select_account",
     )
-    return {"auth_url": auth_url}
+    return {"auth_url": auth_url, "state": state_jwt}
 
 @api_router.get("/auth/microsoft/callback", response_class=HTMLResponse)
 async def microsoft_callback(code: str, state: Optional[str] = None, error: Optional[str] = None):
-    """Handle Microsoft OAuth callback for user login."""
+    """Handle Microsoft OAuth callback for user login.
+    Creates the user on first login (auto-register), then returns HTML that
+    posts the JWT back to the frontend (popup message on web, redirect on native)."""
+    if not _microsoft_login_enabled():
+        return HTMLResponse("<h2>Error de autenticación</h2><p>Login Microsoft no configurado en este entorno.</p>", status_code=503)
     if error:
         return HTMLResponse("<h2>Error</h2><p>Autenticación cancelada</p>", status_code=400)
-    if state:
-        st = await db.oauth_states.find_one_and_delete({"_id": state})
-        if not st:
-            return HTMLResponse("<h2>Error de seguridad</h2><p>Estado de autenticación inválido</p>", status_code=400)
-    else:
-        return HTMLResponse("<h2>Error</h2><p>Falta el parámetro de estado</p>", status_code=400)
+    if not state:
+        return HTMLResponse("<h2>Error de autenticación</h2><p>Falta el parámetro state.</p>", status_code=400)
+    try:
+        pyjwt.decode(state, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except pyjwt.ExpiredSignatureError:
+        return HTMLResponse("<h2>Error de autenticación</h2><p>State expirado. Volvé a iniciar sesión.</p>", status_code=400)
+    except Exception:
+        return HTMLResponse("<h2>Error de autenticación</h2><p>State inválido.</p>", status_code=400)
 
     app_msal = _msal_app()
     result = app_msal.acquire_token_by_authorization_code(
@@ -1843,6 +1992,14 @@ async def microsoft_callback(code: str, state: Optional[str] = None, error: Opti
 
     jwt_token = create_jwt(user)
 
+    _cleanup_expired_codes()
+    code = secrets.token_hex(32)
+    _auth_codes[code] = {
+        "jwt": jwt_token,
+        "state": state,
+        "expires_at": time.time() + 300,
+    }
+
     return HTMLResponse(content=f"""<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -1878,24 +2035,52 @@ async def microsoft_callback(code: str, state: Optional[str] = None, error: Opti
   <div class="spinner"></div>
   <p class="fallback">
     Si no te redirige automáticamente,<br/>
-    <a href="{FRONTEND_URL}/login?microsoft_token={jwt_token}">haz clic aquí para entrar</a>
+    <a href="{FRONTEND_URL}/login">volvé a la pantalla de inicio de sesión</a>
   </p>
 </div>
 <script>
-  var token = '{jwt_token}';
+  var code = '{code}';
+  var state = '{state}';
   try {{
     if (window.opener && !window.opener.closed) {{
-      window.opener.postMessage({{ type:'microsoft_auth', token:token }}, '*');
+      window.opener.postMessage({{ type:'microsoft_auth', code:code, state:state }}, '{FRONTEND_URL}');
       setTimeout(function(){{ window.close(); }}, 500);
     }} else {{
-      window.location.replace('{FRONTEND_URL}/login?microsoft_token=' + token);
+      window.location.replace('frontend://microsoft-callback?code=' + encodeURIComponent(code) + '&state=' + encodeURIComponent(state));
     }}
   }} catch(e) {{
-    window.location.replace('{FRONTEND_URL}/login?microsoft_token=' + token);
+    window.location.replace('{FRONTEND_URL}/login');
   }}
 </script>
 </body>
 </html>""")
+
+
+class MicrosoftExchangeRequest(BaseModel):
+    code: str
+    state: str
+
+
+class MicrosoftExchangeResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+@api_router.post("/auth/microsoft/exchange", response_model=MicrosoftExchangeResponse)
+async def microsoft_exchange(payload: MicrosoftExchangeRequest):
+    """Exchange a one-time code for a JWT access token. Code is single-use."""
+    _cleanup_expired_codes()
+    record = _auth_codes.get(payload.code)
+    if not record:
+        raise HTTPException(401, "Código inválido o ya usado")
+    if record["state"] != payload.state:
+        raise HTTPException(401, "State no coincide")
+    if time.time() > record["expires_at"]:
+        del _auth_codes[payload.code]
+        raise HTTPException(401, "Código expirado")
+    jwt_token = record["jwt"]
+    del _auth_codes[payload.code]
+    return MicrosoftExchangeResponse(access_token=jwt_token, token_type="bearer")
 
 
 # ---------------- Sync routes (manual override — uses internal helpers) ----------------
@@ -1911,7 +2096,7 @@ async def sync_push(user: dict = Depends(require_permission("onedrive.manage")))
 
 # ---------------- Materials routes ----------------
 @api_router.get("/materiales", response_model=List[Material])
-async def list_materiales(user: dict = Depends(current_user), q: Optional[str] = None, pending_only: bool = False, limit: int = 2000, manager_id: Optional[str] = None, unassigned: bool = False, project_status: Optional[str] = None):
+async def list_materiales(user: dict = Depends(require_permission("proyectos.view")), q: Optional[str] = None, pending_only: bool = False, limit: int = 2000, manager_id: Optional[str] = None, unassigned: bool = False, project_status: Optional[str] = None):
     # fire-and-forget auto-import if stale
     await maybe_auto_import()
     query: dict = {}
@@ -2158,7 +2343,7 @@ async def materiales_export_excel(user: dict = Depends(current_user)):
                              headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 @api_router.get("/materiales/{mid}", response_model=Material)
-async def get_material(mid: str, user: dict = Depends(current_user)):
+async def get_material(mid: str, user: dict = Depends(require_permission("proyectos.view"))):
     doc = await db.materiales.find_one({"id": mid}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Material no encontrado")
@@ -2168,7 +2353,7 @@ async def get_material(mid: str, user: dict = Depends(current_user)):
     return doc
 
 @api_router.patch("/materiales/{mid}", response_model=Material)
-async def update_material(mid: str, payload: MaterialUpdate, user: dict = Depends(current_user)):
+async def update_material(mid: str, payload: MaterialUpdate, user: dict = Depends(require_permission("proyectos.edit"))):
     old = await db.materiales.find_one({"id": mid})
     if not old:
         raise HTTPException(404, "Material no encontrado")
@@ -2209,7 +2394,7 @@ async def get_material_history(mid: str, user: dict = Depends(current_user)):
 
 # ---------------- Stats ----------------
 @api_router.get("/stats")
-async def stats(user: dict = Depends(current_user)):
+async def stats(user: dict = Depends(require_permission("proyectos.view"))):
     total = await db.materiales.count_documents({})
     pending = await db.materiales.count_documents({"sync_status": "pending"})
     return {"total": total, "pending": pending, "synced": total - pending}
@@ -2325,11 +2510,16 @@ async def dashboard(user: dict = Depends(current_user)):
     }
 
 # ---------------- Budgets (Presupuestos) ----------------
-async def current_admin_or_comercial(user: dict = Depends(current_user)):
-    """Backwards-compatible guard: now allows anyone with `presupuestos.view`."""
+async def current_budget_view(user: dict = Depends(current_user)):
     perms = await get_user_permissions(user)
-    if "presupuestos.view" not in perms and user.get("role") not in ("admin", "comercial"):
+    if "presupuestos.view" not in perms:
         raise HTTPException(403, "Requiere permiso de Presupuestos")
+    return user
+
+async def current_budget_edit(user: dict = Depends(current_user)):
+    perms = await get_user_permissions(user)
+    if "presupuestos.edit" not in perms:
+        raise HTTPException(403, "Requiere permiso para editar Presupuestos")
     return user
 
 class EquipmentRow(BaseModel):
@@ -2370,7 +2560,7 @@ class BudgetPatch(BudgetCreate):
     pass
 
 @api_router.post("/budgets")
-async def create_budget(payload: BudgetCreate, user: dict = Depends(current_admin_or_comercial)):
+async def create_budget(payload: BudgetCreate, user: dict = Depends(current_budget_edit)):
     now = datetime.now(timezone.utc).isoformat()
     doc = payload.dict()
     doc["equipos"] = [e if isinstance(e, dict) else e.dict() for e in (payload.equipos or [])]
@@ -2387,12 +2577,12 @@ async def create_budget(payload: BudgetCreate, user: dict = Depends(current_admi
     return doc
 
 @api_router.get("/budgets")
-async def list_budgets(user: dict = Depends(current_admin_or_comercial)):
+async def list_budgets(user: dict = Depends(current_budget_view)):
     items = await db.budgets.find({}, {"_id": 0, "firma_isai": 0, "firma_cliente": 0}).sort("updated_at", -1).to_list(500)
     return items
 
 @api_router.get("/budgets/accepted")
-async def list_accepted_budgets(user: dict = Depends(current_user)):
+async def list_accepted_budgets(user: dict = Depends(current_budget_view)):
     items = await db.budgets.find(
         {"status": "aceptado"},
         {"_id": 0, "firma_isai": 0, "firma_cliente": 0},
@@ -2400,23 +2590,14 @@ async def list_accepted_budgets(user: dict = Depends(current_user)):
     return items
 
 @api_router.get("/budgets/{bid}")
-async def get_budget(bid: str, user: dict = Depends(current_admin_or_comercial)):
+async def get_budget(bid: str, user: dict = Depends(current_budget_view)):
     b = await db.budgets.find_one({"id": bid}, {"_id": 0})
     if not b:
         raise HTTPException(404, "Presupuesto no encontrado")
     return b
 
 @api_router.patch("/budgets/{bid}/status")
-async def update_budget_status(bid: str, user: dict = Depends(current_admin_or_comercial)):
-    b = await db.budgets.find_one({"id": bid})
-    if not b:
-        raise HTTPException(404, "Presupuesto no encontrado")
-    new_status = "aceptado" if b.get("status") != "aceptado" else "pendiente"
-    await db.budgets.update_one({"id": bid}, {"$set": {"status": new_status, "updated_at": datetime.now(timezone.utc).isoformat()}})
-    return {"ok": True, "status": new_status}
-
-@api_router.patch("/budgets/{bid}/status")
-async def update_budget_status(bid: str, user: dict = Depends(current_admin_or_comercial)):
+async def update_budget_status(bid: str, user: dict = Depends(current_budget_edit)):
     b = await db.budgets.find_one({"id": bid})
     if not b:
         raise HTTPException(404, "Presupuesto no encontrado")
@@ -2425,7 +2606,7 @@ async def update_budget_status(bid: str, user: dict = Depends(current_admin_or_c
     return {"ok": True, "status": new_status}
 
 @api_router.patch("/budgets/{bid}")
-async def update_budget(bid: str, payload: BudgetPatch, user: dict = Depends(current_admin_or_comercial)):
+async def update_budget(bid: str, payload: BudgetPatch, user: dict = Depends(current_budget_edit)):
     upd = {k: v for k, v in payload.dict().items() if v is not None}
     if "equipos" in upd:
         upd["equipos"] = [e if isinstance(e, dict) else (e.dict() if hasattr(e, "dict") else e) for e in upd["equipos"]]
@@ -2437,7 +2618,7 @@ async def update_budget(bid: str, payload: BudgetPatch, user: dict = Depends(cur
     return b
 
 @api_router.delete("/budgets/{bid}")
-async def delete_budget(bid: str, user: dict = Depends(current_admin_or_comercial)):
+async def delete_budget(bid: str, user: dict = Depends(current_budget_edit)):
     res = await db.budgets.delete_one({"id": bid})
     if res.deleted_count == 0:
         raise HTTPException(404, "Presupuesto no encontrado")
@@ -2459,12 +2640,12 @@ DEFAULT_EQUIPMENT_LIST = [
 ]
 
 @api_router.get("/budgets-defaults/equipos")
-async def budgets_default_equipos(user: dict = Depends(current_admin_or_comercial)):
+async def budgets_default_equipos(user: dict = Depends(current_budget_view)):
     return {"items": DEFAULT_EQUIPMENT_LIST}
 
 
 @api_router.get("/budgets/{bid}/pdf")
-async def get_budget_pdf(bid: str, user: dict = Depends(current_admin_or_comercial)):
+async def get_budget_pdf(bid: str, user: dict = Depends(current_budget_view)):
     """
     Genera el PDF 'Hoja de instalación' rellenado con los datos del presupuesto,
     manteniendo el layout exacto del template y los campos editables (AcroForm).
@@ -2491,7 +2672,7 @@ async def get_budget_pdf(bid: str, user: dict = Depends(current_admin_or_comerci
 
 @api_router.post("/budgets/pdf-preview")
 async def post_budget_pdf_preview(payload: BudgetCreate,
-                                  user: dict = Depends(current_admin_or_comercial)):
+                                  user: dict = Depends(current_budget_edit)):
     """
     Genera el PDF sin guardar el presupuesto. Útil para previsualizar antes de
     guardar. Recibe en el body los mismos campos que BudgetCreate.
@@ -2581,23 +2762,429 @@ async def seed_initial_data():
     logging.getLogger(__name__).info(f"Seeded {len(docs)} materials from {path}")
 
 async def seed_admin_user():
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@materiales.com")
-    admin_pass = os.environ.get("ADMIN_PASSWORD", "")
-    if not admin_pass:
-        admin_pass = secrets.token_hex(12)
-        logging.getLogger(__name__).warning(f"ADMIN_PASSWORD not set. Admin password: {admin_pass}")
-    existing = await db.users.find_one({"email": admin_email})
-    if existing:
+    if not ENABLE_DEMO_SEED:
         return
+    existing = await db.users.find_one({"email": DEMO_ADMIN_EMAIL})
+    if existing:
+        if DEMO_ADMIN_PASSWORD:
+            role = await db.roles.find_one({"key": "admin"})
+            await db.users.update_one(
+                {"email": DEMO_ADMIN_EMAIL},
+                {"$set": {
+                    "password": hash_password(DEMO_ADMIN_PASSWORD),
+                    "name": DEMO_ADMIN_NAME,
+                    "role": "admin",
+                    "role_id": role.get("id") if role else None,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }}
+            )
+        else:
+            logging.getLogger(__name__).warning(
+                "DEMO_ADMIN_PASSWORD no configurada; no se puede actualizar el password del usuario admin de demo"
+            )
+        return
+    if not DEMO_ADMIN_PASSWORD:
+        logging.getLogger(__name__).warning(
+            "DEMO_ADMIN_PASSWORD no configurada; no se puede crear el usuario admin de demo"
+        )
+        return
+    role = await db.roles.find_one({"key": "admin"})
     user = {
         "id": str(uuid.uuid4()),
-        "email": admin_email,
-        "name": "Administrador",
-        "password": hash_password(admin_pass),
+        "email": DEMO_ADMIN_EMAIL,
+        "name": DEMO_ADMIN_NAME,
+        "password": hash_password(DEMO_ADMIN_PASSWORD),
         "role": "admin",
+        "role_id": role.get("id") if role else None,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.users.insert_one(user)
+
+async def _seed_demo_user(email: str, name: str, role_key: str, color: str) -> Optional[str]:
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        return existing.get("id")
+    if not DEMO_USER_PASSWORD:
+        logging.getLogger(__name__).warning(
+            "DEMO_USER_PASSWORD no configurada; no se crean usuarios demo adicionales"
+        )
+        return None
+    role = await db.roles.find_one({"key": role_key})
+    legacy_role = "admin" if role_key in ("admin", "gestor") else ("comercial" if role_key == "comercial" else "user")
+    user_slug = email.split("@", 1)[0].replace(".", "-").replace("_", "-")
+    user_id = f"demo-user-{user_slug}"
+    await db.users.insert_one({
+        "id": user_id,
+        "email": email,
+        "name": name,
+        "password": hash_password(DEMO_USER_PASSWORD),
+        "role": legacy_role,
+        "role_id": role.get("id") if role else None,
+        "color": color,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "demo_seed": True,
+    })
+    return user_id
+
+async def seed_demo_data():
+    if not ENABLE_DEMO_SEED:
+        return
+
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    admin = await db.users.find_one({"email": DEMO_ADMIN_EMAIL}, {"_id": 0})
+    manager_id = admin.get("id") if admin else None
+    gestor_id = await _seed_demo_user("gestor.demo@materiales.com", "Gestor Demo", "gestor", "#3B82F6")
+    gestor_obras_id = await _seed_demo_user("gestor.obras.demo@materiales.com", "Gestor Obras Demo", "gestor", "#06B6D4")
+    tecnico_id = await _seed_demo_user("tecnico.demo@materiales.com", "Tecnico Demo", "tecnico", "#10B981")
+    tecnico_refuerzo_id = await _seed_demo_user("tecnico.refuerzo.demo@materiales.com", "Tecnico Refuerzo Demo", "tecnico", "#14B8A6")
+    tecnico_mantenimiento_id = await _seed_demo_user("tecnico.mantenimiento.demo@materiales.com", "Tecnico Mantenimiento Demo", "tecnico", "#84CC16")
+    await _seed_demo_user("comercial.demo@materiales.com", "Comercial Demo", "comercial", "#F59E0B")
+    await _seed_demo_user("comercial.obras.demo@materiales.com", "Comercial Obras Demo", "comercial", "#F97316")
+    sat_id = await _seed_demo_user("sat.demo@materiales.com", "SAT Demo", "sat", "#8B5CF6")
+    await _seed_demo_user("sat.guardias.demo@materiales.com", "SAT Guardias Demo", "sat", "#EC4899")
+
+    await db.materiales.delete_many({"demo_seed": True, "id": {"$regex": "^demo-material-"}})
+    await db.budgets.update_many({"demo_seed": True, "material_id": {"$regex": "^demo-material-"}}, {"$set": {"material_id": None}})
+    await db.events.update_many({"demo_seed": True, "material_id": {"$regex": "^demo-material-"}}, {"$set": {"material_id": None}})
+
+    budget_id = "demo-budget-oficina-centro"
+    await db.budgets.update_one(
+        {"id": budget_id},
+        {"$setOnInsert": {
+            "id": budget_id,
+            "n_proyecto": "POC-001",
+            "cliente": "Comunidad Edificio Centro",
+            "nombre_instalacion": "PCI zonas comunes y garaje",
+            "direccion": "Av. Principal 123",
+            "contacto_1": "Administracion Fincas Centro",
+            "contacto_2": "600 123 456",
+            "observaciones_presupuesto": "Presupuesto demo para mostrar flujo comercial, ejecucion y SAT.",
+            "fecha_inicio": (now + timedelta(days=3)).date().isoformat(),
+            "fecha_fin": (now + timedelta(days=5)).date().isoformat(),
+            "observaciones_ejecucion": "Coordinar acceso a garaje con conserjeria.",
+            "equipos": [
+                {"elemento": "Central PCI", "cantidad": "1", "ubicacion": "Cuarto tecnico", "observaciones": "Incluye configuracion inicial"},
+                {"elemento": "Detector optico", "cantidad": "18", "ubicacion": "Zonas comunes", "observaciones": "Reposicion por sectores"},
+                {"elemento": "Sirena interior", "cantidad": "4", "ubicacion": "Escaleras", "observaciones": "Prueba acustica final"},
+            ],
+            "entrega_tarjeta_mantenimiento": True,
+            "entrega_llave_salto": False,
+            "entrega_eps100": True,
+            "firma_isai": "",
+            "nombre_isai": DEMO_ADMIN_NAME,
+            "cargo_isai": "Responsable tecnico",
+            "firma_cliente": "",
+            "nombre_cliente": "Administracion Fincas Centro",
+            "cargo_cliente": "Cliente",
+            "material_id": None,
+            "created_at": now_iso,
+            "updated_at": now_iso,
+            "created_by": DEMO_ADMIN_EMAIL,
+            "created_by_name": DEMO_ADMIN_NAME,
+            "status": "pendiente",
+            "demo_seed": True,
+        }},
+        upsert=True,
+    )
+
+    demo_budgets = [
+        ("demo-budget-hotel-aurora", "POC-002", "Hotel Aurora", "Renovacion PCI recepcion y parking", "pendiente", 2),
+        ("demo-budget-talleres-meridian", "POC-003", "Talleres Meridian", "Adecuacion nave industrial", "aceptado", -6),
+        ("demo-budget-logistica-eurosur", "POC-004", "Logistica Eurosur", "Ampliacion deteccion muelles", "aceptado", -14),
+        ("demo-budget-colegio-san-mateo", "POC-005", "Colegio San Mateo", "Revision anual y mejoras evacuacion", "pendiente", 7),
+        ("demo-budget-reformas-horizonte", "POC-006", "Reformas Horizonte", "Instalacion oficinas nueva sede", "pendiente", 12),
+    ]
+    for demo_budget_id, project_number, cliente, instalacion, status, day_offset in demo_budgets:
+        await db.budgets.update_one(
+            {"id": demo_budget_id},
+            {"$setOnInsert": {
+                "id": demo_budget_id,
+                "n_proyecto": project_number,
+                "cliente": cliente,
+                "nombre_instalacion": instalacion,
+                "direccion": "Direccion demo PoC",
+                "contacto_1": f"Responsable {cliente}",
+                "contacto_2": "600 000 000",
+                "observaciones_presupuesto": "Presupuesto demo con estado y proyecto vinculado.",
+                "fecha_inicio": (now + timedelta(days=day_offset)).date().isoformat(),
+                "fecha_fin": (now + timedelta(days=day_offset + 3)).date().isoformat(),
+                "observaciones_ejecucion": "Coordinar accesos, cortes y pruebas con cliente.",
+                "equipos": [
+                    {"elemento": "Central PCI", "cantidad": "1", "ubicacion": "Cuarto tecnico", "observaciones": "Configuracion demo"},
+                    {"elemento": "Detector optico", "cantidad": "12", "ubicacion": "Zonas comunes", "observaciones": "Instalacion por sectores"},
+                    {"elemento": "Prueba funcional", "cantidad": "1", "ubicacion": "Toda la instalacion", "observaciones": "Acta final"},
+                ],
+                "entrega_tarjeta_mantenimiento": status == "aceptado",
+                "entrega_llave_salto": False,
+                "entrega_eps100": status == "aceptado",
+                "firma_isai": "",
+                "nombre_isai": DEMO_ADMIN_NAME,
+                "cargo_isai": "Responsable tecnico",
+                "firma_cliente": "",
+                "nombre_cliente": f"Responsable {cliente}",
+                "cargo_cliente": "Cliente",
+                "material_id": None,
+                "created_at": now_iso,
+                "updated_at": now_iso,
+                "created_by": DEMO_ADMIN_EMAIL,
+                "created_by_name": DEMO_ADMIN_NAME,
+                "status": status,
+                "demo_seed": True,
+            }},
+            upsert=True,
+        )
+
+    event_id = "demo-event-instalacion-centro"
+    start_at = (now + timedelta(days=3)).replace(hour=9, minute=0, second=0, microsecond=0)
+    end_at = start_at + timedelta(hours=4)
+    await db.events.update_one(
+        {"id": event_id},
+        {"$setOnInsert": {
+            "id": event_id,
+            "title": "Instalacion PCI - Comunidad Edificio Centro",
+            "start_at": start_at.isoformat(),
+            "end_at": end_at.isoformat(),
+            "description": "Demo PoC: instalacion planificada con tecnico asignado y presupuesto vinculado.",
+            "material_id": None,
+            "assigned_user_ids": [uid for uid in [tecnico_id, tecnico_refuerzo_id] if uid],
+            "manager_id": gestor_id or manager_id,
+            "recurrence": None,
+            "attachments": [],
+            "created_by": DEMO_ADMIN_EMAIL,
+            "created_at": now_iso,
+            "status": "in_progress",
+            "seguimiento": "Pendiente de confirmar acceso a garaje.",
+            "budget_id": budget_id,
+            "demo_seed": True,
+        }},
+        upsert=True,
+    )
+
+    tech_pool = [uid for uid in [tecnico_id, tecnico_refuerzo_id, tecnico_mantenimiento_id] if uid]
+    manager_pool = [uid for uid in [gestor_id, gestor_obras_id, manager_id] if uid]
+    if tech_pool and manager_pool:
+        await db.events.delete_many({"demo_seed": True, "id": {"$regex": "^demo-calendar-"}})
+        calendar_start = now.replace(hour=8, minute=0, second=0, microsecond=0)
+        calendar_end = calendar_start + timedelta(days=29)
+        workdays = []
+        cursor = calendar_start
+        while cursor <= calendar_end:
+            if cursor.weekday() < 5:
+                workdays.append(cursor)
+            cursor += timedelta(days=1)
+
+        event_templates = [
+            ("Revision trimestral PCI", "Mantenimiento preventivo y checklist de central.", 8, 0, 150, "in_progress"),
+            ("Instalacion detectores", "Montaje y prueba por sectores.", 10, 30, 180, "in_progress"),
+            ("Puesta en marcha", "Configuracion final, pruebas y entrega al cliente.", 13, 30, 150, "pending_completion"),
+            ("Visita SAT programada", "Revision correctiva con parte de trabajo.", 16, 0, 120, "in_progress"),
+        ]
+        client_names = [
+            "Comunidad Edificio Centro",
+            "Hotel Aurora",
+            "Talleres Meridian",
+            "Logistica Eurosur",
+            "Colegio San Mateo",
+            "Reformas Horizonte",
+        ]
+
+        for day_idx, day in enumerate(workdays):
+            for block_idx, (title, description, hour, minute, duration_minutes, status) in enumerate(event_templates):
+                start = day.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                end = start + timedelta(minutes=duration_minutes)
+                assigned_count = ((day_idx + block_idx) % min(3, len(tech_pool))) + 1
+                assigned = [tech_pool[(day_idx + block_idx + offset) % len(tech_pool)] for offset in range(assigned_count)]
+                manager = manager_pool[(day_idx + block_idx) % len(manager_pool)]
+                client = client_names[(day_idx + block_idx) % len(client_names)]
+                event_id_block = f"demo-calendar-workday-{day.date().isoformat()}-{block_idx + 1}"
+                await db.events.update_one(
+                    {"id": event_id_block},
+                    {"$setOnInsert": {
+                        "id": event_id_block,
+                        "title": f"{title} - {client}",
+                        "start_at": start.isoformat(),
+                        "end_at": end.isoformat(),
+                        "description": description,
+                        "material_id": None,
+                        "assigned_user_ids": assigned,
+                        "manager_id": manager,
+                        "recurrence": None,
+                        "attachments": [],
+                        "created_by": DEMO_ADMIN_EMAIL,
+                        "created_at": now_iso,
+                        "status": status,
+                        "seguimiento": "Bloque laboral demo para calendario PoC.",
+                        "budget_id": budget_id if block_idx == 0 and day_idx % 3 == 0 else None,
+                        "demo_seed": True,
+                    }},
+                    upsert=True,
+                )
+
+        recurrent_specs = [
+            ("demo-calendar-daily-standup", "Coordinacion diaria de tecnicos", "Revision de agenda, materiales y accesos del dia.", "daily", calendar_start, 8, 0, 30, tech_pool[:1], manager_pool[0]),
+            ("demo-calendar-weekly-planning", "Planificacion semanal de obras", "Reunion semanal de gestor con equipo tecnico.", "weekly", calendar_start, 12, 30, 60, tech_pool[:min(3, len(tech_pool))], manager_pool[min(1, len(manager_pool) - 1)]),
+            ("demo-calendar-monthly-review", "Revision mensual de cartera", "Seguimiento mensual de presupuestos, SAT y obras activas.", "monthly", calendar_start, 9, 30, 90, tech_pool[:min(2, len(tech_pool))], manager_pool[0]),
+        ]
+        for event_id_rec, title, description, recurrence_type, base_day, hour, minute, duration_minutes, assigned, manager in recurrent_specs:
+            start = base_day.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            end = start + timedelta(minutes=duration_minutes)
+            await db.events.update_one(
+                {"id": event_id_rec},
+                {"$setOnInsert": {
+                    "id": event_id_rec,
+                    "title": title,
+                    "start_at": start.isoformat(),
+                    "end_at": end.isoformat(),
+                    "description": description,
+                    "material_id": None,
+                    "assigned_user_ids": assigned,
+                    "manager_id": manager,
+                    "recurrence": {"type": recurrence_type, "until": calendar_end.date().isoformat()},
+                    "attachments": [],
+                    "created_by": DEMO_ADMIN_EMAIL,
+                    "created_at": now_iso,
+                    "status": "in_progress",
+                    "seguimiento": "Evento recurrente demo para calendario PoC.",
+                    "budget_id": None,
+                    "demo_seed": True,
+                }},
+                upsert=True,
+            )
+
+    client_id = "demo-sat-client-centro"
+    await db.sat_clients.update_one(
+        {"id": client_id},
+        {"$setOnInsert": {
+            "id": client_id,
+            "cliente": "Comunidad Edificio Centro",
+            "direccion": "Av. Principal 123",
+            "contacto": "Administracion Fincas Centro",
+            "telefono": "600 123 456",
+            "created_at": now_iso,
+            "updated_at": now_iso,
+            "demo_seed": True,
+        }},
+        upsert=True,
+    )
+
+    incident_id = "demo-sat-incident-centro"
+    await db.sat_incidents.update_one(
+        {"id": incident_id},
+        {"$setOnInsert": {
+            "id": incident_id,
+            "cliente": "Comunidad Edificio Centro",
+            "direccion": "Av. Principal 123",
+            "telefono": "600 123 456",
+            "observaciones": "Aviso demo: revisar sirena de garaje tras prueba de mantenimiento.",
+            "comentarios_sat": "Caso preparado para mostrar seguimiento SAT.",
+            "status": "pendiente",
+            "client_id": client_id,
+            "created_at": now_iso,
+            "updated_at": now_iso,
+            "resolved_at": None,
+            "resolved_by": None,
+            "history": [{
+                "id": "demo-sat-history-centro",
+                "action": "note",
+                "comment": "Incidencia demo generada para PoC.",
+                "user_id": sat_id,
+                "user_name": "SAT Demo",
+                "created_at": now_iso,
+            }],
+            "demo_seed": True,
+        }},
+        upsert=True,
+    )
+
+    sat_clients_demo = [
+        ("demo-sat-client-hotel-aurora", "Hotel Aurora", "C/ Marina 48", "Marta Ruiz", "600 111 222"),
+        ("demo-sat-client-talleres-meridian", "Talleres Meridian", "Poligono Norte nave 12", "Carlos Molina", "600 222 333"),
+        ("demo-sat-client-logistica-eurosur", "Logistica Eurosur", "Centro logistico Sur", "Nuria Campos", "600 333 444"),
+        ("demo-sat-client-colegio-san-mateo", "Colegio San Mateo", "Av. Educacion 22", "Secretaria tecnica", "600 444 555"),
+        ("demo-sat-client-reformas-horizonte", "Reformas Horizonte", "C/ Norte 7", "Sergio Vidal", "600 555 666"),
+        ("demo-sat-client-clinica-norte", "Clinica Norte", "Paseo Salud 3", "Recepcion mantenimiento", "600 666 777"),
+    ]
+    for client_id_demo, cliente, direccion, contacto, telefono in sat_clients_demo:
+        await db.sat_clients.update_one(
+            {"id": client_id_demo},
+            {"$setOnInsert": {
+                "id": client_id_demo,
+                "cliente": cliente,
+                "direccion": direccion,
+                "contacto": contacto,
+                "telefono": telefono,
+                "created_at": now_iso,
+                "updated_at": now_iso,
+                "demo_seed": True,
+            }},
+            upsert=True,
+        )
+
+    sat_incidents_demo = [
+        ("demo-sat-incident-hotel-pendiente", "demo-sat-client-hotel-aurora", "Hotel Aurora", "C/ Marina 48", "600 111 222", "Fallo intermitente en sirena de parking durante prueba semanal.", "pendiente", None, None, None, 0),
+        ("demo-sat-incident-taller-resuelta", "demo-sat-client-talleres-meridian", "Talleres Meridian", "Poligono Norte nave 12", "600 222 333", "Pulsador golpeado en zona de carga. Sustituido y probado.", "resuelta", None, True, sat_id, -3),
+        ("demo-sat-incident-logistica-agendada", "demo-sat-client-logistica-eurosur", "Logistica Eurosur", "Centro logistico Sur", "600 333 444", "Detector lineal con falsas alarmas en muelle 4. Visita programada.", "agendada", now + timedelta(days=2, hours=9), None, None, -1),
+        ("demo-sat-incident-colegio-pendiente", "demo-sat-client-colegio-san-mateo", "Colegio San Mateo", "Av. Educacion 22", "600 444 555", "Revision de senaletica de evacuacion tras inspeccion interna.", "pendiente", None, None, None, -2),
+        ("demo-sat-incident-reformas-resuelta", "demo-sat-client-reformas-horizonte", "Reformas Horizonte", "C/ Norte 7", "600 555 666", "Central sin alimentacion auxiliar. Bateria sustituida.", "resuelta", None, False, sat_id, -7),
+        ("demo-sat-incident-clinica-agendada", "demo-sat-client-clinica-norte", "Clinica Norte", "Paseo Salud 3", "600 666 777", "Comprobar sectorizacion de zona consultas antes de auditoria.", "agendada", now + timedelta(days=5, hours=10), None, None, -4),
+    ]
+    for incident_demo_id, client_id_demo, cliente, direccion, telefono, observaciones, status, scheduled_for, facturable, resolved_by, created_offset in sat_incidents_demo:
+        created_at = (now + timedelta(days=created_offset)).isoformat()
+        history = [{
+            "id": f"{incident_demo_id}-history-open",
+            "action": "created",
+            "comment": "Incidencia demo creada para mostrar flujo SAT.",
+            "user_id": None,
+            "user_name": cliente,
+            "created_at": created_at,
+        }]
+        if status == "resuelta":
+            history.append({
+                "id": f"{incident_demo_id}-history-resolved",
+                "action": "status_change",
+                "from_status": "pendiente",
+                "to_status": "resuelta",
+                "comment": "Caso resuelto en visita demo.",
+                "facturable": facturable,
+                "user_id": sat_id,
+                "user_name": "SAT Demo",
+                "created_at": now_iso,
+            })
+        if status == "agendada":
+            history.append({
+                "id": f"{incident_demo_id}-history-scheduled",
+                "action": "scheduled",
+                "from_status": "pendiente",
+                "to_status": "agendada",
+                "scheduled_for": scheduled_for.isoformat() if scheduled_for else None,
+                "comment": "Visita agendada para resolver incidencia demo.",
+                "user_id": sat_id,
+                "user_name": "SAT Demo",
+                "created_at": now_iso,
+            })
+        await db.sat_incidents.update_one(
+            {"id": incident_demo_id},
+            {"$setOnInsert": {
+                "id": incident_demo_id,
+                "cliente": cliente,
+                "direccion": direccion,
+                "telefono": telefono,
+                "observaciones": observaciones,
+                "comentarios_sat": "Caso demo con historial para CRM SAT.",
+                "status": status,
+                "client_id": client_id_demo,
+                "scheduled_for": scheduled_for.isoformat() if scheduled_for else None,
+                "facturable": facturable,
+                "created_at": created_at,
+                "updated_at": now_iso,
+                "resolved_at": now_iso if status == "resuelta" else None,
+                "resolved_by": resolved_by,
+                "history": history,
+                "demo_seed": True,
+            }},
+            upsert=True,
+        )
 
 # ---------------- Root/Health ----------------
 @api_router.get("/")
@@ -2628,10 +3215,32 @@ class SATUpdateIn(BaseModel):
     comentarios_sat: Optional[str] = None
     status: Optional[str] = None  # "pendiente" | "resuelta"
 
+_sat_rl: dict = {}  # IP → list of epoch timestamps
+
+_SAT_RL_WINDOW_S = 30
+_SAT_RL_MAX = 3
+
+def _request_client_ip(request: Request) -> str:
+    if TRUST_PROXY_HEADERS:
+        forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        if forwarded:
+            return forwarded
+    return request.client.host if request.client else "unknown"
+
+def _check_sat_rate_limit(ip: str) -> None:
+    now = time.monotonic()
+    entries = [t for t in _sat_rl.get(ip, []) if now - t < _SAT_RL_WINDOW_S]
+    _sat_rl[ip] = entries
+    if len(entries) >= _SAT_RL_MAX:
+        raise HTTPException(429, "Demasiadas solicitudes. Esperá unos segundos.")
+    _sat_rl[ip].append(now)
+
 @api_router.post("/sat/public")
-async def sat_public_create(body: SATPublicIn):
+async def sat_public_create(body: SATPublicIn, request: Request):
     """Endpoint PÚBLICO — no requiere login. Lo usa el enlace que se envía
     al cliente para que abra la incidencia."""
+    ip = _request_client_ip(request)
+    _check_sat_rate_limit(ip)
     now = datetime.now(timezone.utc)
     doc = {
         "id": str(uuid.uuid4()),
@@ -2676,7 +3285,7 @@ async def sat_public_create(body: SATPublicIn):
 
 @api_router.get("/sat/incidents")
 async def sat_list(
-    user: dict = Depends(current_user),
+    user: dict = Depends(require_permission("sat.view")),
     status: Optional[str] = None,
     client_id: Optional[str] = None,
 ):
@@ -2745,14 +3354,14 @@ async def _sat_auto_revive(now_iso: str):
             })
 
 @api_router.get("/sat/incidents/{iid}")
-async def sat_get(iid: str, user: dict = Depends(current_user)):
+async def sat_get(iid: str, user: dict = Depends(require_permission("sat.view"))):
     doc = await db.sat_incidents.find_one({"id": iid}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Incidencia no encontrada")
     return doc
 
 @api_router.patch("/sat/incidents/{iid}")
-async def sat_update(iid: str, body: SATUpdateIn, user: dict = Depends(current_user)):
+async def sat_update(iid: str, body: SATUpdateIn, user: dict = Depends(require_permission("sat.edit"))):
     existing = await db.sat_incidents.find_one({"id": iid})
     if not existing:
         raise HTTPException(404, "Incidencia no encontrada")
@@ -2787,7 +3396,7 @@ class SATStatusChangeIn(BaseModel):
     facturable: Optional[bool] = None  # required when status == "resuelta"
 
 @api_router.post("/sat/incidents/{iid}/status")
-async def sat_change_status(iid: str, body: SATStatusChangeIn, user: dict = Depends(current_user)):
+async def sat_change_status(iid: str, body: SATStatusChangeIn, user: dict = Depends(require_permission("sat.edit"))):
     """Change the status of an incident and append a history entry with the
     user's comment. This is the canonical way to toggle pendiente↔resuelta
     from the UI so that every change is traceable."""
@@ -2835,7 +3444,7 @@ class SATScheduleIn(BaseModel):
     comment: str = Field("", max_length=4000)
 
 @api_router.post("/sat/incidents/{iid}/schedule")
-async def sat_schedule(iid: str, body: SATScheduleIn, user: dict = Depends(current_user)):
+async def sat_schedule(iid: str, body: SATScheduleIn, user: dict = Depends(require_permission("sat.edit"))):
     """Reschedule an incident. Moves it to status='agendada' with the chosen
     date/time. When that date arrives, `_sat_auto_revive` flips it back to
     pendiente and notifies the admins."""
@@ -2879,7 +3488,7 @@ async def sat_schedule(iid: str, body: SATScheduleIn, user: dict = Depends(curre
     return doc
 
 @api_router.post("/sat/incidents/{iid}/note")
-async def sat_add_note(iid: str, body: SATStatusChangeIn, user: dict = Depends(current_user)):
+async def sat_add_note(iid: str, body: SATStatusChangeIn, user: dict = Depends(require_permission("sat.edit"))):
     """Add a free-form note to the history without changing status. Handy if
     the SAT team wants to leave intermediate comments."""
     existing = await db.sat_incidents.find_one({"id": iid})
@@ -2916,12 +3525,12 @@ class SATClientIn(BaseModel):
     telefono: str = Field("", max_length=80)
 
 @api_router.get("/sat/clients")
-async def sat_clients_list(user: dict = Depends(current_user)):
+async def sat_clients_list(user: dict = Depends(require_permission("sat.view"))):
     rows = await db.sat_clients.find({}, {"_id": 0}).sort("cliente", 1).to_list(5000)
     return rows
 
 @api_router.get("/sat/clients/{cid}")
-async def sat_client_get(cid: str, user: dict = Depends(current_user)):
+async def sat_client_get(cid: str, user: dict = Depends(require_permission("sat.view"))):
     doc = await db.sat_clients.find_one({"id": cid}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Cliente no encontrado")
@@ -3061,6 +3670,7 @@ async def sat_client_import(
     return {"ok": True, "created": created, "updated": updated, "skipped": skipped}
 
 
+
 # -----------------------------------------------------------------------------
 # Portfolio — self-contained HTML presentation for clients.
 # -----------------------------------------------------------------------------
@@ -3088,17 +3698,20 @@ async def portfolio_demo_video(request: Request):
             start_s, end_s = rng.split("-", 1)
             start = int(start_s) if start_s else 0
             end = int(end_s) if end_s else file_size - 1
+            if start >= file_size:
+                raise HTTPException(status_code=416)
+            end = min(end, file_size - 1)
+            length = end - start + 1
         except Exception:
-            start, end = 0, file_size - 1
-        end = min(end, file_size - 1)
-        length = end - start + 1
+            raise HTTPException(status_code=416, detail="Invalid Range header")
 
-        def iterfile():
-            with open(p, "rb") as f:
+        async def iterfile():
+            with open(str(p), "rb") as f:
                 f.seek(start)
                 remaining = length
                 while remaining > 0:
-                    chunk = f.read(min(1024 * 64, remaining))
+                    chunk_size = min(65536, remaining)
+                    chunk = f.read(chunk_size)
                     if not chunk:
                         break
                     remaining -= len(chunk)
@@ -3115,16 +3728,20 @@ async def portfolio_demo_video(request: Request):
     return FileResponse(p, media_type="video/mp4", headers={"Accept-Ranges": "bytes"})
 
 
-# ====================  CHAT — mensajería entre usuarios  ====================
-class ChatCreate(BaseModel):
-    participant_ids: List[str]  # must include current user
-    name: Optional[str] = None  # for group chats
-    project_id: Optional[str] = None
-    event_id: Optional[str] = None
+@api_router.get("/sat/export-excel")
+async def sat_export_excel(user: dict = Depends(require_permission("sat.view"))):
+    """Export all SAT incidents as an Excel file grouped by client."""
+    incidents = await db.sat_incidents.find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    clients = await db.sat_clients.find({}, {"_id": 0}).to_list(5000)
+    client_map = {c["id"]: c for c in clients}
+    client_name_map = {c.get("cliente", "").lower(): c for c in clients}
 
-class MessageCreate(BaseModel):
-    text: str = Field("", max_length=4000)
-    file_base64: Optional[str] = None
+    # Build client → incidents grouping
+    grouped: Dict[str, List[dict]] = {}
+    all_client_names: set = set()
+    for inc in incidents:
+        key = inc.get("cliente", "Sin cliente")
+        all_client_names.add(key)
     file_name: Optional[str] = None
     file_mime: Optional[str] = None
 
@@ -3260,10 +3877,14 @@ async def chat_unread_total(user: dict = Depends(current_user)):
 
 app.include_router(api_router)
 
+cors_origins = [FRONTEND_URL]
+if CORS_ORIGINS:
+    cors_origins.extend(o.strip() for o in CORS_ORIGINS.split(',') if o.strip())
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=[FRONTEND_URL],
+    allow_origins=cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -3276,10 +3897,11 @@ logger = logging.getLogger(__name__)
 
 @app.on_event("startup")
 async def on_startup():
+    await ensure_default_roles_and_migrate()
     await seed_admin_user()
     await seed_initial_data()
     await backfill_user_colors()
-    await ensure_default_roles_and_migrate()
+    await seed_demo_data()
 
 async def backfill_user_colors():
     """Assign a color to any user that doesn't have one."""

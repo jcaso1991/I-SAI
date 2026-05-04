@@ -105,11 +105,13 @@ INJECT_SCRIPT = (
 # Clip recording helpers
 # -----------------------------------------------------------------------------
 async def login(page):
+    admin_email = os.environ.get("DEMO_ADMIN_EMAIL", "admin@materiales.com")
+    admin_password = os.environ["DEMO_ADMIN_PASSWORD"]
     await page.goto("http://localhost:3000/login", wait_until="domcontentloaded", timeout=30000)
     await page.wait_for_timeout(2500)
     inputs = page.locator("input")
-    await inputs.nth(0).fill("admin@materiales.com")
-    await inputs.nth(1).fill("Admin1234")
+    await inputs.nth(0).fill(admin_email)
+    await inputs.nth(1).fill(admin_password)
     # Submit via Enter key (most reliable in forms)
     await inputs.nth(1).press("Enter")
     # Wait for URL to actually change to a protected page

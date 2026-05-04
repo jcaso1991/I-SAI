@@ -31,8 +31,8 @@ def load_base_url() -> str:
 BASE = load_base_url()
 print(f"[info] Base URL: {BASE}")
 
-ADMIN_EMAIL = "admin@materiales.com"
-ADMIN_PASSWORD = "Admin1234"
+ADMIN_EMAIL = os.environ.get("DEMO_ADMIN_EMAIL", "admin@materiales.com")
+ADMIN_PASSWORD = os.environ["DEMO_ADMIN_PASSWORD"]
 
 results = []
 

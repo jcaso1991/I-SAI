@@ -1,25 +1,26 @@
 /**
- * /portfolio — Redirige automáticamente al HTML público generado por el backend
- * (servido en /api/portfolio). Así el cliente sólo recuerda "misitio.com/portfolio".
+ * /portfolio — Redirige a la landing pública independiente cuando está configurada.
  */
 
 import { useEffect } from "react";
 import { View, Text, ActivityIndicator, StyleSheet, Platform } from "react-native";
 
 export default function PortfolioRedirect() {
+  const portfolioUrl = (process.env.EXPO_PUBLIC_PORTFOLIO_URL || "").replace(/\/+$/, "");
+
   useEffect(() => {
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      // Prefer the backend URL when configured (handles dev + prod gracefully).
-      const base = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/+$/, "");
-      const target = base ? `${base}/api/portfolio` : "/api/portfolio";
+    if (Platform.OS === "web" && typeof window !== "undefined" && portfolioUrl) {
       // @ts-ignore
-      window.location.replace(target);
+      window.location.replace(portfolioUrl);
     }
-  }, []);
+  }, [portfolioUrl]);
+
   return (
     <View style={s.root}>
       <ActivityIndicator size="large" color="#1976D2" />
-      <Text style={s.t}>Cargando presentación de i-SAI…</Text>
+      <Text style={s.t}>
+        {portfolioUrl ? "Cargando presentación de i-SAI..." : "Landing pública no configurada"}
+      </Text>
     </View>
   );
 }

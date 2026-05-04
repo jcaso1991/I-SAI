@@ -19,8 +19,8 @@ import requests
 from datetime import datetime, timezone, timedelta
 
 BASE = "http://localhost:8001/api"
-ADMIN_EMAIL = "admin@materiales.com"
-ADMIN_PASSWORD = "Admin1234"
+ADMIN_EMAIL = os.environ.get("DEMO_ADMIN_EMAIL", "admin@materiales.com")
+ADMIN_PASSWORD = os.environ["DEMO_ADMIN_PASSWORD"]
 
 pass_count = 0
 fail_count = 0

@@ -1,10 +1,18 @@
 import os, uuid, pytest, requests
 
-BASE_URL = os.environ['EXPO_PUBLIC_BACKEND_URL'].rstrip('/') if os.environ.get('EXPO_PUBLIC_BACKEND_URL') else "https://excel-form-sync-1.preview.emergentagent.com"
+def _local_base_url() -> str:
+    base_url = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "").rstrip("/")
+    if not base_url:
+        pytest.exit("EXPO_PUBLIC_BACKEND_URL debe apuntar a un backend local para correr estos tests.", returncode=1)
+    if not base_url.startswith(("http://localhost", "http://127.0.0.1", "http://[::1]")):
+        pytest.exit(f"No se corren tests contra URLs no-locales: {base_url}", returncode=1)
+    return base_url
+
+BASE_URL = _local_base_url()
 API = f"{BASE_URL}/api"
 
-ADMIN_EMAIL = "admin@materiales.com"
-ADMIN_PASS = "Admin1234"
+ADMIN_EMAIL = os.environ.get("DEMO_ADMIN_EMAIL", "admin@materiales.com")
+ADMIN_PASS = os.environ["DEMO_ADMIN_PASSWORD"]
 
 
 @pytest.fixture(scope="module")

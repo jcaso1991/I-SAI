@@ -12,8 +12,8 @@ from datetime import datetime, timezone, timedelta
 import requests
 
 BASE_URL = "https://excel-form-sync-1.preview.emergentagent.com/api"
-ADMIN_EMAIL = "admin@materiales.com"
-ADMIN_PASSWORD = "Admin1234"
+ADMIN_EMAIL = os.environ.get("DEMO_ADMIN_EMAIL", "admin@materiales.com")
+ADMIN_PASSWORD = os.environ["DEMO_ADMIN_PASSWORD"]
 
 TECH_EMAIL = "tec.test@materiales.com"
 TECH_PASSWORD = "Test1234"
