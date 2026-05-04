@@ -206,6 +206,10 @@ export default function MaterialDetail() {
           <View style={s.section}>
             <Text style={s.sectionTitle}>INFORMACIÓN FIJA</Text>
             <ReadRow label="Horas PREV" value={m.horas_prev} />
+            <ReadRow
+              label="Horas imputadas"
+              value={m.horas_imputadas != null ? String(m.horas_imputadas) : "—"}
+            />
             <ReadRow label="Comercial" value={m.comercial} />
           </View>
 

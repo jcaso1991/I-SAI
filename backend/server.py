@@ -1940,7 +1940,7 @@ async def list_materiales(user: dict = Depends(current_user), q: Optional[str] =
             query["$or"] = q_list
     items = await db.materiales.find(query, {"_id": 0}).limit(limit).to_list(limit)
     items.sort(key=lambda x: x.get("row_index", 0))
-    # Enrich with manager names
+    # Enrich with manager names and imputed hours from events
     manager_ids = list({m.get("manager_id") for m in items if m.get("manager_id")})
     if manager_ids:
         mgrs = await db.users.find({"id": {"$in": manager_ids}}, {"_id": 0, "id": 1, "name": 1}).to_list(500)
@@ -1949,6 +1949,19 @@ async def list_materiales(user: dict = Depends(current_user), q: Optional[str] =
             mid = item.get("manager_id")
             if mid and mid in mgr_map:
                 item["manager_name"] = mgr_map[mid]
+    # Compute imputed hours from linked events
+    material_ids = [m["id"] for m in items]
+    events = await db.events.find(
+        {"material_id": {"$in": material_ids}},
+        {"_id": 0, "material_id": 1, "hours": 1},
+    ).to_list(10000)
+    hours_by_material = {}
+    for ev in events:
+        mid = ev.get("material_id")
+        h = _safe_float(ev.get("hours"))
+        hours_by_material[mid] = hours_by_material.get(mid, 0) + h
+    for item in items:
+        item["horas_imputadas"] = round(hours_by_material.get(item["id"], 0), 1)
     return items
 
 @api_router.get("/materiales/export-excel")
@@ -2095,7 +2108,7 @@ async def materiales_export_excel(user: dict = Depends(current_user)):
     cell.font = Font(bold=True, size=12, color="1976D2")
     row += 1
 
-    headers = ["Nº Proyecto", "Cliente", "Ubicación", "Horas PREV", "Comercial", "Gestor", "Técnicos", "Fecha", "Entrega/Recogida", "Total/Parcial", "Estado", "Comentarios"]
+    headers = ["Nº Proyecto", "Cliente", "Ubicación", "Horas PREV", "Horas imputadas", "Comercial", "Gestor", "Técnicos", "Fecha", "Entrega/Recogida", "Total/Parcial", "Estado", "Comentarios"]
     for col, h in enumerate(headers, 1):
         cell = ws.cell(row=row, column=col, value=h)
         cell.font = header_font
@@ -2107,11 +2120,14 @@ async def materiales_export_excel(user: dict = Depends(current_user)):
                   "facturado": "Facturado", "terminado": "Terminado", "bloqueado": "Bloqueado", "anulado": "Anulado"}
 
     for row, item in enumerate(items, 2):
+        prev_h = _safe_float(item.get("horas_prev"))
+        imp_h = item.get("horas_imputadas", 0) or 0
         values = [
             item.get("materiales", ""),
             item.get("cliente", ""),
             item.get("ubicacion", ""),
-            item.get("horas_prev", ""),
+            prev_h,
+            imp_h,
             item.get("comercial", ""),
             item.get("manager_name") or item.get("gestor", ""),
             ", ".join(item.get("tecnicos") or [item.get("tecnico", "")]) if item.get("tecnicos") else (item.get("tecnico") or ""),
@@ -2121,10 +2137,13 @@ async def materiales_export_excel(user: dict = Depends(current_user)):
             status_map.get(item.get("project_status", ""), item.get("project_status", "Pendiente")),
             item.get("comentarios", ""),
         ]
+        red_fill = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid") if imp_h > prev_h > 0 else None
         for col, v in enumerate(values, 1):
             cell = ws.cell(row=row, column=col, value=v)
             cell.border = thin_border
             cell.alignment = Alignment(wrap_text=True, vertical="top")
+            if red_fill:
+                cell.fill = red_fill
 
     for col in range(1, len(headers) + 1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = 20
@@ -2141,6 +2160,9 @@ async def get_material(mid: str, user: dict = Depends(current_user)):
     doc = await db.materiales.find_one({"id": mid}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Material no encontrado")
+    # Imputed hours from events
+    events = await db.events.find({"material_id": mid, "hours": {"$exists": True}}, {"hours": 1}).to_list(1000)
+    doc["horas_imputadas"] = round(sum(_safe_float(ev.get("hours")) for ev in events), 1)
     return doc
 
 @api_router.patch("/materiales/{mid}", response_model=Material)

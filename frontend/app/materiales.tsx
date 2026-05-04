@@ -148,6 +148,11 @@ export default function Materiales() {
           <View style={s.infoCell}>
             <Text style={s.infoLabel}>Horas</Text>
             <Text style={s.infoValue}>{item.horas_prev || "—"}</Text>
+            {item.horas_imputadas > 0 && (
+              <Text style={[s.infoValue, { fontSize: 9, color: (parseFloat(item.horas_imputadas) > parseFloat(item.horas_prev || 0)) ? "#EF4444" : COLORS.primary }]}>
+                +{item.horas_imputadas}
+              </Text>
+            )}
           </View>
           <View style={s.infoCell}>
             <Text style={s.infoLabel}>Comercial</Text>
