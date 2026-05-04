@@ -7,8 +7,8 @@
  * Cada incidencia puede enlazar a un cliente del catálogo (client_id).
  * En la vista de clientes, cada tarjeta tiene:
  *   - botón "Nueva incidencia" → pre-rellena el modal de creación.
- *   - botón editar / eliminar (admin).
- *   - botón de subir Excel en el header (admin) para reimportar el catálogo.
+ *   - botón editar / eliminar si tiene permiso sat.edit.
+ *   - botón de subir Excel si tiene permiso sat.edit para reimportar el catálogo.
  */
 
 import { useCallback, useState } from "react";
@@ -139,6 +139,8 @@ export default function SATScreen() {
   }, [params.openIncident, items]));
 
   const isAdmin = me?.role === "admin";
+  const perms: string[] = (me?.permissions as string[]) || [];
+  const canEditSat = perms.includes("sat.edit");
   const logout = async () => { await clearToken(); router.replace("/login"); };
 
   const copyLink = async () => {
@@ -275,7 +277,7 @@ export default function SATScreen() {
             </TouchableOpacity>
             </>
           )}
-          {view === "clientes" && isAdmin && (
+          {view === "clientes" && canEditSat && (
             <TouchableOpacity
               testID="btn-import-excel"
               style={[s.copyBtn, importing && { opacity: 0.6 }]}
@@ -359,7 +361,7 @@ export default function SATScreen() {
                   testID="tab-resueltas"
                 />
               </ScrollView>
-              {isAdmin && (
+              {canEditSat && (
                 <TouchableOpacity
                   testID="btn-new-incident"
                   style={[s.addBtn, { flexShrink: 0 }]}
@@ -452,7 +454,7 @@ export default function SATScreen() {
                   </TouchableOpacity>
                 )}
               </View>
-              {isAdmin && (
+              {canEditSat && (
                 <TouchableOpacity
                   testID="btn-new-client"
                   style={s.addBtn}
@@ -472,7 +474,7 @@ export default function SATScreen() {
                 <Text style={s.emptyTitle}>
                   {clients.length === 0 ? "Sin clientes en el catálogo" : "Sin resultados"}
                 </Text>
-                {isAdmin && clients.length === 0 && (
+                {canEditSat && clients.length === 0 && (
                   <Text style={s.emptyMsg}>
                     Carga un Excel con la lista de clientes desde el botón superior.
                   </Text>
@@ -484,7 +486,7 @@ export default function SATScreen() {
                   <ClientCard
                     key={c.id}
                     client={c}
-                    isAdmin={isAdmin}
+                    canEditSat={canEditSat}
                     onEdit={() => setEditingClient(c)}
                     onNewIncident={() => handleNewIncidentFromClient(c)}
                     onViewIncidents={() => setViewingClientIncidents(c)}
@@ -500,7 +502,7 @@ export default function SATScreen() {
         <IncidentModal
           item={openItem}
           clients={clients}
-          isAdmin={isAdmin}
+          canEditSat={canEditSat}
           onClose={() => setOpenItem(null)}
           onChanged={() => { setOpenItem(null); load(); }}
         />
@@ -593,8 +595,8 @@ function IncidentCard({ item, clientName, onPress }:
   );
 }
 
-function ClientCard({ client, isAdmin, onEdit, onNewIncident, onViewIncidents }:
-  { client: Client; isAdmin: boolean; onEdit: () => void; onNewIncident: () => void; onViewIncidents: () => void }) {
+function ClientCard({ client, canEditSat, onEdit, onNewIncident, onViewIncidents }:
+  { client: Client; canEditSat: boolean; onEdit: () => void; onNewIncident: () => void; onViewIncidents: () => void }) {
   return (
     <View testID={`client-${client.id}`} style={s.clientCard}>
       <View style={{ flex: 1 }}>
@@ -629,15 +631,17 @@ function ClientCard({ client, isAdmin, onEdit, onNewIncident, onViewIncidents }:
           <Ionicons name="list-outline" size={16} color={COLORS.primary} />
           <Text style={s.clientActionSecondaryText}>Ver incidencias</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          testID={`client-new-incident-${client.id}`}
-          style={s.clientActionPrimary}
-          onPress={onNewIncident}
-        >
-          <Ionicons name="add-circle-outline" size={16} color="#fff" />
-          <Text style={s.clientActionPrimaryText}>Incidencia</Text>
-        </TouchableOpacity>
-        {isAdmin && (
+        {canEditSat && (
+          <TouchableOpacity
+            testID={`client-new-incident-${client.id}`}
+            style={s.clientActionPrimary}
+            onPress={onNewIncident}
+          >
+            <Ionicons name="add-circle-outline" size={16} color="#fff" />
+            <Text style={s.clientActionPrimaryText}>Incidencia</Text>
+          </TouchableOpacity>
+        )}
+        {canEditSat && (
           <TouchableOpacity
             testID={`client-edit-${client.id}`}
             style={s.clientActionGhost}
@@ -700,8 +704,8 @@ function ClientPicker({ value, onChange, clients }:
   );
 }
 
-function IncidentModal({ item, clients, isAdmin, onClose, onChanged }: {
-  item: Incident; clients: Client[]; isAdmin: boolean;
+function IncidentModal({ item, clients, canEditSat, onClose, onChanged }: {
+  item: Incident; clients: Client[]; canEditSat: boolean;
   onClose: () => void; onChanged: () => void;
 }) {
   const [current, setCurrent] = useState<Incident>(item);
@@ -769,6 +773,7 @@ function IncidentModal({ item, clients, isAdmin, onClose, onChanged }: {
               <ClientPicker
                 value={clientId}
                 onChange={(id) => {
+                  if (!canEditSat) return;
                   setClientId(id);
                   if (id) {
                     const c = clients.find((x) => x.id === id);
@@ -778,15 +783,15 @@ function IncidentModal({ item, clients, isAdmin, onClose, onChanged }: {
                 clients={clients}
               />
             </Field>
-            <Field label="Cliente"><TextInput value={cliente} onChangeText={setCliente} style={s.input} placeholderTextColor={COLORS.textDisabled} /></Field>
-            <Field label="Dirección"><TextInput value={direccion} onChangeText={setDireccion} style={s.input} placeholderTextColor={COLORS.textDisabled} /></Field>
-            <Field label="Teléfono"><TextInput value={telefono} onChangeText={setTelefono} style={s.input} keyboardType="phone-pad" placeholderTextColor={COLORS.textDisabled} /></Field>
+            <Field label="Cliente"><TextInput value={cliente} onChangeText={setCliente} editable={canEditSat} style={s.input} placeholderTextColor={COLORS.textDisabled} /></Field>
+            <Field label="Dirección"><TextInput value={direccion} onChangeText={setDireccion} editable={canEditSat} style={s.input} placeholderTextColor={COLORS.textDisabled} /></Field>
+            <Field label="Teléfono"><TextInput value={telefono} onChangeText={setTelefono} editable={canEditSat} style={s.input} keyboardType="phone-pad" placeholderTextColor={COLORS.textDisabled} /></Field>
             <Field label="Observaciones del cliente">
-              <TextInput value={observaciones} onChangeText={setObservaciones} multiline numberOfLines={4} style={[s.input, s.textarea]} placeholderTextColor={COLORS.textDisabled} />
+              <TextInput value={observaciones} onChangeText={setObservaciones} editable={canEditSat} multiline numberOfLines={4} style={[s.input, s.textarea]} placeholderTextColor={COLORS.textDisabled} />
             </Field>
             <Field label="Comentarios SAT (internos)">
               <TextInput
-                value={comentarios} onChangeText={setComentarios} multiline numberOfLines={4}
+                value={comentarios} onChangeText={setComentarios} editable={canEditSat} multiline numberOfLines={4}
                 style={[s.input, s.textarea, { backgroundColor: COLORS.primarySoft }]}
                 placeholder="Añade aquí tus comentarios, diagnóstico, piezas necesarias..."
                 placeholderTextColor={COLORS.textDisabled}
@@ -827,38 +832,42 @@ function IncidentModal({ item, clients, isAdmin, onClose, onChanged }: {
             </View>
           </ScrollView>
           <View style={s.modalFooter}>
-            {isAdmin && (
+            {canEditSat && (
               <TouchableOpacity testID="sat-delete" style={s.dangerBtn} onPress={del} disabled={saving}>
                 <Ionicons name="trash-outline" size={16} color="#EF4444" />
               </TouchableOpacity>
             )}
-            <TouchableOpacity
-              testID="sat-schedule"
-              style={[s.scheduleBtn, saving && { opacity: 0.6 }]}
-              onPress={() => setShowSchedule(true)}
-              disabled={saving}
-            >
-              <Ionicons name="calendar-outline" size={16} color="#4F46E5" />
-              <Text style={s.scheduleBtnText}>Reagendar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              testID="sat-pending"
-              style={[s.pendingBtn, saving && { opacity: 0.6 }]}
-              onPress={() => setPendingStatus("pendiente")}
-              disabled={saving}
-            >
-              <Ionicons name="time-outline" size={16} color="#B45309" />
-              <Text style={s.pendingBtnText}>Pendiente</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              testID="sat-resolved"
-              style={[s.resolvedBtn, saving && { opacity: 0.6 }]}
-              onPress={() => setPendingStatus("resuelta")}
-              disabled={saving}
-            >
-              <Ionicons name="checkmark-done" size={16} color="#fff" />
-              <Text style={s.resolvedBtnText}>Resuelta</Text>
-            </TouchableOpacity>
+            {canEditSat && (
+              <>
+                <TouchableOpacity
+                  testID="sat-schedule"
+                  style={[s.scheduleBtn, saving && { opacity: 0.6 }]}
+                  onPress={() => setShowSchedule(true)}
+                  disabled={saving}
+                >
+                  <Ionicons name="calendar-outline" size={16} color="#4F46E5" />
+                  <Text style={s.scheduleBtnText}>Reagendar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  testID="sat-pending"
+                  style={[s.pendingBtn, saving && { opacity: 0.6 }]}
+                  onPress={() => setPendingStatus("pendiente")}
+                  disabled={saving}
+                >
+                  <Ionicons name="time-outline" size={16} color="#B45309" />
+                  <Text style={s.pendingBtnText}>Pendiente</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  testID="sat-resolved"
+                  style={[s.resolvedBtn, saving && { opacity: 0.6 }]}
+                  onPress={() => setPendingStatus("resuelta")}
+                  disabled={saving}
+                >
+                  <Ionicons name="checkmark-done" size={16} color="#fff" />
+                  <Text style={s.resolvedBtnText}>Resuelta</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </View>
       </View>
