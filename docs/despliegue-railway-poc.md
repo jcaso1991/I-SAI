@@ -21,6 +21,22 @@ Actualizar el entorno de PoC en Railway con los cambios locales, **sin usar GitH
 | Frontend     | servicio `frontend`                 |
 | Landing      | servicio `landing`                  |
 
+## Configuración reproducible
+
+Cada servicio tiene su propio `railway.json` en la raíz que Railway debe usar como servicio:
+
+- `backend/railway.json`: arranca FastAPI con `uvicorn server:app --host 0.0.0.0 --port $PORT`.
+- `frontend/railway.json`: arranca Expo Web con `npx expo start --web --no-dev --minify --host 0.0.0.0 --port $PORT`.
+- `landing/railway.json`: arranca la landing estática con `python main.py`.
+
+Cada servicio también tiene su propio `nixpacks.toml` para fijar el entorno de construcción:
+
+- `backend/nixpacks.toml`: Python 3.11 e instalación con `pip install -r requirements.txt`.
+- `frontend/nixpacks.toml`: Node 20, Yarn e instalación con `yarn install --frozen-lockfile`.
+- `landing/nixpacks.toml`: Python 3.11 sin dependencias externas.
+
+Esto evita depender de comandos configurados manualmente en el panel o de detección automática. Railway sigue leyendo las variables de entorno desde el entorno `poc`; los archivos no contienen secretos.
+
 ### URLs de verificación
 
 - **Backend**: la que genere Railway para el servicio `backend`.
@@ -51,7 +67,7 @@ railway up frontend --path-as-root --service frontend --environment poc --ci
 
 ### Landing
 
-La landing es un despliegue separado y estático. Usá `landing/` como raíz del servicio y `python main.py` como comando de inicio.
+La landing es un despliegue separado y estático. Usá `landing/` como raíz del servicio; el comando de inicio está definido en `landing/railway.json`.
 
 ```bash
 railway up landing --path-as-root --service landing --environment poc --ci

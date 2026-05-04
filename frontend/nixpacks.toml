@@ -1,0 +1,10 @@
+providers = ["node"]
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "yarn"]
+
+[phases.install]
+cmds = ["yarn install --frozen-lockfile"]
+
+[start]
+cmd = "npx expo start --web --no-dev --minify --host 0.0.0.0 --port $PORT"
