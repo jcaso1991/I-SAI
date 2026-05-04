@@ -2050,23 +2050,41 @@ async def dashboard(user: dict = Depends(current_user)):
         mes = month_start.strftime("%b").capitalize()
         sat_by_month.append({"month": mes, "total": count, "resolved": resolved})
 
-    # Today's pending
-    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    today_end = datetime.now(timezone.utc).replace(hour=23, minute=59, second=59).isoformat()
-    today_events = await db.events.count_documents({
-        "$or": [
-            {"start_at": {"$gte": today_start, "$lte": today_end}},
-            {"end_at": {"$gte": today_start, "$lte": today_end}},
-        ],
-        "status": {"$ne": "completed"},
-    })
-    pending_sat = await db.sat_incidents.count_documents({"status": "pendiente"})
-    pending_budgets = await db.budgets.count_documents({"$or": [{"status": "pendiente"}, {"status": {"$exists": False}}]})
+    # Projects completed by month (last 6 months)
+    projects_by_month = []
+    for i in range(5, -1, -1):
+        dt = datetime.now(timezone.utc) - timedelta(days=30 * i)
+        month_start = dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if i == 0:
+            month_end = datetime.now(timezone.utc)
+        else:
+            if month_start.month == 12:
+                month_end = month_start.replace(year=month_start.year + 1, month=1)
+            else:
+                month_end = month_start.replace(month=month_start.month + 1)
+        proj_count = await db.materiales.count_documents({
+            "project_status": {"$in": ["terminado", "facturado"]},
+            "updated_at": {"$gte": month_start.isoformat(), "$lt": month_end.isoformat()},
+        })
+        # Total hours for completed projects this month
+        completed = await db.materiales.find({
+            "project_status": {"$in": ["terminado", "facturado"]},
+            "updated_at": {"$gte": month_start.isoformat(), "$lt": month_end.isoformat()},
+        }, {"horas_prev": 1}).to_list(5000)
+        total_hours_month = sum(_safe_float(c.get("horas_prev")) for c in completed)
+        mes = month_start.strftime("%b").capitalize()
+        projects_by_month.append({"month": mes, "count": proj_count, "hours": round(total_hours_month, 1)})
+
+    # Total hours for all pending/active projects
+    active_projects = await db.materiales.find({"project_status": {"$in": ["pendiente", "planificado", "a_facturar"]}}, {"horas_prev": 1}).to_list(10000)
+    total_active_hours = round(sum(_safe_float(m.get("horas_prev")) for m in active_projects), 1)
 
     return {
         "projects_by_status": projects_by_status,
         "manager_hours": manager_hours[:8],
         "sat_by_month": sat_by_month,
+        "projects_by_month": projects_by_month,
+        "total_active_hours": total_active_hours,
         "today": {
             "events": today_events,
             "pending_sat": pending_sat,

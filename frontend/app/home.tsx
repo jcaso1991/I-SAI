@@ -146,21 +146,21 @@ export default function HomeScreen() {
 
               {/* Today row */}
               <View style={s.dashRow}>
-                <View style={[s.dashCard, { backgroundColor: COLORS.primarySoft }]}>
+                <TouchableOpacity style={[s.dashCard, { backgroundColor: COLORS.primarySoft }]} onPress={() => router.push("/calendario")}>
                   <Ionicons name="today-outline" size={22} color={COLORS.primary} />
                   <Text style={s.dashVal}>{dash.today?.events || 0}</Text>
                   <Text style={s.dashLbl}>Eventos hoy</Text>
-                </View>
-                <View style={[s.dashCard, { backgroundColor: "#FEF3C7" }]}>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.dashCard, { backgroundColor: "#FEF3C7" }]} onPress={() => router.push("/sat")}>
                   <Ionicons name="alert-circle-outline" size={22} color="#F59E0B" />
                   <Text style={s.dashVal}>{dash.today?.pending_sat || 0}</Text>
                   <Text style={s.dashLbl}>SAT pendiente</Text>
-                </View>
-                <View style={[s.dashCard, { backgroundColor: "#EDE9FE" }]}>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.dashCard, { backgroundColor: "#EDE9FE" }]} onPress={() => router.push("/presupuestos")}>
                   <Ionicons name="document-text-outline" size={22} color="#8B5CF6" />
                   <Text style={s.dashVal}>{dash.today?.pending_budgets || 0}</Text>
                   <Text style={s.dashLbl}>Presup. pendientes</Text>
-                </View>
+                </TouchableOpacity>
               </View>
 
               {/* Projects by status */}
@@ -172,10 +172,10 @@ export default function HomeScreen() {
                     terminado: "#10B981", facturado: "#10B981", bloqueado: "#EF4444", anulado: "#6B7280",
                   };
                   return (
-                    <View key={k} style={[s.dashCard, { backgroundColor: (colors[k] || "#F59E0B") + "18" }]}>
+                    <TouchableOpacity key={k} style={[s.dashCard, { backgroundColor: (colors[k] || "#F59E0B") + "18" }]} onPress={() => router.push(`/materiales?status=${k}` as any)}>
                       <Text style={[s.dashVal, { color: colors[k] || "#F59E0B" }]}>{v}</Text>
                       <Text style={s.dashLbl}>{k.replace("_", " ")}</Text>
-                    </View>
+                    </TouchableOpacity>
                   );
                 })}
               </View>
@@ -197,6 +197,22 @@ export default function HomeScreen() {
                       </View>
                     </View>
                   ))}
+                </>
+              )}
+
+              {/* Projects by month */}
+              {dash.projects_by_month?.length > 0 && (
+                <>
+                  <Text style={s.sectionSub}>Proyectos cerrados por mes · {dash.total_active_hours || 0}h activas</Text>
+                  <View style={s.dashRow}>
+                    {dash.projects_by_month.map((m: any, i: number) => (
+                      <View key={i} style={[s.dashCard, { flex: 1, minWidth: 60 }]}>
+                        <Text style={s.dashVal}>{m.count}</Text>
+                        <Text style={[s.dashLbl, { fontSize: 9 }]}>{m.hours}h</Text>
+                        <Text style={s.dashLbl}>{m.month}</Text>
+                      </View>
+                    ))}
+                  </View>
                 </>
               )}
 
