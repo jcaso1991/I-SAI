@@ -2860,7 +2860,7 @@ async def sat_public_create(body: SATPublicIn, request: Request):
 
 @api_router.get("/sat/incidents")
 async def sat_list(
-    user: dict = Depends(current_user),
+    user: dict = Depends(require_permission("sat.view")),
     status: Optional[str] = None,
     client_id: Optional[str] = None,
 ):
@@ -2929,14 +2929,14 @@ async def _sat_auto_revive(now_iso: str):
             })
 
 @api_router.get("/sat/incidents/{iid}")
-async def sat_get(iid: str, user: dict = Depends(current_user)):
+async def sat_get(iid: str, user: dict = Depends(require_permission("sat.view"))):
     doc = await db.sat_incidents.find_one({"id": iid}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Incidencia no encontrada")
     return doc
 
 @api_router.patch("/sat/incidents/{iid}")
-async def sat_update(iid: str, body: SATUpdateIn, user: dict = Depends(current_user)):
+async def sat_update(iid: str, body: SATUpdateIn, user: dict = Depends(require_permission("sat.edit"))):
     existing = await db.sat_incidents.find_one({"id": iid})
     if not existing:
         raise HTTPException(404, "Incidencia no encontrada")
@@ -2971,7 +2971,7 @@ class SATStatusChangeIn(BaseModel):
     facturable: Optional[bool] = None  # required when status == "resuelta"
 
 @api_router.post("/sat/incidents/{iid}/status")
-async def sat_change_status(iid: str, body: SATStatusChangeIn, user: dict = Depends(current_user)):
+async def sat_change_status(iid: str, body: SATStatusChangeIn, user: dict = Depends(require_permission("sat.edit"))):
     """Change the status of an incident and append a history entry with the
     user's comment. This is the canonical way to toggle pendiente↔resuelta
     from the UI so that every change is traceable."""
@@ -3019,7 +3019,7 @@ class SATScheduleIn(BaseModel):
     comment: str = Field("", max_length=4000)
 
 @api_router.post("/sat/incidents/{iid}/schedule")
-async def sat_schedule(iid: str, body: SATScheduleIn, user: dict = Depends(current_user)):
+async def sat_schedule(iid: str, body: SATScheduleIn, user: dict = Depends(require_permission("sat.edit"))):
     """Reschedule an incident. Moves it to status='agendada' with the chosen
     date/time. When that date arrives, `_sat_auto_revive` flips it back to
     pendiente and notifies the admins."""
@@ -3063,7 +3063,7 @@ async def sat_schedule(iid: str, body: SATScheduleIn, user: dict = Depends(curre
     return doc
 
 @api_router.post("/sat/incidents/{iid}/note")
-async def sat_add_note(iid: str, body: SATStatusChangeIn, user: dict = Depends(current_user)):
+async def sat_add_note(iid: str, body: SATStatusChangeIn, user: dict = Depends(require_permission("sat.edit"))):
     """Add a free-form note to the history without changing status. Handy if
     the SAT team wants to leave intermediate comments."""
     existing = await db.sat_incidents.find_one({"id": iid})
@@ -3100,12 +3100,12 @@ class SATClientIn(BaseModel):
     telefono: str = Field("", max_length=80)
 
 @api_router.get("/sat/clients")
-async def sat_clients_list(user: dict = Depends(current_user)):
+async def sat_clients_list(user: dict = Depends(require_permission("sat.view"))):
     rows = await db.sat_clients.find({}, {"_id": 0}).sort("cliente", 1).to_list(5000)
     return rows
 
 @api_router.get("/sat/clients/{cid}")
-async def sat_client_get(cid: str, user: dict = Depends(current_user)):
+async def sat_client_get(cid: str, user: dict = Depends(require_permission("sat.view"))):
     doc = await db.sat_clients.find_one({"id": cid}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Cliente no encontrado")
@@ -3246,7 +3246,7 @@ async def sat_client_import(
 
 
 @api_router.get("/sat/export-excel")
-async def sat_export_excel(user: dict = Depends(current_user)):
+async def sat_export_excel(user: dict = Depends(require_permission("sat.view"))):
     """Export all SAT incidents as an Excel file grouped by client."""
     incidents = await db.sat_incidents.find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
     clients = await db.sat_clients.find({}, {"_id": 0}).to_list(5000)
