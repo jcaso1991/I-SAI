@@ -1745,7 +1745,15 @@ async def delete_stamp(sid: str, admin: dict = Depends(require_permission("plano
 @api_router.get("/auth/onedrive/login")
 async def onedrive_login(user: dict = Depends(require_permission("onedrive.manage"))):
     app_msal = _msal_app()
-    state = user["id"]
+    state = pyjwt.encode(
+        {
+            "sub": user["id"],
+            "purpose": "onedrive_link",
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=10),
+        },
+        JWT_SECRET,
+        algorithm=JWT_ALGORITHM,
+    )
     auth_url = app_msal.get_authorization_request_url(
         scopes=MS_SCOPES,
         redirect_uri=MS_REDIRECT_URI,
@@ -1758,6 +1766,16 @@ async def onedrive_login(user: dict = Depends(require_permission("onedrive.manag
 async def onedrive_callback(code: str, state: Optional[str] = None, error: Optional[str] = None, error_description: Optional[str] = None):
     if error:
         return HTMLResponse(f"<h2>Error</h2><p>{error}: {error_description}</p>", status_code=400)
+    if not state:
+        return HTMLResponse("<h2>Error</h2><p>Falta state de seguridad. Volvé a iniciar la vinculación.</p>", status_code=400)
+    try:
+        state_payload = pyjwt.decode(state, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        if state_payload.get("purpose") != "onedrive_link":
+            raise ValueError("invalid purpose")
+    except pyjwt.ExpiredSignatureError:
+        return HTMLResponse("<h2>Error</h2><p>State expirado. Volvé a iniciar la vinculación de OneDrive.</p>", status_code=400)
+    except Exception:
+        return HTMLResponse("<h2>Error</h2><p>State inválido. Volvé a iniciar la vinculación de OneDrive.</p>", status_code=400)
     app_msal = _msal_app()
     result = app_msal.acquire_token_by_authorization_code(
         code, scopes=MS_SCOPES, redirect_uri=MS_REDIRECT_URI
