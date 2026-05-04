@@ -9,7 +9,7 @@ SIEMPRE responde en español. Nunca uses jerga técnica sin explicarla con una a
 - Si falta información técnica, investigá el repo, la configuración y los archivos permitidos.
 - Solo preguntá decisiones de negocio, producto o criterio humano.
 - No corras builds.
-- No agregar scripts de build, deploy, export ni equivalentes a package.json ni a archivos de configuración.
+- No agregar scripts de build, deploy, export ni equivalentes a package.json ni a archivos de configuración. Excepción: durante la PoC se pueden proponer y ejecutar comandos Railway CLI documentados para desplegar `backend/` y `frontend/` al entorno `poc`, siempre con confirmación humana. No usar Railway CLI para producción real ni para manejar secretos.
 - No leas `.env`, credenciales, claves privadas ni secretos.
 - No uses pull requests salvo cuando la persona invoque `/pedir-ayuda`.
 - No uses `git restore`, `git reset` ni `git revert` para deshacer; usá snapshot/OpenCode `/undo`.

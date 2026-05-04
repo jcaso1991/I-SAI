@@ -82,6 +82,7 @@
       "frontend-expo-industrial": "allow",
       "backend-fastapi-datos": "allow",
       "qa-seguro": "allow",
+      "railway-skills": "allow",
       "comunicacion-usuario": "allow"
     },
     "bash": {
@@ -112,6 +113,14 @@
       "sed*": "ask",
       "grep*": "ask",
       "rg*": "ask",
+      "railway add*": "allow",
+      "railway environment*": "allow",
+      "railway service*": "allow",
+      "railway status*": "allow",
+      "railway up backend --path-as-root --service backend --environment poc*": "allow",
+      "railway up frontend --path-as-root --service frontend --environment poc*": "allow",
+      "railway up*": "ask",
+      "railway variable*": "allow",
       "find*": "ask",
       "git push": "ask",
       "git push origin HEAD*": "ask",
@@ -124,6 +133,12 @@
       "./.opencode/scripts/safe-backend-pytest.sh*": "allow",
       "python -m py_compile backend/*": "allow",
       "python -m py_compile frontend/*": "allow",
+      "git push * main": "deny",
+      "git push * main:*": "deny",
+      "git push * *:main": "deny",
+      "git push * master": "deny",
+      "git push * master:*": "deny",
+      "git push * *:master": "deny",
       "gh pr merge*": "deny",
       "gh pr close*": "deny",
       "npm run build*": "deny",
@@ -150,6 +165,12 @@
       "rg * *.env*": "deny",
       "find * -name *.env*": "deny",
       "rm*": "deny"
+    }
+  },
+  "mcp": {
+    "railway": {
+      "type": "local",
+      "command": ["npx", "-y", "@railway/mcp-server"]
     }
   }
 }
