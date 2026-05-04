@@ -1394,14 +1394,15 @@ def _expand_recurrence(ev: dict, from_dt: datetime, to_dt: datetime) -> List[dic
 
 @api_router.get("/events", response_model=List[EventOut])
 async def list_events(
-    user: dict = Depends(current_user),
+    user: dict = Depends(require_permission("calendario.view")),
     from_: Optional[str] = Query(None, alias="from"),
     to: Optional[str] = None,
 ):
     query: dict = {}
-    # Filter by visibility: non-admin only sees events where they are assigned
-    is_admin = user.get("role") == "admin"
-    if not is_admin:
+    # Users who can edit calendar see the full team calendar; others see assigned work.
+    perms = await get_user_permissions(user)
+    can_edit_calendar = "calendario.edit" in perms
+    if not can_edit_calendar:
         query["assigned_user_ids"] = user["id"]
     events = await db.events.find(query, {"_id": 0}).to_list(2000)
     # Expand recurrences
@@ -1460,10 +1461,11 @@ async def update_event(eid: str, payload: EventPatch, user: dict = Depends(curre
     if not ev_current:
         raise HTTPException(404, "Evento no encontrado")
 
-    is_admin = user.get("role") == "admin"
+    perms = await get_user_permissions(user)
+    can_edit_calendar = "calendario.edit" in perms
     is_assigned = user["id"] in (ev_current.get("assigned_user_ids") or [])
-    if not is_admin:
-        # A non-admin can only modify `status` and `seguimiento`, and only
+    if not can_edit_calendar:
+        # Users without calendario.edit can only modify `status` and `seguimiento`, and only
         # if they are assigned to this event (i.e. the technician in charge).
         if not is_assigned:
             raise HTTPException(403, "No autorizado")
@@ -1562,12 +1564,13 @@ async def get_event(eid: str, user: dict = Depends(current_user)):
     ev = await db.events.find_one({"id": real_id}, {"_id": 0})
     if not ev:
         raise HTTPException(404, "Evento no encontrado")
-    # Permission: admin OR assigned user OR manager of the event
-    is_admin = user.get("role") == "admin"
+    # Permission: calendario.edit OR assigned user OR manager of the event
+    perms = await get_user_permissions(user)
+    can_edit_calendar = "calendario.edit" in perms
     allowed_ids = set((ev.get("assigned_user_ids") or []))
     if ev.get("manager_id"):
         allowed_ids.add(ev.get("manager_id"))
-    if not is_admin and user["id"] not in allowed_ids:
+    if not can_edit_calendar and user["id"] not in allowed_ids:
         raise HTTPException(403, "No autorizado")
     ev = await _attach_material(ev)
     ev = await _attach_users(ev)
@@ -1628,9 +1631,10 @@ async def upload_event_attachment(eid: str, payload: AttachmentUpload, user: dic
     ev = await db.events.find_one({"id": real_id}, {"_id": 0})
     if not ev:
         raise HTTPException(404, "Evento no encontrado")
-    # Permission: admin OR assigned user
-    is_admin = user.get("role") == "admin"
-    if not is_admin and user["id"] not in (ev.get("assigned_user_ids") or []):
+    # Permission: calendario.edit OR assigned user
+    perms = await get_user_permissions(user)
+    can_edit_calendar = "calendario.edit" in perms
+    if not can_edit_calendar and user["id"] not in (ev.get("assigned_user_ids") or []):
         raise HTTPException(403, "No autorizado")
     # Validate base64 size
     b64 = (payload.base64 or "").split(",")[-1].strip()
@@ -1672,8 +1676,9 @@ async def get_event_attachment(eid: str, aid: str, user: dict = Depends(current_
     ev = await db.events.find_one({"id": real_id}, {"_id": 0})
     if not ev:
         raise HTTPException(404, "Evento no encontrado")
-    is_admin = user.get("role") == "admin"
-    if not is_admin and user["id"] not in (ev.get("assigned_user_ids") or []):
+    perms = await get_user_permissions(user)
+    can_edit_calendar = "calendario.edit" in perms
+    if not can_edit_calendar and user["id"] not in (ev.get("assigned_user_ids") or []):
         raise HTTPException(403, "No autorizado")
     for a in (ev.get("attachments") or []):
         if a.get("id") == aid:
@@ -1694,8 +1699,9 @@ async def delete_event_attachment(eid: str, aid: str, user: dict = Depends(curre
     ev = await db.events.find_one({"id": real_id}, {"_id": 0})
     if not ev:
         raise HTTPException(404, "Evento no encontrado")
-    is_admin = user.get("role") == "admin"
-    if not is_admin and user["id"] not in (ev.get("assigned_user_ids") or []):
+    perms = await get_user_permissions(user)
+    can_edit_calendar = "calendario.edit" in perms
+    if not can_edit_calendar and user["id"] not in (ev.get("assigned_user_ids") or []):
         raise HTTPException(403, "No autorizado")
     res = await db.events.update_one(
         {"id": real_id},
