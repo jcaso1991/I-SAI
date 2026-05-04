@@ -1948,6 +1948,62 @@ async def list_materiales(user: dict = Depends(current_user), q: Optional[str] =
                 item["manager_name"] = mgr_map[mid]
     return items
 
+@api_router.get("/materiales/export-excel")
+async def materiales_export_excel(user: dict = Depends(current_user)):
+    """Export all projects as an Excel file."""
+    items = await db.materiales.find({}, {"_id": 0}).sort("row_index", 1).to_list(10000)
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Proyectos"
+
+    header_font = Font(bold=True, size=11, color="FFFFFF")
+    header_fill = PatternFill(start_color="1976D2", end_color="1976D2", fill_type="solid")
+    thin_border = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
+
+    headers = ["Nº Proyecto", "Cliente", "Ubicación", "Horas PREV", "Comercial", "Gestor", "Técnicos", "Fecha", "Entrega/Recogida", "Total/Parcial", "Estado", "Comentarios"]
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+        cell.border = thin_border
+
+    status_map = {"pendiente": "Pendiente", "a_facturar": "A facturar", "planificado": "Planificado",
+                  "facturado": "Facturado", "terminado": "Terminado", "bloqueado": "Bloqueado", "anulado": "Anulado"}
+
+    for row, item in enumerate(items, 2):
+        values = [
+            item.get("materiales", ""),
+            item.get("cliente", ""),
+            item.get("ubicacion", ""),
+            item.get("horas_prev", ""),
+            item.get("comercial", ""),
+            item.get("manager_name") or item.get("gestor", ""),
+            ", ".join(item.get("tecnicos") or [item.get("tecnico", "")]) if item.get("tecnicos") else (item.get("tecnico") or ""),
+            item.get("fecha", ""),
+            item.get("entrega_recogida", ""),
+            item.get("total_parcial", ""),
+            status_map.get(item.get("project_status", ""), item.get("project_status", "Pendiente")),
+            item.get("comentarios", ""),
+        ]
+        for col, v in enumerate(values, 1):
+            cell = ws.cell(row=row, column=col, value=v)
+            cell.border = thin_border
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+
+    for col in range(1, len(headers) + 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = 20
+
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+    filename = f"proyectos_{datetime.now(timezone.utc).strftime('%Y%m%d')}.xlsx"
+    return StreamingResponse(out, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
 @api_router.get("/materiales/{mid}", response_model=Material)
 async def get_material(mid: str, user: dict = Depends(current_user)):
     doc = await db.materiales.find_one({"id": mid}, {"_id": 0})
@@ -2840,63 +2896,6 @@ async def sat_client_import(
             await db.sat_clients.insert_one(doc)
             created += 1
     return {"ok": True, "created": created, "updated": updated, "skipped": skipped}
-
-
-@api_router.get("/materiales/export-excel")
-async def materiales_export_excel(user: dict = Depends(current_user)):
-    """Export all projects as an Excel file."""
-    items = await db.materiales.find({}, {"_id": 0}).sort("row_index", 1).to_list(10000)
-    import openpyxl
-    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Proyectos"
-
-    header_font = Font(bold=True, size=11, color="FFFFFF")
-    header_fill = PatternFill(start_color="1976D2", end_color="1976D2", fill_type="solid")
-    thin_border = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
-
-    headers = ["Nº Proyecto", "Cliente", "Ubicación", "Horas PREV", "Comercial", "Gestor", "Técnicos", "Fecha", "Entrega/Recogida", "Total/Parcial", "Estado", "Comentarios"]
-    for col, h in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col, value=h)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center")
-        cell.border = thin_border
-
-    status_map = {"pendiente": "Pendiente", "a_facturar": "A facturar", "planificado": "Planificado",
-                  "facturado": "Facturado", "terminado": "Terminado", "bloqueado": "Bloqueado", "anulado": "Anulado"}
-
-    for row, item in enumerate(items, 2):
-        values = [
-            item.get("materiales", ""),
-            item.get("cliente", ""),
-            item.get("ubicacion", ""),
-            item.get("horas_prev", ""),
-            item.get("comercial", ""),
-            item.get("manager_name") or item.get("gestor", ""),
-            ", ".join(item.get("tecnicos") or [item.get("tecnico", "")]) if item.get("tecnicos") else (item.get("tecnico") or ""),
-            item.get("fecha", ""),
-            item.get("entrega_recogida", ""),
-            item.get("total_parcial", ""),
-            status_map.get(item.get("project_status", ""), item.get("project_status", "Pendiente")),
-            item.get("comentarios", ""),
-        ]
-        for col, v in enumerate(values, 1):
-            cell = ws.cell(row=row, column=col, value=v)
-            cell.border = thin_border
-            cell.alignment = Alignment(wrap_text=True, vertical="top")
-
-    for col in range(1, len(headers) + 1):
-        ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = 20
-
-    out = io.BytesIO()
-    wb.save(out)
-    out.seek(0)
-    filename = f"proyectos_{datetime.now(timezone.utc).strftime('%Y%m%d')}.xlsx"
-    return StreamingResponse(out, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                             headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 # -----------------------------------------------------------------------------
