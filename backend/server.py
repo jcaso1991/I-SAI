@@ -114,7 +114,9 @@ class Material(BaseModel):
     manager_id: Optional[str] = None
     manager_name: Optional[str] = None
     # project status
-    project_status: Optional[str] = "pendiente"  # pendiente | a_facturar | anulado | planificado | terminado
+    project_status: Optional[str] = "pendiente"
+    # imputed hours from events
+    horas_imputadas: Optional[float] = 0
     # meta
     sync_status: str = "synced"  # synced | pending | error
     updated_at: Optional[str] = None
