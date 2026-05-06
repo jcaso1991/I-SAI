@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Platform } from "react-native
 import Svg, { Path } from "react-native-svg";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "./api";
+import { useThemedStyles } from "./theme";
 import { captureRef } from "react-native-view-shot";
 import { PanResponder } from "react-native";
 
@@ -68,6 +69,8 @@ export default function SignaturePad({
   })).current;
 
   const clear = () => { pathsRef.current = []; setPaths([]); currentPath.current = ""; onChange(""); };
+
+  const s = useThemedStyles(useS);
 
   return (
     <View style={s.wrap}>
@@ -135,7 +138,7 @@ function buildSvg(paths: string[], w: number, h: number): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${paths.map((d) => `<path d="${d}" stroke="#0F172A" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`).join("")}</svg>`;
 }
 
-const s = StyleSheet.create({
+const useS = () => StyleSheet.create({
   wrap: { gap: 6 },
   lbl: { fontSize: 11, fontWeight: "800", color: COLORS.textSecondary, letterSpacing: 1.2 },
   pad: {

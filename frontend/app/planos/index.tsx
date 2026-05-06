@@ -11,6 +11,7 @@ import { api, COLORS } from "../../src/api";
 import BottomNav from "../../src/BottomNav";
 import ResponsiveLayout from "../../src/ResponsiveLayout";
 import { useBreakpoint } from "../../src/useBreakpoint";
+import { useThemedStyles } from "../../src/theme";
 
 type Plan = {
   id: string; title: string; created_at: string; updated_at: string;
@@ -25,6 +26,8 @@ export default function PlansList() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [me, setMe] = useState<any>(null);
+
+  const s = useThemedStyles(useS);
 
   const load = async () => {
     try {
@@ -177,9 +180,8 @@ export default function PlansList() {
       </SafeAreaView>
     </ResponsiveLayout>
   );
-}
 
-function CreatePlanModal({
+  function CreatePlanModal({
   visible, onClose, onDone,
 }: { visible: boolean; onClose: () => void; onDone: (id: string) => void }) {
   const [step, setStep] = useState<ModalStep>("choose");
@@ -392,8 +394,9 @@ function CreatePlanModal({
     </Modal>
   );
 }
+}
 
-const s = StyleSheet.create({
+const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",

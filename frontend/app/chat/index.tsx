@@ -8,6 +8,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, clearToken, COLORS } from "../../src/api";
 import ResponsiveLayout from "../../src/ResponsiveLayout";
+import { useThemedStyles } from "../../src/theme";
 
 type ChatItem = {
   id: string;
@@ -22,6 +23,7 @@ type ChatItem = {
 
 export default function ChatIndex() {
   const router = useRouter();
+  const s = useThemedStyles(useS);
   const [me, setMe] = useState<any>(null);
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,7 +132,7 @@ export default function ChatIndex() {
   );
 }
 
-const s = StyleSheet.create({
+const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",

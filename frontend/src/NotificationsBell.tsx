@@ -25,6 +25,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "./api";
 import { useBreakpoint } from "./useBreakpoint";
+import { useThemedStyles } from "./theme";
 
 type Notif = {
   id: string;
@@ -174,6 +175,7 @@ export default function NotificationsBell({
   };
 
   const iconColor = color || COLORS.navy;
+  const s = useThemedStyles(useS);
 
   return (
     <>
@@ -416,7 +418,8 @@ export default function NotificationsBell({
   );
 }
 
-const s = StyleSheet.create({
+const useS = () =>
+  StyleSheet.create({
   iconBtn: {
     width: 40, height: 40, borderRadius: 12,
     backgroundColor: COLORS.surface,

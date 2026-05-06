@@ -11,13 +11,15 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ios } from "./iosTheme";
 import { api, COLORS } from "../api";
+import { useThemedStyles } from "../theme";
 
 export type BottomTab =
-  | "home" | "proyectos" | "calendario" | "planos"
+  | "home" | "dashboard" | "proyectos" | "calendario" | "planos"
   | "presupuestos" | "chat" | "ajustes" | "sat";
 
 const TAB_PERM_MAP: Record<BottomTab, string | null> = {
   home: null,
+  dashboard: null,
   proyectos: "proyectos.view",
   calendario: "calendario.view",
   planos: "planos.view",
@@ -29,6 +31,7 @@ const TAB_PERM_MAP: Record<BottomTab, string | null> = {
 
 const TAB_ROUTES: Record<BottomTab, string> = {
   home: "/home",
+  dashboard: "/dashboard",
   proyectos: "/materiales",
   calendario: "/calendario",
   planos: "/planos",
@@ -40,6 +43,7 @@ const TAB_ROUTES: Record<BottomTab, string> = {
 
 const LABELS: Record<BottomTab, string> = {
   home: "Inicio",
+  dashboard: "Dashboard",
   proyectos: "Proyectos",
   calendario: "Calendario",
   planos: "Planos",
@@ -57,6 +61,7 @@ export default function IOSTabBar({ active, isAdmin: _isAdmin }: { active: Botto
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [perms, setPerms] = useState<string[] | null>(_cachedPerms);
+  const styles = useThemedStyles(useStyles);
 
   useEffect(() => {
     let alive = true;
@@ -82,6 +87,7 @@ export default function IOSTabBar({ active, isAdmin: _isAdmin }: { active: Botto
     const color = on ? ios.colors.brand : ios.colors.tabInactive;
     const sz = 26;
     if (tab === "home") return <Ionicons name={on ? "home" : "home-outline"} size={sz} color={color} />;
+    if (tab === "dashboard") return <Ionicons name={on ? "stats-chart" : "stats-chart-outline"} size={sz} color={color} />;
     if (tab === "proyectos") return <MaterialCommunityIcons name="set-square" size={sz + 2} color={color} />;
     if (tab === "calendario") return <Ionicons name={on ? "calendar" : "calendar-outline"} size={sz} color={color} />;
     if (tab === "planos") return <Ionicons name={on ? "map" : "map-outline"} size={sz} color={color} />;
@@ -91,7 +97,7 @@ export default function IOSTabBar({ active, isAdmin: _isAdmin }: { active: Botto
   };
 
   // Determine which tabs to show. Until perms load, fall back to legacy (admin shows all).
-  const allTabs: BottomTab[] = ["ajustes", "proyectos", "home", "calendario", "planos", "presupuestos", "sat"];
+  const allTabs: BottomTab[] = ["ajustes", "proyectos", "home", "dashboard", "calendario", "planos", "presupuestos", "sat"];
   const isReady = perms !== null;
   const visibleTabs = !isReady
     ? allTabs.filter((t) => t !== "sat") // legacy default until perms arrive
@@ -101,7 +107,7 @@ export default function IOSTabBar({ active, isAdmin: _isAdmin }: { active: Botto
       });
 
   // Order: Home leftmost, then functional tabs, Settings rightmost.
-  const ORDER: BottomTab[] = ["home", "calendario", "planos", "proyectos", "presupuestos", "chat", "sat", "ajustes"];
+  const ORDER: BottomTab[] = ["home", "dashboard", "calendario", "planos", "proyectos", "presupuestos", "chat", "sat", "ajustes"];
   const ordered = ORDER.filter((t) => visibleTabs.includes(t));
 
   return (
@@ -127,7 +133,8 @@ export default function IOSTabBar({ active, isAdmin: _isAdmin }: { active: Botto
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = () =>
+  StyleSheet.create({
   wrap: {
     flexDirection: "row",
     backgroundColor: COLORS.surface,

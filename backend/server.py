@@ -1467,6 +1467,20 @@ async def list_events(
         out.append(e)
     return out
 
+async def _sync_material_hours(material_id: str):
+    """Recalcula y persiste horas_imputadas en db.materiales desde db.events."""
+    if not material_id:
+        return
+    events = await db.events.find(
+        {"material_id": material_id},
+        {"hours": 1}
+    ).to_list(10000)
+    total = round(sum(_safe_float(e.get("hours")) for e in events), 1)
+    await db.materiales.update_one(
+        {"id": material_id},
+        {"$set": {"horas_imputadas": str(total)}},
+    )
+
 @api_router.post("/events", response_model=EventOut)
 async def create_event(payload: EventCreate, admin: dict = Depends(require_permission("calendario.edit"))):
     if payload.end_at <= payload.start_at:
@@ -1481,11 +1495,14 @@ async def create_event(payload: EventCreate, admin: dict = Depends(require_permi
         "assigned_user_ids": payload.assigned_user_ids or [],
         "manager_id": payload.manager_id,
         "recurrence": payload.recurrence.dict() if payload.recurrence else None,
+        "hours": payload.hours,
         "attachments": [],
         "created_by": admin["email"],
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.events.insert_one(doc)
+    if doc.get("material_id"):
+        await _sync_material_hours(doc["material_id"])
     doc = await _attach_material(doc)
     doc = await _attach_users(doc)
     doc = _strip_attachments(doc)
@@ -1585,7 +1602,25 @@ async def update_event(eid: str, payload: EventPatch, user: dict = Depends(curre
                 "from_user_name": user.get("name") or user.get("email"),
             })
 
+    # If status changed and event has a project linked, cascade to all
+    # events that share the same project (material_id).
+    if new_status and new_status != prev_status:
+        mid = upd.get("material_id") or ev_current.get("material_id")
+        if mid:
+            await db.events.update_many(
+                {"material_id": mid, "id": {"$ne": real_id}},
+                {"$set": {"status": new_status}},
+            )
+
     ev = await db.events.find_one({"id": real_id}, {"_id": 0})
+    # Sync hours to the linked project(s) if material changed
+    mids = set()
+    if ev_current.get("material_id"):
+        mids.add(ev_current["material_id"])
+    if ev and ev.get("material_id"):
+        mids.add(ev["material_id"])
+    for mid in mids:
+        await _sync_material_hours(mid)
     ev = await _attach_material(ev)
     ev = await _attach_users(ev)
     ev = _strip_attachments(ev)
@@ -1594,9 +1629,13 @@ async def update_event(eid: str, payload: EventPatch, user: dict = Depends(curre
 @api_router.delete("/events/{eid}")
 async def delete_event(eid: str, admin: dict = Depends(require_permission("calendario.edit"))):
     real_id = eid.split(":")[0]
+    ev = await db.events.find_one({"id": real_id}, {"material_id": 1})
+    mid = ev.get("material_id") if ev else None
     res = await db.events.delete_one({"id": real_id})
     if res.deleted_count == 0:
         raise HTTPException(404, "Evento no encontrado")
+    if mid:
+        await _sync_material_hours(mid)
     return {"ok": True}
 
 @api_router.get("/events/{eid}", response_model=EventOut)
@@ -2483,6 +2522,47 @@ async def dashboard(user: dict = Depends(current_user)):
     active_projects = await db.materiales.find({"project_status": {"$in": ["pendiente", "planificado", "a_facturar"]}}, {"horas_prev": 1}).to_list(10000)
     total_active_hours = round(sum(_safe_float(m.get("horas_prev")) for m in active_projects), 1)
 
+    # Projects that have exceeded their planned hours (imputadas > previstas)
+    all_with_hours = await db.materiales.find(
+        {"project_status": {"$nin": ["anulado"]}},
+        {"horas_prev": 1, "horas_imputadas": 1, "materiales": 1, "cliente": 1, "id": 1}
+    ).to_list(10000)
+
+    # Compute real imputed hours from events (like GET /materiales does)
+    mids = [m["id"] for m in all_with_hours]
+    events_hours = await db.events.find(
+        {"material_id": {"$in": mids}},
+        {"_id": 0, "material_id": 1, "hours": 1},
+    ).to_list(50000)
+    live_hours: dict[str, float] = {}
+    for ev in events_hours:
+        mid = ev.get("material_id")
+        live_hours[mid] = live_hours.get(mid, 0) + _safe_float(ev.get("hours"))
+
+    total_imputadas = 0.0
+    total_previstas = 0.0
+    over_hours_list = []
+    for m in all_with_hours:
+        prev = _safe_float(m.get("horas_prev"))
+        imp = round(live_hours.get(m["id"], 0), 1)
+        total_imputadas += imp
+        total_previstas += prev
+        if prev > 0 and imp > prev:
+            over_hours_list.append({
+                "id": m["id"],
+                "materiales": m.get("materiales", ""),
+                "cliente": m.get("cliente", ""),
+                "previstas": prev,
+                "imputadas": imp,
+                "exceso": round(imp - prev, 1),
+            })
+    over_hours_list.sort(key=lambda x: x["exceso"], reverse=True)
+    projects_over_hours = len(over_hours_list)
+    total_over_hours = round(sum(x["exceso"] for x in over_hours_list), 1)
+    top_over = over_hours_list[:5]
+    total_imputadas = round(total_imputadas, 1)
+    total_previstas = round(total_previstas, 1)
+
     # Today's pending
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     today_end = datetime.now(timezone.utc).replace(hour=23, minute=59, second=59).isoformat()
@@ -2502,6 +2582,11 @@ async def dashboard(user: dict = Depends(current_user)):
         "sat_by_month": sat_by_month,
         "projects_by_month": projects_by_month,
         "total_active_hours": total_active_hours,
+        "projects_over_hours": projects_over_hours,
+        "total_over_hours": total_over_hours,
+        "top_over_hours": top_over,
+        "total_imputadas_hours": total_imputadas,
+        "total_previstas_hours": total_previstas,
         "today": {
             "events": today_events,
             "pending_sat": pending_sat,
@@ -3670,6 +3755,18 @@ async def sat_client_import(
     return {"ok": True, "created": created, "updated": updated, "skipped": skipped}
 
 
+
+class ChatCreate(BaseModel):
+    participant_ids: List[str] = Field(..., min_length=1)
+    name: Optional[str] = None
+    project_id: Optional[str] = None
+    event_id: Optional[str] = None
+
+class MessageCreate(BaseModel):
+    text: Optional[str] = None
+    file_base64: Optional[str] = None
+    file_name: Optional[str] = None
+    file_mime: Optional[str] = None
 
 # -----------------------------------------------------------------------------
 # Portfolio — self-contained HTML presentation for clients.

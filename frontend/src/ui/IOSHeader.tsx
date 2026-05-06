@@ -7,6 +7,7 @@
 import React from "react";
 import { View, Text, StyleSheet, Platform } from "react-native";
 import { ios } from "./iosTheme";
+import { useThemedStyles } from "../theme";
 import { COLORS } from "../api";
 
 export default function IOSHeader({
@@ -23,6 +24,7 @@ export default function IOSHeader({
   /** When true renders a slim navigation-bar style (no large title). */
   compact?: boolean;
 }) {
+  const s = useThemedStyles(useS);
   if (compact) {
     return (
       <View style={s.barRow}>
@@ -44,7 +46,7 @@ export default function IOSHeader({
   );
 }
 
-const s = StyleSheet.create({
+const useS = () => StyleSheet.create({
   wrap: {
     backgroundColor: COLORS.bg,
     paddingTop: Platform.select({ ios: 6, default: 10 }) as number,

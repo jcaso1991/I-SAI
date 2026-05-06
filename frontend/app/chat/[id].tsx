@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { api, COLORS } from "../../src/api";
+import { useThemedStyles } from "../../src/theme";
 
 type Message = {
   id: string;
@@ -31,6 +32,7 @@ export default function ChatDetail() {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const s = useThemedStyles(useS);
   const [chatTitle, setChatTitle] = useState("");
   const scrollRef = useRef<ScrollView>(null);
 
@@ -213,7 +215,7 @@ export default function ChatDetail() {
   );
 }
 
-const s = StyleSheet.create({
+const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: "row", alignItems: "center", gap: 12,

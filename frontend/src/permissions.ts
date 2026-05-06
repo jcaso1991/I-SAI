@@ -60,11 +60,11 @@ export function usePermissions() {
  * bottom/side navigation. Order is the global navigation order.
  */
 export type NavItem =
-  | "home" | "calendario" | "planos" | "proyectos"
+  | "home" | "dashboard" | "calendario" | "planos" | "proyectos"
   | "presupuestos" | "chat" | "sat" | "ajustes";
 
 export function visibleNav(perms: string[]): NavItem[] {
-  const items: NavItem[] = ["home"]; // home is always visible
+  const items: NavItem[] = ["home", "dashboard"]; // home + dashboard siempre visibles
   if (perms.includes("calendario.view")) items.push("calendario");
   if (perms.includes("planos.view")) items.push("planos");
   if (perms.includes("proyectos.view")) items.push("proyectos");

@@ -8,12 +8,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { api, clearToken, COLORS } from "../../src/api";
 import ResponsiveLayout from "../../src/ResponsiveLayout";
 import { useBreakpoint } from "../../src/useBreakpoint";
+import { useThemedStyles } from "../../src/theme";
 
 type Tab = "pendientes" | "aceptados";
 
 export default function PresupuestosIndex() {
   const router = useRouter();
   const { isWide } = useBreakpoint();
+  const s = useThemedStyles(useS);
   const [me, setMe] = useState<any>(null);
   const [budgets, setBudgets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -205,7 +207,7 @@ export default function PresupuestosIndex() {
   );
 }
 
-const s = StyleSheet.create({
+const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",

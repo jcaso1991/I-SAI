@@ -8,6 +8,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { api, COLORS } from "../../src/api";
+import { useThemedStyles } from "../../src/theme";
 
 // ---------- date helpers ----------
 function todayISO(): string {
@@ -48,37 +49,6 @@ function toISOString(d: Date): string {
 const ENTREGA_OPTS = ["Entrega", "Recogida"];
 const TP_OPTS = ["TOTAL", "PARCIAL"];
 
-function ReadRow({ label, value }: { label: string; value?: string | null }) {
-  return (
-    <View style={s.roRow}>
-      <Text style={s.roLabel}>{label}</Text>
-      <Text style={s.roValue}>{value || "—"}</Text>
-    </View>
-  );
-}
-
-function ChipGroup({
-  value, options, onChange, testID,
-}: { value?: string | null; options: string[]; onChange: (v: string) => void; testID?: string }) {
-  return (
-    <View style={s.chipRow} testID={testID}>
-      {options.map((o) => {
-        const active = (value || "").toLowerCase() === o.toLowerCase();
-        return (
-          <TouchableOpacity
-            key={o}
-            testID={`${testID}-${o}`}
-            style={[s.chip, active && s.chipActive]}
-            onPress={() => onChange(active ? "" : o)}
-          >
-            <Text style={[s.chipText, active && s.chipTextActive]}>{o}</Text>
-          </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
-}
-
 export default function MaterialDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -99,10 +69,44 @@ export default function MaterialDetail() {
   const [history, setHistory] = useState<any[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [linkedEvents, setLinkedEvents] = useState<any[]>([]);
+  const [showLinkedEvents, setShowLinkedEvents] = useState(false);
   const [showTechPicker, setShowTechPicker] = useState(false);
   const [showManagerPicker, setShowManagerPicker] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const s = useThemedStyles(useS);
+
+  function ReadRow({ label, value }: { label: string; value?: string | null }) {
+    return (
+      <View style={s.roRow}>
+        <Text style={s.roLabel}>{label}</Text>
+        <Text style={s.roValue}>{value || "—"}</Text>
+      </View>
+    );
+  }
+
+  function ChipGroup({
+    value, options, onChange, testID,
+  }: { value?: string | null; options: string[]; onChange: (v: string) => void; testID?: string }) {
+    return (
+      <View style={s.chipRow} testID={testID}>
+        {options.map((o) => {
+          const active = (value || "").toLowerCase() === o.toLowerCase();
+          return (
+            <TouchableOpacity
+              key={o}
+              testID={`${testID}-${o}`}
+              style={[s.chip, active && s.chipActive]}
+              onPress={() => onChange(active ? "" : o)}
+            >
+              <Text style={[s.chipText, active && s.chipTextActive]}>{o}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
+  }
 
   useEffect(() => {
     (async () => {
@@ -329,8 +333,51 @@ export default function MaterialDetail() {
                     </TouchableOpacity>
                   </View>
                 ))}
+          </View>
+        )}
+
+        {linkedEvents.length > 0 && (
+          <View style={{ padding: 8 }}>
+            <TouchableOpacity
+              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+              onPress={() => setShowLinkedEvents(!showLinkedEvents)}
+              activeOpacity={0.7}
+            >
+              <Text style={s.fieldLabel}>Eventos vinculados ({linkedEvents.length})</Text>
+              <Ionicons name={showLinkedEvents ? "chevron-up" : "chevron-down"} size={14} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+            {showLinkedEvents && linkedEvents.map((ev: any) => (
+              <View key={ev.id} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 4 }}>
+                <TouchableOpacity
+                  style={{ flex: 1 }}
+                  onPress={() => router.push(`/calendario?openEvent=${encodeURIComponent(ev.id)}&from=project` as any)}
+                  activeOpacity={0.6}
+                >
+                  <Text style={{ fontSize: 12, color: COLORS.primary, fontWeight: "600" }} numberOfLines={1}>{ev.title}</Text>
+                </TouchableOpacity>
+                <Text style={{ fontSize: 10, color: COLORS.textSecondary, minWidth: 60 }}>{ev.start_at?.slice(0, 16).replace("T", " ")}</Text>
+                <TouchableOpacity
+                  style={[s.statusChip, ev.status === "in_progress" && { backgroundColor: COLORS.primarySoft }]}
+                  onPress={async () => { await api.updateEvent(ev.id.split(":")[0], { status: "in_progress" } as any); ev.status = "in_progress"; setLinkedEvents([...linkedEvents]); }}
+                >
+                  <Text style={[s.statusChipTxt, ev.status === "in_progress" && { color: COLORS.primary }]}>Curso</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.statusChip, ev.status === "pending_completion" && { backgroundColor: COLORS.pendingBg }]}
+                  onPress={async () => { await api.updateEvent(ev.id.split(":")[0], { status: "pending_completion", seguimiento: "Pendiente desde proyecto" } as any); ev.status = "pending_completion"; setLinkedEvents([...linkedEvents]); }}
+                >
+                  <Text style={[s.statusChipTxt, ev.status === "pending_completion" && { color: COLORS.pendingText }]}>Pendiente</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.statusChip, ev.status === "completed" && { backgroundColor: COLORS.syncedBg }]}
+                  onPress={async () => { await api.updateEvent(ev.id.split(":")[0], { status: "completed" } as any); ev.status = "completed"; setLinkedEvents([...linkedEvents]); }}
+                >
+                  <Text style={[s.statusChipTxt, ev.status === "completed" && { color: COLORS.syncedText }]}>Terminado</Text>
+                </TouchableOpacity>
               </View>
-            )}
+            ))}
+          </View>
+        )}
 
             <Text style={s.fieldLabel}>Comentarios</Text>
             <TextInput
@@ -380,35 +427,6 @@ export default function MaterialDetail() {
                 <Text style={{ fontSize: 11, color: COLORS.text, flex: 1 }} numberOfLines={2}>
                   <Text style={{ fontWeight: "600" }}>{h.field}</Text>: {h.old_value || "—"} → {h.new_value || "—"}
                 </Text>
-              </View>
-            ))}
-          </View>
-        )}
-        {linkedEvents.length > 0 && (
-          <View style={{ padding: 8 }}>
-            <Text style={s.fieldLabel}>Eventos vinculados</Text>
-            {linkedEvents.map((ev: any) => (
-              <View key={ev.id} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 4 }}>
-                <Text style={{ flex: 1, fontSize: 12, color: COLORS.text }} numberOfLines={1}>{ev.title}</Text>
-                <Text style={{ fontSize: 10, color: COLORS.textSecondary, minWidth: 60 }}>{ev.start_at?.slice(0, 16).replace("T", " ")}</Text>
-                <TouchableOpacity
-                  style={[s.statusChip, ev.status === "in_progress" && { backgroundColor: COLORS.primarySoft }]}
-                  onPress={async () => { await api.updateEvent(ev.id.split(":")[0], { status: "in_progress" } as any); ev.status = "in_progress"; setLinkedEvents([...linkedEvents]); }}
-                >
-                  <Text style={[s.statusChipTxt, ev.status === "in_progress" && { color: COLORS.primary }]}>Curso</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.statusChip, ev.status === "pending_completion" && { backgroundColor: "#FEF3C7" }]}
-                  onPress={async () => { await api.updateEvent(ev.id.split(":")[0], { status: "pending_completion", seguimiento: "Pendiente desde proyecto" } as any); ev.status = "pending_completion"; setLinkedEvents([...linkedEvents]); }}
-                >
-                  <Text style={[s.statusChipTxt, ev.status === "pending_completion" && { color: "#92400E" }]}>Pendiente</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.statusChip, ev.status === "completed" && { backgroundColor: "#DCFCE7" }]}
-                  onPress={async () => { await api.updateEvent(ev.id.split(":")[0], { status: "completed" } as any); ev.status = "completed"; setLinkedEvents([...linkedEvents]); }}
-                >
-                  <Text style={[s.statusChipTxt, ev.status === "completed" && { color: "#166534" }]}>Terminado</Text>
-                </TouchableOpacity>
               </View>
             ))}
           </View>
@@ -649,7 +667,7 @@ export default function MaterialDetail() {
   );
 }
 
-const s = StyleSheet.create({
+const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",

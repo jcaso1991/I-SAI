@@ -8,6 +8,7 @@ import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api, setToken, COLORS, BACKEND_URL } from "../src/api";
+import { useThemedStyles } from "../src/theme";
 
 const MS_STATE_KEY = "ms_login_state";
 
@@ -18,6 +19,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [msLoading, setMsLoading] = useState(false);
   const [msEnabled, setMsEnabled] = useState<boolean | null>(null);
+  const s = useThemedStyles(useS);
 
   const backendOrigin = BACKEND_URL.replace(/\/+$/, "");
 
@@ -193,7 +195,8 @@ export default function Login() {
   );
 }
 
-const s = StyleSheet.create({
+const useS = () =>
+  StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   scroll: { flexGrow: 1, padding: 24, justifyContent: "center" },
   logoContainer: {

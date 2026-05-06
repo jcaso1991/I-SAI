@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, FlatList,
   StyleSheet, ActivityIndicator, RefreshControl, Alert, Platform,
+  LayoutAnimation,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -10,6 +11,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api, clearToken, COLORS } from "../src/api";
 import ResponsiveLayout from "../src/ResponsiveLayout";
 import { useBreakpoint } from "../src/useBreakpoint";
+import { useThemedStyles } from "../src/theme";
 
 export default function Materiales() {
   const router = useRouter();
@@ -93,10 +95,12 @@ export default function Materiales() {
   }, [q, pendingOnly, managerFilterIds, statusFilterIds]);
 
   const toggleManagerFilter = (id: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setManagerFilterIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
   };
 
   const toggleStatusFilter = (key: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setStatusFilterIds((prev) => prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]);
   };
 
@@ -109,70 +113,83 @@ export default function Materiales() {
 
   const isAdmin = me?.role === "admin";
 
+  const s = useThemedStyles(useS);
+
   const renderItem = ({ item }: any) => {
     const pending = item.sync_status === "pending";
-    const statusColors: Record<string, { bg: string; fg: string; label: string }> = {
-      a_facturar: { bg: "#EDE9FE", fg: "#5B21B6", label: "Facturar" },
-      planificado: { bg: "#DBEAFE", fg: "#1E40AF", label: "Planif." },
-      facturado: { bg: "#DCFCE7", fg: "#166534", label: "Facturado" },
-      terminado: { bg: "#E0E7FF", fg: "#3730A3", label: "Terminado" },
-      bloqueado: { bg: "#FEE2E2", fg: "#991B1B", label: "Bloqueado" },
-      anulado: { bg: "#F3F4F6", fg: "#6B7280", label: "Anulado" },
+    const projectStatus = item.project_status || "pendiente";
+    const statusBarColors: Record<string, string> = {
+      pendiente: "#F59E0B",
+      planificado: "#3B82F6",
+      a_facturar: "#8B5CF6",
+      facturado: "#10B981",
+      terminado: "#6366F1",
+      bloqueado: "#EF4444",
+      anulado: "#6B7280",
     };
-    const st = item.project_status && item.project_status !== "pendiente" ? statusColors[item.project_status] : null;
+    const statusBarColor = statusBarColors[projectStatus] || "#F59E0B";
+    const statusBadgeStyles: Record<string, { bg: string; fg: string; label: string }> = {
+      a_facturar: { bg: COLORS.statusFacturarBg, fg: COLORS.statusFacturarFg, label: "Facturar" },
+      planificado: { bg: COLORS.statusPlanifBg, fg: COLORS.statusPlanifFg, label: "Planif." },
+      facturado: { bg: COLORS.statusFacturadoBg, fg: COLORS.statusFacturadoFg, label: "Facturado" },
+      terminado: { bg: COLORS.statusTerminadoBg, fg: COLORS.statusTerminadoFg, label: "Terminado" },
+      bloqueado: { bg: COLORS.statusBloqueadoBg, fg: COLORS.statusBloqueadoFg, label: "Bloqueado" },
+      anulado: { bg: COLORS.statusAnuladoBg, fg: COLORS.statusAnuladoFg, label: "Anulado" },
+    };
+    const st = item.project_status && item.project_status !== "pendiente" ? statusBadgeStyles[item.project_status] : null;
+    const horasPrev = parseFloat(item.horas_prev) || 0;
+    const horasImp = parseFloat(item.horas_imputadas) || 0;
     return (
       <TouchableOpacity
         testID={`material-item-${item.id}`}
-        style={s.card}
+        style={[s.card, { borderLeftWidth: 3, borderLeftColor: statusBarColor }]}
         onPress={() => router.push(`/material/${item.id}`)}
         activeOpacity={0.7}
       >
-        <View style={s.cardTop}>
-          <Text style={s.code}>{item.materiales || "—"}</Text>
-          <View style={{ flexDirection: "row", gap: 4, alignItems: "center" }}>
+        <View style={s.cardHeader}>
+          <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Text style={s.code} numberOfLines={1}>{item.materiales || "—"}</Text>
+            <Text style={s.cliente} numberOfLines={1}>{item.cliente || ""}</Text>
+          </View>
+          <View style={{ flexDirection: "row", gap: 3, alignItems: "center" }}>
             {st && (
               <View style={[s.statusBadge, { backgroundColor: st.bg }]}>
                 <Text style={[s.statusBadgeText, { color: st.fg }]}>{st.label}</Text>
               </View>
             )}
             <View style={[s.badge, pending ? s.badgePending : s.badgeSynced]}>
-              <Ionicons name={pending ? "time-outline" : "checkmark-circle"} size={12} color={pending ? COLORS.pendingText : COLORS.syncedText} />
+              <Ionicons name={pending ? "time-outline" : "checkmark-circle"} size={9} color={pending ? COLORS.pendingText : COLORS.syncedText} />
               <Text style={[s.badgeText, { color: pending ? COLORS.pendingText : COLORS.syncedText }]}>
                 {pending ? "PEND" : "SINC"}
               </Text>
             </View>
           </View>
         </View>
-        <Text style={s.cliente} numberOfLines={1}>{item.cliente || "Sin cliente"}</Text>
         <View style={s.infoGrid}>
-          <View style={s.infoCell}>
-            <Text style={s.infoLabel}>Horas</Text>
-            <Text style={s.infoValue}>{item.horas_prev || "—"}</Text>
+           <View style={s.infoCell}>
+            <Text style={s.infoValue}>{item.horas_prev || "—"}h</Text>
             {item.horas_imputadas > 0 && (
-              <Text style={[s.infoValue, { fontSize: 9, color: (parseFloat(item.horas_imputadas) > parseFloat(item.horas_prev || 0)) ? "#EF4444" : COLORS.primary }]}>
+              <Text style={[s.infoValue, { fontSize: 8, color: horasImp > horasPrev ? COLORS.errorText : COLORS.primary }]}>
                 +{item.horas_imputadas}
               </Text>
             )}
           </View>
           <View style={s.infoCell}>
-            <Text style={s.infoLabel}>Comercial</Text>
-            <Text style={s.infoValue}>{item.comercial || "—"}</Text>
+            <Text style={s.infoValue} numberOfLines={1}>{item.comercial || "—"}</Text>
           </View>
           <View style={s.infoCell}>
-            <Text style={s.infoLabel}>Gestor</Text>
-            <Text style={s.infoValue}>{item.manager_name || item.gestor || "—"}</Text>
+            <Text style={s.infoValue} numberOfLines={1}>{item.manager_name || item.gestor || "—"}</Text>
           </View>
           <View style={s.infoCell}>
-            <Text style={s.infoLabel}>Técnico</Text>
             <Text style={s.infoValue} numberOfLines={1}>{item.tecnicos?.join(", ") || item.tecnico || "—"}</Text>
           </View>
         </View>
-        {item.ubicacion && (
+        {item.ubicacion ? (
           <View style={s.metaItem}>
-            <Ionicons name="location" size={13} color={COLORS.textSecondary} />
+            <Ionicons name="location" size={10} color={COLORS.textSecondary} />
             <Text style={s.metaText} numberOfLines={1}>{item.ubicacion}</Text>
           </View>
-        )}
+        ) : null}
       </TouchableOpacity>
     );
   };
@@ -192,7 +209,7 @@ export default function Materiales() {
         {!isWide && (
           <View style={s.headerBtns}>
             <TouchableOpacity testID="btn-logout" style={s.iconBtn} onPress={logout}>
-              <Ionicons name="log-out-outline" size={22} color={COLORS.navy} />
+              <Ionicons name="log-out-outline" size={18} color={COLORS.navy} />
             </TouchableOpacity>
           </View>
         )}
@@ -202,43 +219,34 @@ export default function Materiales() {
       {stats && (
         <View style={s.statsStrip} testID="stats-strip">
           <View style={s.statCard}>
-            <View style={[s.statIcon, { backgroundColor: COLORS.primary + "1A" }]}>
-              <Ionicons name="folder" size={18} color={COLORS.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.statVal}>{stats.total}</Text>
-              <Text style={s.statLbl}>Total</Text>
-            </View>
+            <Ionicons name="folder" size={14} color={COLORS.primary} />
+            <Text style={s.statVal}>{stats.total}</Text>
+            <Text style={s.statLbl}>Total</Text>
           </View>
           <TouchableOpacity
             style={[s.statCard, pendingOnly && { borderColor: "#F59E0B", backgroundColor: "#F59E0B1A" }]}
-            onPress={() => setPendingOnly(!pendingOnly)}
+            onPress={() => {
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              setPendingOnly(!pendingOnly);
+            }}
             testID="stat-pending"
             activeOpacity={0.75}
           >
-            <View style={[s.statIcon, { backgroundColor: "#F59E0B1A" }]}>
-              <Ionicons name="time" size={18} color="#F59E0B" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.statVal}>{stats.pending}</Text>
-              <Text style={s.statLbl}>Pendientes</Text>
-            </View>
+            <Ionicons name="time" size={14} color="#F59E0B" />
+            <Text style={s.statVal}>{stats.pending}</Text>
+            <Text style={s.statLbl}>Pendientes</Text>
           </TouchableOpacity>
           <View style={s.statCard}>
-            <View style={[s.statIcon, { backgroundColor: "#10B9811A" }]}>
-              <Ionicons name="checkmark-circle" size={18} color="#10B981" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.statVal}>{stats.synced}</Text>
-              <Text style={s.statLbl}>Sincronizados</Text>
-            </View>
+            <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+            <Text style={s.statVal}>{stats.synced}</Text>
+            <Text style={s.statLbl}>Sincronizados</Text>
           </View>
         </View>
       )}
 
       <View style={s.searchRow}>
         <View style={s.searchBox}>
-          <Ionicons name="search" size={18} color={COLORS.textSecondary} />
+          <Ionicons name="search" size={16} color={COLORS.textSecondary} />
           <TextInput
             testID="input-search"
             style={s.searchInput}
@@ -249,7 +257,7 @@ export default function Materiales() {
           />
           {q.length > 0 && (
             <TouchableOpacity onPress={() => setQ("")}>
-              <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
+              <Ionicons name="close-circle" size={16} color={COLORS.textSecondary} />
             </TouchableOpacity>
           )}
         </View>
@@ -258,37 +266,37 @@ export default function Materiales() {
           style={[s.filterBtn, pendingOnly && s.filterBtnActive]}
           onPress={() => setPendingOnly(!pendingOnly)}
         >
-          <Ionicons name="time" size={18} color={pendingOnly ? "#fff" : COLORS.navy} />
+          <Ionicons name="time" size={16} color={pendingOnly ? "#fff" : COLORS.navy} />
         </TouchableOpacity>
         <TouchableOpacity
           testID="btn-filter-manager"
           style={[s.filterBtn, managerFilterIds.length > 0 && s.filterBtnActive]}
           onPress={() => { setShowManagerFilter((v) => !v); setShowStatusFilter(false); }}
         >
-          <Ionicons name="people" size={18} color={managerFilterIds.length > 0 ? "#fff" : COLORS.navy} />
+          <Ionicons name="people" size={16} color={managerFilterIds.length > 0 ? "#fff" : COLORS.navy} />
         </TouchableOpacity>
         <TouchableOpacity
           testID="btn-filter-status"
           style={[s.filterBtn, statusFilterIds.length > 0 && s.filterBtnActive]}
           onPress={() => { setShowStatusFilter((v) => !v); setShowManagerFilter(false); }}
         >
-          <Ionicons name="flag" size={18} color={statusFilterIds.length > 0 ? "#fff" : COLORS.navy} />
+          <Ionicons name="flag" size={16} color={statusFilterIds.length > 0 ? "#fff" : COLORS.navy} />
         </TouchableOpacity>
         <TouchableOpacity
-          style={[s.filterBtn, { backgroundColor: "#DCFCE7", borderColor: "#10B981", borderWidth: 1 }]}
+          style={[s.filterBtn, { backgroundColor: COLORS.syncedBg, borderColor: COLORS.syncedText, borderWidth: 1 }]}
           onPress={async () => {
             try { await api.exportProjectsExcel(); }
             catch (e: any) { Alert.alert("Error", "No se pudo exportar"); }
           }}
         >
-          <Ionicons name="download-outline" size={16} color="#166534" />
+          <Ionicons name="download-outline" size={14} color={COLORS.syncedText} />
         </TouchableOpacity>
         {(managerFilterIds.length > 0 || statusFilterIds.length > 0) && (
           <TouchableOpacity
             style={[s.filterBtn, { backgroundColor: COLORS.errorBg }]}
             onPress={() => { clearManagerFilter(); setStatusFilterIds([]); }}
           >
-            <Ionicons name="close" size={16} color={COLORS.errorText} />
+            <Ionicons name="close" size={14} color={COLORS.errorText} />
           </TouchableOpacity>
         )}
       </View>
@@ -355,7 +363,7 @@ export default function Materiales() {
           data={items}
           renderItem={renderItem}
           keyExtractor={(it) => it.id}
-          contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 40, maxWidth: 900, alignSelf: "center", width: "100%" }}
+          contentContainerStyle={{ padding: 8, gap: 4, paddingBottom: 40, maxWidth: 900, alignSelf: "center", width: "100%" }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -365,6 +373,8 @@ export default function Materiales() {
           }
           initialNumToRender={20}
           windowSize={10}
+          maxToRenderPerBatch={10}
+          updateCellsBatchingPeriod={50}
           removeClippedSubviews
         />
       )}
@@ -374,90 +384,79 @@ export default function Materiales() {
   );
 }
 
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.bg },
-  header: {
-    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, backgroundColor: COLORS.surface,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
-  },
-  headerTitle: { fontSize: 26, fontWeight: "900", color: COLORS.text, letterSpacing: -0.5 },
-  headerSub: { fontSize: 13, color: COLORS.textSecondary, marginTop: 2 },
-  headerSubHint: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2, fontWeight: "600" },
-  statsStrip: {
-    flexDirection: "row", gap: 10, paddingHorizontal: 16, paddingTop: 6, paddingBottom: 10,
-  },
-  statCard: {
-    flex: 1, flexDirection: "row", alignItems: "center", gap: 10,
-    paddingVertical: 10, paddingHorizontal: 12,
-    backgroundColor: COLORS.surface, borderRadius: 12,
-    borderWidth: 1, borderColor: COLORS.border,
-  },
-  statIcon: {
-    width: 34, height: 34, borderRadius: 10,
-    alignItems: "center", justifyContent: "center",
-  },
-  statVal: { fontSize: 20, fontWeight: "900", color: COLORS.text, letterSpacing: -0.3, lineHeight: 22 },
-  statLbl: { fontSize: 10.5, fontWeight: "800", color: COLORS.textSecondary, letterSpacing: 0.5, textTransform: "uppercase", marginTop: 1 },
-  headerBtns: { flexDirection: "row", gap: 8 },
-  iconBtn: {
-    width: 40, height: 40, borderRadius: 10, backgroundColor: COLORS.bg,
-    alignItems: "center", justifyContent: "center",
-  },
-  searchRow: {
-    flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingVertical: 12,
-    backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
-  },
-  searchBox: {
-    flex: 1, flexDirection: "row", alignItems: "center", gap: 8,
-    backgroundColor: COLORS.bg, borderRadius: 10, paddingHorizontal: 12, height: 44,
-  },
-  searchInput: { flex: 1, fontSize: 15, color: COLORS.text },
-  filterBtn: {
-    width: 44, height: 44, borderRadius: 10, backgroundColor: COLORS.bg,
-    alignItems: "center", justifyContent: "center",
-  },
-  filterBtnActive: { backgroundColor: COLORS.primary },
-  centerBox: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8 },
-  emptyText: { color: COLORS.textSecondary, fontSize: 15 },
-  card: {
-    backgroundColor: COLORS.surface, padding: 14, borderRadius: 14,
-    borderWidth: 1, borderColor: COLORS.border, gap: 8,
-  },
-  cardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  code: { fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }), fontSize: 13, fontWeight: "700", color: COLORS.navy, letterSpacing: 0.3 },
-  cliente: { fontSize: 16, fontWeight: "700", color: COLORS.text },
-  metaRow: { flexDirection: "row", alignItems: "center", gap: 12, flexWrap: "wrap" },
-  metaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
-  metaText: { fontSize: 13, color: COLORS.textSecondary, fontWeight: "500" },
-  infoGrid: { flexDirection: "row", flexWrap: "wrap", marginTop: 6, gap: 4 },
-  infoCell: {
-    flex: 1, minWidth: 70, backgroundColor: COLORS.bg, borderRadius: 6,
-    paddingVertical: 6, paddingHorizontal: 6, alignItems: "center",
-  },
-  infoLabel: { fontSize: 10, color: COLORS.textDisabled, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 },
-  infoValue: { fontSize: 12, color: COLORS.text, fontWeight: "700", marginTop: 1 },
-  statusBadge: {
-    flexDirection: "row", alignItems: "center", gap: 3,
-    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4,
-  },
-  statusBadgeText: { fontSize: 9, fontWeight: "800", letterSpacing: 0.3 },
-  badge: {
-    flexDirection: "row", alignItems: "center", gap: 4,
-    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
-  },
-  badgeSynced: { backgroundColor: COLORS.syncedBg },
-  badgePending: { backgroundColor: COLORS.pendingBg },
-  badgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
-  pill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  pillBlue: { backgroundColor: COLORS.pillBlueBg },
-  pillOrange: { backgroundColor: COLORS.pillOrangeBg },
-  pillText: { fontSize: 10, fontWeight: "800", color: COLORS.navy, letterSpacing: 0.5 },
-  managerText: { fontSize: 12, color: COLORS.textSecondary, fontWeight: "600", marginTop: 2 },
-  managerChip: {
-    flexDirection: "row", alignItems: "center", gap: 4,
-    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
-    backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
-  },
-  managerChipTxt: { fontSize: 12, fontWeight: "600", color: COLORS.textSecondary },
-});
+const useS = () =>
+  StyleSheet.create({
+    root: { flex: 1, backgroundColor: COLORS.bg },
+    header: {
+      flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+      paddingHorizontal: 10, paddingTop: 2, paddingBottom: 4, backgroundColor: COLORS.surface,
+      borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    },
+    headerTitle: { fontSize: 18, fontWeight: "900", color: COLORS.text, letterSpacing: -0.5 },
+    headerSubHint: { fontSize: 10, color: COLORS.textSecondary, fontWeight: "600" },
+    statsStrip: {
+      flexDirection: "row", gap: 4, paddingHorizontal: 10, paddingTop: 2, paddingBottom: 4,
+    },
+    statCard: {
+      flex: 1, alignItems: "center", gap: 0,
+      paddingVertical: 4, paddingHorizontal: 2,
+      backgroundColor: COLORS.surface, borderRadius: 6,
+      borderWidth: 1, borderColor: COLORS.border,
+    },
+    statVal: { fontSize: 14, fontWeight: "900", color: COLORS.text, letterSpacing: -0.3, lineHeight: 16 },
+    statLbl: { fontSize: 8, fontWeight: "800", color: COLORS.textSecondary, letterSpacing: 0.3, textTransform: "uppercase" },
+    headerBtns: { flexDirection: "row", gap: 8 },
+    iconBtn: {
+      width: 32, height: 32, borderRadius: 6, backgroundColor: COLORS.bg,
+      alignItems: "center", justifyContent: "center",
+    },
+    centerBox: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8 },
+    emptyText: { color: COLORS.textSecondary, fontSize: 15 },
+    searchRow: {
+      flexDirection: "row", gap: 4, paddingHorizontal: 10, paddingVertical: 4,
+      backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    },
+    searchBox: {
+      flex: 1, flexDirection: "row", alignItems: "center", gap: 4,
+      backgroundColor: COLORS.bg, borderRadius: 6, paddingHorizontal: 8, height: 32,
+    },
+    searchInput: { flex: 1, fontSize: 13, color: COLORS.text },
+    filterBtn: {
+      width: 32, height: 32, borderRadius: 6, backgroundColor: COLORS.bg,
+      alignItems: "center", justifyContent: "center",
+    },
+    filterBtnActive: { backgroundColor: COLORS.primary },
+    card: {
+      backgroundColor: COLORS.surface, padding: 6, borderRadius: 8,
+      borderWidth: 1, borderColor: COLORS.border, gap: 2,
+    },
+    cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+    code: { fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }), fontSize: 11, fontWeight: "700", color: COLORS.navy, letterSpacing: 0.3 },
+    cliente: { fontSize: 11, fontWeight: "600", color: COLORS.textSecondary, flexShrink: 1 },
+    metaItem: { flexDirection: "row", alignItems: "center", gap: 2 },
+    metaText: { fontSize: 10, color: COLORS.textSecondary, fontWeight: "500" },
+    infoGrid: { flexDirection: "row", marginTop: 1, gap: 2 },
+    infoCell: {
+      flex: 1, backgroundColor: COLORS.bg, borderRadius: 3,
+      paddingVertical: 2, paddingHorizontal: 2, alignItems: "center",
+    },
+    infoValue: { fontSize: 9, color: COLORS.text, fontWeight: "700" },
+    statusBadge: {
+      flexDirection: "row", alignItems: "center", gap: 2,
+      paddingHorizontal: 3, paddingVertical: 1, borderRadius: 2,
+    },
+    statusBadgeText: { fontSize: 7, fontWeight: "800", letterSpacing: 0.1 },
+    badge: {
+      flexDirection: "row", alignItems: "center", gap: 2,
+      paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3,
+    },
+    badgeSynced: { backgroundColor: COLORS.syncedBg },
+    badgePending: { backgroundColor: COLORS.pendingBg },
+    badgeText: { fontSize: 8, fontWeight: "800", letterSpacing: 0.2 },
+    managerChip: {
+      flexDirection: "row", alignItems: "center", gap: 3,
+      paddingHorizontal: 6, paddingVertical: 3, borderRadius: 5,
+      backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
+    },
+    managerChipTxt: { fontSize: 11, fontWeight: "600", color: COLORS.textSecondary },
+  });

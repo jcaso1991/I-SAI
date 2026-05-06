@@ -9,7 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../src/api";
 import BottomNav from "../src/BottomNav";
 import ResponsiveLayout from "../src/ResponsiveLayout";
-import { useTheme } from "../src/theme";
+import { useTheme, useThemedStyles } from "../src/theme";
 
 export default function Admin() {
   const router = useRouter();
@@ -18,6 +18,7 @@ export default function Admin() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
+  const s = useThemedStyles(useS);
 
   const load = async () => {
     try {
@@ -359,7 +360,8 @@ export default function Admin() {
   );
 }
 
-const s = StyleSheet.create({
+const useS = () =>
+  StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",

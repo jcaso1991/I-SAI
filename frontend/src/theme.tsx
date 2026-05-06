@@ -64,6 +64,22 @@ const LIGHT = {
   accent: "#8B5CF6",        // purple accent (presupuestos)
   accentText: "#FFFFFF",
   canvasPaper: "#FFFFFF",   // always white — drawings canvas
+  // Project status badge colours
+  statusPlanifBg: "#DBEAFE",
+  statusPlanifFg: "#1E40AF",
+  statusFacturarBg: "#EDE9FE",
+  statusFacturarFg: "#5B21B6",
+  statusFacturadoBg: "#DCFCE7",
+  statusFacturadoFg: "#166534",
+  statusTerminadoBg: "#E0E7FF",
+  statusTerminadoFg: "#3730A3",
+  statusBloqueadoBg: "#FEE2E2",
+  statusBloqueadoFg: "#991B1B",
+  statusAnuladoBg: "#F3F4F6",
+  statusAnuladoFg: "#6B7280",
+  // Completed event colours
+  statusCompletedBg: "#E5E7EB",
+  statusCompletedFg: "#6B7280",
 };
 
 const DARK = {
@@ -97,6 +113,22 @@ const DARK = {
   accent: "#A78BFA",
   accentText: "#FFFFFF",
   canvasPaper: "#F8FAFC",  // slightly dim for readability
+  // Project status badge colours (dark variants)
+  statusPlanifBg: "#1E3A8A",
+  statusPlanifFg: "#BFDBFE",
+  statusFacturarBg: "#4C1D95",
+  statusFacturarFg: "#DDD6FE",
+  statusFacturadoBg: "#064E3B",
+  statusFacturadoFg: "#A7F3D0",
+  statusTerminadoBg: "#312E81",
+  statusTerminadoFg: "#C7D2FE",
+  statusBloqueadoBg: "#7F1D1D",
+  statusBloqueadoFg: "#FCA5A5",
+  statusAnuladoBg: "#1F2937",
+  statusAnuladoFg: "#9CA3AF",
+  // Completed event colours (dark)
+  statusCompletedBg: "#374151",
+  statusCompletedFg: "#9CA3AF",
 };
 
 export const THEMES: Record<ThemeName, typeof LIGHT> = { light: LIGHT, dark: DARK };
@@ -242,6 +274,12 @@ function injectThemeCSS() {
 [data-theme="dark"] [style*="background-color: rgb(254, 226, 226)"] {  /* #FEE2E2 */
   background-color: ${DARK.errorBg} !important;
 }
+[data-theme="dark"] [style*="background-color: rgb(224, 231, 255)"] {  /* #E0E7FF */
+  background-color: ${DARK.statusTerminadoBg} !important;
+}
+[data-theme="dark"] [style*="background-color: rgb(243, 244, 246)"] {  /* #F3F4F6 */
+  background-color: ${DARK.statusAnuladoBg} !important;
+}
 /* Text colours that should also adapt */
 [data-theme="dark"] [style*="color: rgb(30, 64, 175)"] {  /* #1E40AF */
   color: ${DARK.pillBlueText} !important;
@@ -258,6 +296,12 @@ function injectThemeCSS() {
 }
 [data-theme="dark"] [style*="color: rgb(153, 27, 27)"] {  /* #991B1B */
   color: ${DARK.errorText} !important;
+}
+[data-theme="dark"] [style*="color: rgb(55, 48, 163)"] {  /* #3730A3 */
+  color: ${DARK.statusTerminadoFg} !important;
+}
+[data-theme="dark"] [style*="color: rgb(107, 114, 128)"] {  /* #6B7280 */
+  color: ${DARK.statusAnuladoFg} !important;
 }
   `;
   if (!el) {
@@ -296,9 +340,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       try {
         const v = await AsyncStorage.getItem(KEY);
         if (v === "dark" || v === "light") {
-          if (v !== theme) {
+          if (v !== "light") {
             applyPalette(v);
             setThemeState(v);
+            setThemeKey((k) => k + 1);
           }
         }
       } catch {}
@@ -311,30 +356,30 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     applyPalette(t);
     setThemeState(t);
     setThemeKey((k) => k + 1);
-    AsyncStorage.setItem(KEY, t).catch(() => {});
 
-    // On native, RN's StyleSheet.create freezes hex values at module load
-    // time, so mutating the COLORS object does NOT retro-update existing
-    // styles. Web works because we inject CSS overrides (see injectThemeCSS).
-    // The simplest reliable fix on native is to reload the JS bundle so
-    // every module re-imports with the new persisted theme.
+    // On native, StyleSheet.create freezes hex values at module load time.
+    // The themeKey forces a Stack remount (updates inline styles) but does NOT
+    // re-import modules, so StyleSheet colours stay frozen. The only reliable
+    // fix is to reload the JS bundle so every module re-imports with the new
+    // COLORS. We must wait for AsyncStorage to persist first, or the reloaded
+    // app will read the old theme.
     if (Platform.OS !== "web") {
-      setTimeout(() => {
-        try {
-          // Expo Go / dev builds: DevSettings.reload always works.
-          const RN = require("react-native");
-          const ds = RN?.DevSettings;
-          if (ds?.reload) {
-            ds.reload();
-            return;
-          }
-        } catch {}
-        try {
-          // Production builds: expo-updates if present.
-          const Updates = require("expo-updates");
-          if (Updates?.reloadAsync) Updates.reloadAsync();
-        } catch {}
-      }, 250);
+      AsyncStorage.setItem(KEY, t)
+        .then(() => {
+          setTimeout(() => {
+            try {
+              const RN = require("react-native");
+              if (RN?.DevSettings?.reload) { RN.DevSettings.reload(); return; }
+            } catch {}
+            try {
+              const Updates = require("expo-updates");
+              if (Updates?.reloadAsync) Updates.reloadAsync();
+            } catch {}
+          }, 150);
+        })
+        .catch(() => {});
+    } else {
+      AsyncStorage.setItem(KEY, t).catch(() => {});
     }
   }, []);
 
@@ -352,4 +397,20 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
 export function useTheme() {
   return useContext(ThemeContext);
+}
+
+/**
+ * Hook para crear estilos que dependen del tema.
+ * Se re-ejecuta cada vez que cambia el tema (themeKey), forzando que
+ * StyleSheet.create lea los valores actuales de COLORS.
+ *
+ * Uso:
+ *   const s = useThemedStyles(() => StyleSheet.create({ ... }));
+ *
+ * Reemplaza al `const s = StyleSheet.create(...)` a nivel módulo.
+ */
+export function useThemedStyles<T extends Record<string, any>>(factory: () => T): T {
+  const { themeKey } = useContext(ThemeContext);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(factory, [themeKey]);
 }

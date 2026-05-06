@@ -10,6 +10,7 @@ import * as Print from "expo-print";
 import { api, clearToken, COLORS } from "../../src/api";
 import ResponsiveLayout from "../../src/ResponsiveLayout";
 import { useBreakpoint } from "../../src/useBreakpoint";
+import { useThemedStyles } from "../../src/theme";
 import SignaturePad from "../../src/SignaturePad";
 
 type Equipo = { elemento: string; cantidad?: string; ubicacion?: string; observaciones?: string };
@@ -19,6 +20,109 @@ export default function BudgetEditor() {
   const params = useLocalSearchParams<{ id?: string; material_id?: string }>();
   const isNew = !params.id || params.id === "nuevo";
   const { isWide } = useBreakpoint();
+
+  const s = useThemedStyles(useS);
+
+  function Section({ title, children }: { title: string; children: React.ReactNode }) {
+    return (
+      <View style={s.section}>
+        <Text style={s.sectionTitle}>{title}</Text>
+        <View style={{ gap: 10 }}>{children}</View>
+      </View>
+    );
+  }
+  function Field({ label, value, onChange, placeholder, multiline }: {
+    label?: string;
+    value?: string;
+    onChange: (v: string) => void;
+    placeholder?: string;
+    multiline?: boolean;
+  }) {
+    return (
+      <View style={{ gap: 4, flex: 1 }}>
+        {label && <Text style={s.lbl}>{label}</Text>}
+        <TextInput
+          value={value}
+          onChangeText={onChange}
+          placeholder={placeholder}
+          placeholderTextColor={COLORS.textDisabled}
+          multiline={multiline}
+          style={[s.inp, multiline && { minHeight: 80, textAlignVertical: "top" }]}
+        />
+      </View>
+    );
+  }
+  function Check({ label, value, onChange }: {
+    label: string;
+    value?: boolean;
+    onChange: (v: boolean) => void;
+  }) {
+    return (
+      <TouchableOpacity style={s.check} onPress={() => onChange(!value)} activeOpacity={0.7}>
+        <View style={[s.checkBox, value && s.checkBoxOn]}>
+          {value && <Ionicons name="checkmark" size={16} color="#fff" />}
+        </View>
+        <Text style={s.checkLbl}>{label}</Text>
+      </TouchableOpacity>
+    );
+  }
+  function ElementoCombo({ value, onChange, suggestions, style, isOpen, onOpenChange }: {
+    value: string;
+    onChange: (v: string) => void;
+    suggestions: string[];
+    style?: any;
+    isOpen: boolean;
+    onOpenChange: (v: boolean) => void;
+  }) {
+    const q = (value || "").toLowerCase().trim();
+    const filtered = q
+      ? suggestions.filter((it) => it.toLowerCase().includes(q))
+      : suggestions;
+    const showList = isOpen && filtered.length > 0;
+
+    return (
+      <View style={[{ position: "relative", zIndex: isOpen ? 50 : 1 }, style]}>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <TextInput
+            testID="elemento-input"
+            value={value}
+            onChangeText={(v) => { onChange(v); if (v.length > 0 && !isOpen) onOpenChange(true); }}
+            onFocus={() => onOpenChange(true)}
+            onBlur={() => setTimeout(() => onOpenChange(false), 200)}
+            style={[s.eqInp, { flex: 1, paddingRight: 28 }]}
+            placeholder="Elemento (escribir o elegir…)"
+            placeholderTextColor={COLORS.textDisabled}
+          />
+          <TouchableOpacity
+            testID="elemento-dropdown"
+            style={{ position: "absolute", right: 2, padding: 4 }}
+            onPress={() => onOpenChange(!isOpen)}
+          >
+            <Ionicons name={isOpen ? "chevron-up" : "chevron-down"} size={18} color={COLORS.primary} />
+          </TouchableOpacity>
+        </View>
+        {showList && (
+          <View style={s.comboList}>
+            <ScrollView
+              style={{ maxHeight: 220 }}
+              keyboardShouldPersistTaps="always"
+              nestedScrollEnabled
+            >
+              {filtered.slice(0, 50).map((it, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={s.comboItem}
+                  onPress={() => { onChange(it); onOpenChange(false); }}
+                >
+                  <Text style={s.comboItemTxt}>{it}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+      </View>
+    );
+  }
 
   const [me, setMe] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -303,112 +407,6 @@ export default function BudgetEditor() {
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <View style={s.section}>
-      <Text style={s.sectionTitle}>{title}</Text>
-      <View style={{ gap: 10 }}>{children}</View>
-    </View>
-  );
-}
-function Field({ label, value, onChange, placeholder, multiline }: {
-  label?: string;
-  value?: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  multiline?: boolean;
-}) {
-  return (
-    <View style={{ gap: 4, flex: 1 }}>
-      {label && <Text style={s.lbl}>{label}</Text>}
-      <TextInput
-        value={value}
-        onChangeText={onChange}
-        placeholder={placeholder}
-        placeholderTextColor={COLORS.textDisabled}
-        multiline={multiline}
-        style={[s.inp, multiline && { minHeight: 80, textAlignVertical: "top" }]}
-      />
-    </View>
-  );
-}
-function Check({ label, value, onChange }: {
-  label: string;
-  value?: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <TouchableOpacity style={s.check} onPress={() => onChange(!value)} activeOpacity={0.7}>
-      <View style={[s.checkBox, value && s.checkBoxOn]}>
-        {value && <Ionicons name="checkmark" size={16} color="#fff" />}
-      </View>
-      <Text style={s.checkLbl}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-/**
- * Combobox editable: texto libre + botón desplegable con sugerencias.
- * El usuario puede escribir manualmente o elegir uno de los preestablecidos.
- */
-function ElementoCombo({ value, onChange, suggestions, style, isOpen, onOpenChange }: {
-  value: string;
-  onChange: (v: string) => void;
-  suggestions: string[];
-  style?: any;
-  isOpen: boolean;
-  onOpenChange: (v: boolean) => void;
-}) {
-  const q = (value || "").toLowerCase().trim();
-  const filtered = q
-    ? suggestions.filter((it) => it.toLowerCase().includes(q))
-    : suggestions;
-  const showList = isOpen && filtered.length > 0;
-
-  return (
-    <View style={[{ position: "relative", zIndex: isOpen ? 50 : 1 }, style]}>
-      <View style={{ flexDirection: "row", alignItems: "center" }}>
-        <TextInput
-          testID="elemento-input"
-          value={value}
-          onChangeText={(v) => { onChange(v); if (v.length > 0 && !isOpen) onOpenChange(true); }}
-          onFocus={() => onOpenChange(true)}
-          onBlur={() => setTimeout(() => onOpenChange(false), 200)}
-          style={[s.eqInp, { flex: 1, paddingRight: 28 }]}
-          placeholder="Elemento (escribir o elegir…)"
-          placeholderTextColor={COLORS.textDisabled}
-        />
-        <TouchableOpacity
-          testID="elemento-dropdown"
-          style={{ position: "absolute", right: 2, padding: 4 }}
-          onPress={() => onOpenChange(!isOpen)}
-        >
-          <Ionicons name={isOpen ? "chevron-up" : "chevron-down"} size={18} color={COLORS.primary} />
-        </TouchableOpacity>
-      </View>
-      {showList && (
-        <View style={s.comboList}>
-          <ScrollView
-            style={{ maxHeight: 220 }}
-            keyboardShouldPersistTaps="always"
-            nestedScrollEnabled
-          >
-            {filtered.slice(0, 50).map((it, idx) => (
-              <TouchableOpacity
-                key={idx}
-                style={s.comboItem}
-                onPress={() => { onChange(it); onOpenChange(false); }}
-              >
-                <Text style={s.comboItemTxt}>{it}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
-    </View>
-  );
-}
-
 
 function renderPdfHtml(f: any): string {
   const row = (label: string, v: string) => `<tr><td style="font-weight:700;padding:4px 8px;width:35%;border-bottom:1px solid #ccc">${label}</td><td style="padding:4px 8px;border-bottom:1px solid #ccc">${escapeHtml(v || "")}</td></tr>`;
@@ -485,7 +483,7 @@ function escapeHtml(s: string): string {
   return String(s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" } as any)[c]);
 }
 
-const s = StyleSheet.create({
+const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.bg },
   header: {

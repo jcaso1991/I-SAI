@@ -347,4 +347,20 @@ export const COLORS = {
   canvasPaper: "#F1F5F9",
   accent: "#EA580C",
   pillOrangeBg: "#FFF7ED",
+  // Project status badge colours
+  statusPlanifBg: "#DBEAFE",
+  statusPlanifFg: "#1E40AF",
+  statusFacturarBg: "#EDE9FE",
+  statusFacturarFg: "#5B21B6",
+  statusFacturadoBg: "#DCFCE7",
+  statusFacturadoFg: "#166534",
+  statusTerminadoBg: "#E0E7FF",
+  statusTerminadoFg: "#3730A3",
+  statusBloqueadoBg: "#FEE2E2",
+  statusBloqueadoFg: "#991B1B",
+  statusAnuladoBg: "#F3F4F6",
+  statusAnuladoFg: "#6B7280",
+  // Completed event colours
+  statusCompletedBg: "#E5E7EB",
+  statusCompletedFg: "#6B7280",
 };

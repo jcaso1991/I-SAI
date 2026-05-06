@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Platform, TouchableOpacity, View, Text, StyleSheet, Modal, Pressable, TextInput } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "./api";
+import { useThemedStyles } from "./theme";
 
 type Mode = "date" | "time";
 
@@ -13,122 +14,6 @@ function sameDay(a: Date, b: Date) {
 function addMonths(d: Date, n: number): Date { const x = new Date(d); x.setMonth(x.getMonth() + n); return x; }
 const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 const DOW = ["L", "M", "X", "J", "V", "S", "D"];
-
-// Mini calendar for picking a date (cross-platform)
-function MiniCalendar({ value, onSelect }: { value: Date; onSelect: (d: Date) => void }) {
-  const [anchor, setAnchor] = useState(new Date(value.getFullYear(), value.getMonth(), 1));
-  const first = new Date(anchor);
-  first.setDate(1);
-  const firstWeekday = (first.getDay() === 0 ? 7 : first.getDay()) - 1; // Monday = 0
-  const daysInMonth = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0).getDate();
-  const cells: (Date | null)[] = [];
-  for (let i = 0; i < firstWeekday; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(anchor.getFullYear(), anchor.getMonth(), d));
-  while (cells.length % 7 !== 0) cells.push(null);
-
-  return (
-    <View style={cal.root}>
-      <View style={cal.navRow}>
-        <TouchableOpacity style={cal.navBtn} onPress={() => setAnchor(addMonths(anchor, -1))}>
-          <Ionicons name="chevron-back" size={20} color={COLORS.navy} />
-        </TouchableOpacity>
-        <Text style={cal.navTitle}>{MONTHS[anchor.getMonth()]} {anchor.getFullYear()}</Text>
-        <TouchableOpacity style={cal.navBtn} onPress={() => setAnchor(addMonths(anchor, 1))}>
-          <Ionicons name="chevron-forward" size={20} color={COLORS.navy} />
-        </TouchableOpacity>
-      </View>
-      <View style={cal.dowRow}>
-        {DOW.map((d, i) => <Text key={i} style={cal.dowText}>{d}</Text>)}
-      </View>
-      <View style={cal.grid}>
-        {cells.map((c, i) => {
-          if (!c) return <View key={i} style={cal.cell} />;
-          const selected = sameDay(c, value);
-          const today = sameDay(c, new Date());
-          return (
-            <TouchableOpacity
-              key={i}
-              testID={`cal-day-${c.getDate()}`}
-              style={[cal.cell, cal.dayCell, selected && cal.dayCellSelected, today && !selected && cal.dayCellToday]}
-              onPress={() => onSelect(c)}
-            >
-              <Text style={[cal.dayText, selected && cal.dayTextSelected, today && !selected && cal.dayTextToday]}>
-                {c.getDate()}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
-// Mini clock for picking time
-function MiniClock({ value, onChange }: { value: Date; onChange: (d: Date) => void }) {
-  const h = value.getHours();
-  const m = value.getMinutes();
-
-  const setH = (nh: number) => {
-    const d = new Date(value);
-    d.setHours(((nh % 24) + 24) % 24);
-    onChange(d);
-  };
-  const setM = (nm: number) => {
-    const d = new Date(value);
-    d.setMinutes(((nm % 60) + 60) % 60);
-    onChange(d);
-  };
-
-  return (
-    <View style={clk.wrap}>
-      <View style={clk.col}>
-        <Text style={clk.label}>HORA</Text>
-        <View style={clk.pickerRow}>
-          <TouchableOpacity style={clk.arrowBtn} onPress={() => setH(h + 1)}>
-            <Ionicons name="chevron-up" size={22} color={COLORS.primary} />
-          </TouchableOpacity>
-          <TextInput
-            testID="input-hour"
-            style={clk.num}
-            keyboardType="number-pad"
-            maxLength={2}
-            value={pad(h)}
-            onChangeText={(t) => {
-              const n = parseInt(t.replace(/\D/g, ""), 10);
-              if (!isNaN(n)) setH(Math.min(23, n));
-            }}
-          />
-          <TouchableOpacity style={clk.arrowBtn} onPress={() => setH(h - 1)}>
-            <Ionicons name="chevron-down" size={22} color={COLORS.primary} />
-          </TouchableOpacity>
-        </View>
-      </View>
-      <Text style={clk.sep}>:</Text>
-      <View style={clk.col}>
-        <Text style={clk.label}>MIN</Text>
-        <View style={clk.pickerRow}>
-          <TouchableOpacity style={clk.arrowBtn} onPress={() => setM(m + 5)}>
-            <Ionicons name="chevron-up" size={22} color={COLORS.primary} />
-          </TouchableOpacity>
-          <TextInput
-            testID="input-min"
-            style={clk.num}
-            keyboardType="number-pad"
-            maxLength={2}
-            value={pad(m)}
-            onChangeText={(t) => {
-              const n = parseInt(t.replace(/\D/g, ""), 10);
-              if (!isNaN(n)) setM(Math.min(59, n));
-            }}
-          />
-          <TouchableOpacity style={clk.arrowBtn} onPress={() => setM(m - 5)}>
-            <Ionicons name="chevron-down" size={22} color={COLORS.primary} />
-          </TouchableOpacity>
-        </View>
-      </View>
-    </View>
-  );
-}
 
 export default function DateTimeField({
   value, mode, onChange, label, testID, disabled, style,
@@ -143,6 +28,124 @@ export default function DateTimeField({
 }) {
   const [open, setOpen] = useState(false);
   const [tempValue, setTempValue] = useState<Date>(value);
+
+  const s = useThemedStyles(useS);
+  const cal = useThemedStyles(useCal);
+  const clk = useThemedStyles(useClk);
+
+  function MiniCalendar({ value, onSelect }: { value: Date; onSelect: (d: Date) => void }) {
+    const [anchor, setAnchor] = useState(new Date(value.getFullYear(), value.getMonth(), 1));
+    const first = new Date(anchor);
+    first.setDate(1);
+    const firstWeekday = (first.getDay() === 0 ? 7 : first.getDay()) - 1;
+    const daysInMonth = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0).getDate();
+    const cells: (Date | null)[] = [];
+    for (let i = 0; i < firstWeekday; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(anchor.getFullYear(), anchor.getMonth(), d));
+    while (cells.length % 7 !== 0) cells.push(null);
+
+    return (
+      <View style={cal.root}>
+        <View style={cal.navRow}>
+          <TouchableOpacity style={cal.navBtn} onPress={() => setAnchor(addMonths(anchor, -1))}>
+            <Ionicons name="chevron-back" size={20} color={COLORS.navy} />
+          </TouchableOpacity>
+          <Text style={cal.navTitle}>{MONTHS[anchor.getMonth()]} {anchor.getFullYear()}</Text>
+          <TouchableOpacity style={cal.navBtn} onPress={() => setAnchor(addMonths(anchor, 1))}>
+            <Ionicons name="chevron-forward" size={20} color={COLORS.navy} />
+          </TouchableOpacity>
+        </View>
+        <View style={cal.dowRow}>
+          {DOW.map((d, i) => <Text key={i} style={cal.dowText}>{d}</Text>)}
+        </View>
+        <View style={cal.grid}>
+          {cells.map((c, i) => {
+            if (!c) return <View key={i} style={cal.cell} />;
+            const selected = sameDay(c, value);
+            const today = sameDay(c, new Date());
+            return (
+              <TouchableOpacity
+                key={i}
+                testID={`cal-day-${c.getDate()}`}
+                style={[cal.cell, cal.dayCell, selected && cal.dayCellSelected, today && !selected && cal.dayCellToday]}
+                onPress={() => onSelect(c)}
+              >
+                <Text style={[cal.dayText, selected && cal.dayTextSelected, today && !selected && cal.dayTextToday]}>
+                  {c.getDate()}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+    );
+  }
+
+  function MiniClock({ value, onChange }: { value: Date; onChange: (d: Date) => void }) {
+    const h = value.getHours();
+    const m = value.getMinutes();
+
+    const setH = (nh: number) => {
+      const d = new Date(value);
+      d.setHours(((nh % 24) + 24) % 24);
+      onChange(d);
+    };
+    const setM = (nm: number) => {
+      const d = new Date(value);
+      d.setMinutes(((nm % 60) + 60) % 60);
+      onChange(d);
+    };
+
+    return (
+      <View style={clk.wrap}>
+        <View style={clk.col}>
+          <Text style={clk.label}>HORA</Text>
+          <View style={clk.pickerRow}>
+            <TouchableOpacity style={clk.arrowBtn} onPress={() => setH(h + 1)}>
+              <Ionicons name="chevron-up" size={22} color={COLORS.primary} />
+            </TouchableOpacity>
+            <TextInput
+              testID="input-hour"
+              style={clk.num}
+              keyboardType="number-pad"
+              maxLength={2}
+              value={pad(h)}
+              onChangeText={(t) => {
+                const n = parseInt(t.replace(/\D/g, ""), 10);
+                if (!isNaN(n)) setH(Math.min(23, n));
+              }}
+            />
+            <TouchableOpacity style={clk.arrowBtn} onPress={() => setH(h - 1)}>
+              <Ionicons name="chevron-down" size={22} color={COLORS.primary} />
+            </TouchableOpacity>
+          </View>
+        </View>
+        <Text style={clk.sep}>:</Text>
+        <View style={clk.col}>
+          <Text style={clk.label}>MIN</Text>
+          <View style={clk.pickerRow}>
+            <TouchableOpacity style={clk.arrowBtn} onPress={() => setM(m + 5)}>
+              <Ionicons name="chevron-up" size={22} color={COLORS.primary} />
+            </TouchableOpacity>
+            <TextInput
+              testID="input-min"
+              style={clk.num}
+              keyboardType="number-pad"
+              maxLength={2}
+              value={pad(m)}
+              onChangeText={(t) => {
+                const n = parseInt(t.replace(/\D/g, ""), 10);
+                if (!isNaN(n)) setM(Math.min(59, n));
+              }}
+            />
+            <TouchableOpacity style={clk.arrowBtn} onPress={() => setM(m - 5)}>
+              <Ionicons name="chevron-down" size={22} color={COLORS.primary} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   const displayText = mode === "date"
     ? value.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short", year: "numeric" })
@@ -198,7 +201,7 @@ export default function DateTimeField({
   );
 }
 
-const s = StyleSheet.create({
+const useS = () => StyleSheet.create({
   wrap: { flex: 1 },
   lbl: {
     fontSize: 11, fontWeight: "800", color: COLORS.textSecondary,
@@ -236,7 +239,7 @@ const s = StyleSheet.create({
   actionOkTxt: { color: "#fff", fontWeight: "800", letterSpacing: 0.5 },
 });
 
-const cal = StyleSheet.create({
+const useCal = () => StyleSheet.create({
   root: {},
   navRow: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
@@ -259,7 +262,7 @@ const cal = StyleSheet.create({
   dayTextToday: { color: COLORS.primary, fontWeight: "800" },
 });
 
-const clk = StyleSheet.create({
+const useClk = () => StyleSheet.create({
   wrap: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14 },
   col: { alignItems: "center", gap: 6 },
   label: { fontSize: 10, fontWeight: "800", color: COLORS.textSecondary, letterSpacing: 1 },

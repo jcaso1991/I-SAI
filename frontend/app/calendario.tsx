@@ -8,6 +8,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../src/api";
+import { useThemedStyles } from "../src/theme";
 import ResponsiveLayout from "../src/ResponsiveLayout";
 import { useBreakpoint } from "../src/useBreakpoint";
 import DateTimeField from "../src/DateTimeField";
@@ -103,8 +104,9 @@ function yFromDate(d: Date): number {
 export default function CalendarScreen() {
   const router = useRouter();
   const { isWide } = useBreakpoint();
-  const params = useLocalSearchParams<{ openEvent?: string }>();
+  const params = useLocalSearchParams<{ openEvent?: string; from?: string }>();
   const [me, setMe] = useState<any>(null);
+  const s = useThemedStyles(useS);
   const [view, setViewState] = useState<ViewMode>("week");
   const setView = (v: ViewMode) => {
     setViewState(v);
@@ -508,6 +510,7 @@ export default function CalendarScreen() {
           onCreate={(startMin, endMin) => setCreateRange({ day: anchor, startMin, endMin })}
           onTapEvent={openTappedEvent}
           onMoveEvent={moveEvent}
+          onCopyEvent={setCopiedEvent}
         />
       ) : view === "multi" ? (
         <MultiView
@@ -531,6 +534,7 @@ export default function CalendarScreen() {
           onCreate={(day, startMin, endMin) => setCreateRange({ day, startMin, endMin })}
           onTapEvent={openTappedEvent}
           onMoveEvent={moveEvent}
+          onCopyEvent={setCopiedEvent}
           onSelectDay={(d) => { setAnchor(d); setView("day"); }}
         />
       )}
@@ -548,8 +552,8 @@ export default function CalendarScreen() {
         <EventDetailsModal
           event={openEvent}
           isAdmin={isAdmin}
-          onClose={() => setOpenEvent(null)}
-          onChanged={() => { load(); setOpenEvent(null); setCopiedEvent(null); }}
+          onClose={() => { setOpenEvent(null); if (params.from === "project") router.back(); }}
+          onChanged={() => { load(); setOpenEvent(null); setCopiedEvent(null); if (params.from === "project") router.back(); }}
           onCopy={setCopiedEvent}
         />
       )}
@@ -644,6 +648,7 @@ export default function CalendarScreen() {
 function MonthView({
   anchor, events, onSelectDay,
 }: { anchor: Date; events: EventT[]; onSelectDay: (d: Date) => void }) {
+  const s = useThemedStyles(useS);
   const first = firstOfMonth(anchor);
   const gridStart = mondayOf(first);
   const weeks = 6;
@@ -700,14 +705,16 @@ function MonthView({
 
 // ---------------- Week view ----------------
 function WeekView({
-  weekStart, events, isAdmin, now, onCreate, onTapEvent, onMoveEvent, onSelectDay,
+  weekStart, events, isAdmin, now, onCreate, onTapEvent, onMoveEvent, onSelectDay, onCopyEvent,
 }: {
   weekStart: Date; events: EventT[]; isAdmin: boolean; now: Date;
   onCreate: (day: Date, startMin: number, endMin: number) => void;
   onTapEvent: (e: EventT) => void;
   onMoveEvent: (ev: EventT, s: Date, e: Date) => Promise<void>;
   onSelectDay?: (d: Date) => void;
+  onCopyEvent?: (e: EventT) => void;
 }) {
+  const s = useThemedStyles(useS);
   const days = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(weekStart, i)), [weekStart]);
   const [colW, setColW] = useState(0);
   const nowY = yFromDate(now);
@@ -751,6 +758,7 @@ function WeekView({
               isAdmin={isAdmin}
               onCreate={(s2, e2) => onCreate(d, s2, e2)}
               onTapEvent={onTapEvent}
+              onCopyEvent={onCopyEvent}
               onMoveEvent={async (ev, s, e) => {
                 // In week mode we need to calculate cross-day drop via dx; handled inside DraggableEvent using colW
                 await onMoveEvent(ev, s, e);
@@ -782,6 +790,7 @@ function MultiView({
   users: { id: string; name: string; email: string; color?: string }[];
   disabledUserIds: Set<string>;
 }) {
+  const s = useThemedStyles(useS);
   const visibleUsers = users.filter((u) => !disabledUserIds.has(u.id));
 
   return (
@@ -831,13 +840,15 @@ function MultiView({
 
 // ---------------- Day view ----------------
 function DayView({
-  day, events, isAdmin, isToday, onCreate, onTapEvent, onMoveEvent,
+  day, events, isAdmin, isToday, onCreate, onTapEvent, onMoveEvent, onCopyEvent,
 }: {
   day: Date; events: EventT[]; isAdmin: boolean; isToday: boolean;
   onCreate: (startMin: number, endMin: number) => void;
   onTapEvent: (e: EventT) => void;
   onMoveEvent: (ev: EventT, s: Date, e: Date) => Promise<void>;
+  onCopyEvent?: (e: EventT) => void;
 }) {
+  const s = useThemedStyles(useS);
   const now = new Date();
   const nowY = yFromDate(now);
   const dayIdx = day.getDay() === 0 ? 6 : day.getDay() - 1;
@@ -863,6 +874,7 @@ function DayView({
           onCreate={onCreate}
           onTapEvent={onTapEvent}
           onMoveEvent={onMoveEvent}
+          onCopyEvent={onCopyEvent}
           isToday={isToday}
           nowY={nowY}
           compact={false}
@@ -957,16 +969,18 @@ function layoutEventColumns(
 
 // ---------------- DayColumn (with draggable events) ----------------
 function DayColumn({
-  day, events, isAdmin, onCreate, onTapEvent, onMoveEvent, isToday, nowY, compact,
+  day, events, isAdmin, onCreate, onTapEvent, onMoveEvent, onCopyEvent, isToday, nowY, compact,
   weekDays, colW, dayIndex,
 }: {
   day: Date; events: EventT[]; isAdmin: boolean;
   onCreate: (startMin: number, endMin: number) => void;
   onTapEvent: (e: EventT) => void;
   onMoveEvent: (ev: EventT, s: Date, e: Date) => Promise<void>;
+  onCopyEvent?: (e: EventT) => void;
   isToday: boolean; nowY: number; compact: boolean;
   weekDays?: Date[]; colW?: number; dayIndex?: number;
 }) {
+  const s = useThemedStyles(useS);
   const [dragRange, setDragRange] = useState<{ s: number; e: number } | null>(null);
   const startRef = useRef<number>(0);
   const [dragEvent, setDragEvent] = useState<{ id: string; top: number; height: number } | null>(null);
@@ -1027,6 +1041,7 @@ function DayColumn({
           isAdmin={isAdmin}
           compact={compact}
           onTap={() => onTapEvent(ev)}
+          onCopy={onCopyEvent ? () => onCopyEvent(ev) : undefined}
           onMoveEvent={onMoveEvent}
           weekDays={weekDays}
           colW={colW}
@@ -1050,15 +1065,17 @@ function DayColumn({
 
 // ---------------- Draggable event (move + resize) ----------------
 function DraggableEvent({
-  event, day, isAdmin, compact, onTap, onMoveEvent,
+  event, day, isAdmin, compact, onTap, onMoveEvent, onCopy,
   weekDays, colW, dayIndex, layout,
 }: {
   event: EventT; day: Date; isAdmin: boolean; compact: boolean;
   onTap: () => void;
   onMoveEvent: (ev: EventT, s: Date, e: Date) => Promise<void>;
+  onCopy?: (e: EventT) => void;
   weekDays?: Date[]; colW?: number; dayIndex?: number;
   layout?: { col: number; total: number; span: number };
 }) {
+  const s = useThemedStyles(useS);
   const start = new Date(event.start_at);
   const end = new Date(event.end_at);
   const initTop = yFromDate(start);
@@ -1069,11 +1086,14 @@ function DraggableEvent({
   const [leftOffset, setLeftOffset] = useState(0); // horizontal shift when dragging in week view
   const [mode, setMode] = useState<"idle" | "move" | "resize">("idle");
   const baseRef = useRef<{ top: number; height: number }>({ top: initTop, height: initHeight });
+  const [boxWidth, setBoxWidth] = useState(0);
 
   useEffect(() => { setTop(initTop); setHeight(initHeight); setLeftOffset(0); baseRef.current = { top: initTop, height: initHeight }; }, [event.start_at, event.end_at]);
 
   const tapTimeRef = useRef(0);
   const hasMovedRef = useRef(false);
+  const grantXRef = useRef(0);
+  const grantYRef = useRef(0);
   const topRef = useRef(top);
   const heightRef = useRef(height);
   topRef.current = top;
@@ -1086,7 +1106,9 @@ function DraggableEvent({
     onStartShouldSetPanResponderCapture: () => isAdmin,
     onMoveShouldSetPanResponder: (_, g) => isAdmin && (Math.abs(g.dy) > 2 || Math.abs(g.dx) > 2),
     onMoveShouldSetPanResponderCapture: (_, g) => isAdmin && (Math.abs(g.dy) > 2 || Math.abs(g.dx) > 2),
-    onPanResponderGrant: () => {
+    onPanResponderGrant: (evt) => {
+      grantXRef.current = evt.nativeEvent.locationX ?? 0;
+      grantYRef.current = evt.nativeEvent.locationY ?? 0;
       tapTimeRef.current = Date.now();
       hasMovedRef.current = false;
       baseRef.current = { top, height };
@@ -1107,6 +1129,17 @@ function DraggableEvent({
       }
     },
     onPanResponderRelease: async () => {
+      if (!hasMovedRef.current && boxWidth > 0 && onCopy) {
+        const gx = grantXRef.current;
+        const gy = grantYRef.current;
+        if (gx > boxWidth - 36 && gy < 30) {
+          onCopy(event);
+          setMode("idle");
+          setTop(baseRef.current.top);
+          setLeftOffset(0);
+          return;
+        }
+      }
       if (!hasMovedRef.current) {
         onTap();
         setMode("idle");
@@ -1128,12 +1161,13 @@ function DraggableEvent({
       setMode("idle");
     },
     onPanResponderTerminate: () => { setTop(baseRef.current.top); setLeftOffset(0); setMode("idle"); },
-  }), [isAdmin, top, height, event, day, onTap, onMoveEvent, canCrossDays, weekDays, colW, dayIndex]);
+  }), [isAdmin, top, height, event, day, onTap, onMoveEvent, canCrossDays, weekDays, colW, dayIndex, boxWidth]);
 
   // -------- Web-only drag using document-level mouse events (reliable on Chrome) --------
   const webStateRef = useRef<{ startX: number; startY: number; baseTop: number; baseHeight: number; moved: boolean } | null>(null);
   const onWebMouseDown = (e: any) => {
     if (Platform.OS !== "web" || !isAdmin) return;
+    if (e.target?.closest?.("[data-copy-btn]")) return;
     e.stopPropagation?.();
     e.preventDefault?.();
     webStateRef.current = {
@@ -1323,43 +1357,48 @@ function DraggableEvent({
 
   return (
     <View
-      style={[s.eventBox, {
+      style={{
+        position: "absolute",
         top, height,
         left: `${leftPct}%`,
         width: `${widthPct}%`,
-        right: undefined as any,
         transform: [{ translateX: leftOffset }],
-        backgroundColor: isCompleted ? "#E5E7EB" : bgTint,
-        borderLeftColor: isPending ? "#F59E0B" : baseColor,
-        borderLeftWidth: isPending ? 5 : 3,
-        opacity: mode === "move" ? 0.85 : (isCompleted ? 0.55 : 1),
         zIndex: mode === "idle" ? (isPending ? 4 : 2) : 10,
         elevation: mode === "idle" ? 2 : 10,
-        // Pending events get a warm glow so they stand out at a glance.
-        ...(isPending ? Platform.select<any>({
-          web: { boxShadow: "0 0 0 2px rgba(245,158,11,0.35), 0 4px 16px rgba(245,158,11,0.25)" },
-          default: { shadowColor: "#F59E0B", shadowOpacity: 0.45, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } },
-        }) : {}),
-        // @ts-ignore web-only cursor hint
-        cursor: isAdmin ? (mode === "idle" ? "grab" : "grabbing") : "pointer",
-      }]}
-      {...(isAdmin && Platform.OS !== "web" ? panMove.panHandlers : {})}
-      {...(isAdmin && Platform.OS === "web" ? { onMouseDown: onWebMouseDown } as any : {})}
+      }}
     >
-      {/* Status badge overlay — small chip in the top-right corner */}
-      {(isCompleted || isPending) && (
-        <View pointerEvents="none" style={[
-          s.statusBadge,
-          { backgroundColor: isCompleted ? "#6B7280" : "#F59E0B" },
-        ]}>
-          <Ionicons
-            name={isCompleted ? "checkmark-done" : "alert-circle"}
-            size={11} color="#fff"
-          />
-        </View>
-      )}
-      {isAdmin ? (
-        <View pointerEvents="none" style={{ padding: 2 }}>
+      <View
+        onLayout={(e) => setBoxWidth(e.nativeEvent.layout.width)}
+        style={{
+          flex: 1, borderRadius: 6, padding: 4, overflow: "hidden",
+          borderLeftWidth: 3,
+          backgroundColor: isCompleted ? COLORS.statusCompletedBg : bgTint,
+          borderLeftColor: isPending ? "#F59E0B" : baseColor,
+          opacity: mode === "move" ? 0.85 : (isCompleted ? 0.55 : 1),
+          ...(isPending ? Platform.select<any>({
+            web: { boxShadow: "0 0 0 2px rgba(245,158,11,0.35), 0 4px 16px rgba(245,158,11,0.25)" },
+            default: { shadowColor: "#F59E0B", shadowOpacity: 0.45, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } },
+          }) : {}),
+          // @ts-ignore web-only cursor hint
+          cursor: isAdmin ? (mode === "idle" ? "grab" : "grabbing") : "pointer",
+        } as any}
+        {...(isAdmin && Platform.OS !== "web" ? panMove.panHandlers : {})}
+        {...(isAdmin && Platform.OS === "web" ? { onMouseDown: onWebMouseDown } as any : {})}
+      >
+        {/* Status badge overlay — small chip in the top-right corner */}
+        {(isCompleted || isPending) && (
+          <View pointerEvents="none" style={[
+            s.statusBadge,
+            { backgroundColor: isCompleted ? COLORS.statusCompletedFg : "#F59E0B" },
+          ]}>
+            <Ionicons
+              name={isCompleted ? "checkmark-done" : "alert-circle"}
+              size={11} color="#fff"
+            />
+          </View>
+        )}
+        {isAdmin ? (
+          <View pointerEvents="none" style={{ padding: 2 }}>
           {/* Top: assigned user(s) */}
           {event.assigned_users && event.assigned_users.length > 0 && (
             <Text style={[s.eventAssignee, { color: baseColor }]} numberOfLines={1}>
@@ -1424,6 +1463,21 @@ function DraggableEvent({
         </>
       )}
     </View>
+      {isAdmin && onCopy && (
+        <TouchableOpacity
+          onPress={() => onCopy(event)}
+          style={{
+            position: "absolute", top: 2, right: 2,
+            width: 24, height: 24, borderRadius: 4,
+            backgroundColor: "rgba(255,255,255,0.9)",
+            alignItems: "center", justifyContent: "center", zIndex: 20,
+          }}
+          hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
+        >
+          <Ionicons name="copy-outline" size={14} color={baseColor} />
+        </TouchableOpacity>
+      )}
+    </View>
   );
 }
 
@@ -1437,6 +1491,7 @@ function CreateEventModal({
   onDone: () => void;
   copiedEvent?: EventT | null;
 }) {
+  const s = useThemedStyles(useS);
   const [mode, setMode] = useState<"texto" | "proyecto">("texto");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -1806,6 +1861,7 @@ function CreateEventModal({
 function EventDetailsModal({
   event, isAdmin, onClose, onChanged, onCopy,
 }: { event: EventT; isAdmin: boolean; onClose: () => void; onChanged: () => void; onCopy: (e: EventT) => void }) {
+  const s = useThemedStyles(useS);
   const router = useRouter();
   const [start, setStart] = useState<Date>(new Date(event.start_at));
   const [end, setEnd] = useState<Date>(new Date(event.end_at));
@@ -2685,7 +2741,8 @@ function EventDetailsModal({
   );
 }
 
-const s = StyleSheet.create({
+const useS = () =>
+  StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: "row", alignItems: "center",

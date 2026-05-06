@@ -5,7 +5,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { COLORS, api } from "./api";
 import BottomNav, { BottomTab } from "./BottomNav";
 import { useBreakpoint } from "./useBreakpoint";
-import { useTheme } from "./theme";
+import { useTheme, useThemedStyles } from "./theme";
 
 // Build a 2-letter avatar string from a full name.
 function initials(name?: string): string {
@@ -53,6 +53,32 @@ export default function ResponsiveLayout({
   const canManageRoles = has("roles.manage");
   const canOnedrive = has("onedrive.manage");
 
+  const s = useThemedStyles(useS);
+
+  function SideLink({
+    active, label, icon, to, matIcon,
+  }: { active: boolean; label: string; icon: string; to: string; matIcon?: boolean }) {
+    const router = useRouter();
+    const color = active ? COLORS.primary : COLORS.textSecondary;
+    return (
+      <TouchableOpacity
+        style={[s.linkRow, active && s.linkRowActive]}
+        onPress={() => router.replace(to as any)}
+        activeOpacity={0.7}
+      >
+        <View style={[s.linkBar, active && s.linkBarActive]} />
+        <View style={[s.linkIcon, active && s.linkIconActive]}>
+          {matIcon ? (
+            <MaterialCommunityIcons name={icon as any} size={18} color={color} />
+          ) : (
+            <Ionicons name={icon as any} size={18} color={color} />
+          )}
+        </View>
+        <Text style={[s.linkTxt, active && s.linkTxtActive]}>{label}</Text>
+      </TouchableOpacity>
+    );
+  }
+
   if (!isWide) {
     // Mobile: content fills screen, BottomNav at bottom
     return (
@@ -94,6 +120,7 @@ export default function ResponsiveLayout({
 
         <Text style={s.sectionLabel}>NAVEGACIÓN</Text>
         <SideLink active={active === "home"} label="Inicio" icon="home" to="/home" />
+        <SideLink active={active === "dashboard"} label="Dashboard" icon="stats-chart" to="/dashboard" />
         {has("calendario.view") && (
           <SideLink active={active === "calendario"} label="Calendario" icon="calendar" to="/calendario" />
         )}
@@ -153,33 +180,8 @@ export default function ResponsiveLayout({
   );
 }
 
-function SideLink({
-  active, label, icon, to, matIcon,
-}: { active: boolean; label: string; icon: string; to: string; matIcon?: boolean }) {
-  const router = useRouter();
-  const color = active ? COLORS.primary : COLORS.textSecondary;
-  return (
-    <TouchableOpacity
-      style={[s.linkRow, active && s.linkRowActive]}
-      onPress={() => router.replace(to as any)}
-      activeOpacity={0.7}
-    >
-      {/* Left accent bar: 3-px stripe only on active — much more elegant
-          than a fully filled background. */}
-      <View style={[s.linkBar, active && s.linkBarActive]} />
-      <View style={[s.linkIcon, active && s.linkIconActive]}>
-        {matIcon ? (
-          <MaterialCommunityIcons name={icon as any} size={18} color={color} />
-        ) : (
-          <Ionicons name={icon as any} size={18} color={color} />
-        )}
-      </View>
-      <Text style={[s.linkTxt, active && s.linkTxtActive]}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-const s = StyleSheet.create({
+const useS = () =>
+  StyleSheet.create({
   root: { flex: 1, flexDirection: "row", backgroundColor: COLORS.bg },
   sidebar: {
     width: 252, backgroundColor: COLORS.surface, borderRightWidth: 1,
