@@ -16,7 +16,8 @@ export type PermissionKey =
   | "presupuestos.view" | "presupuestos.edit"
   | "sat.view" | "sat.edit"
   | "chat.view"
-  | "users.manage" | "roles.manage" | "onedrive.manage";
+  | "users.manage" | "roles.manage" | "onedrive.manage"
+  | "preciario.view" | "preciario.ver_precios" | "preciario.edit";
 
 export type Me = {
   id: string;

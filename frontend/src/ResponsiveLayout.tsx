@@ -140,6 +140,14 @@ export default function ResponsiveLayout({
           <SideLink active={active === "sat"} label="CRM SAT" icon="headset" to="/sat" />
         )}
 
+        <Text style={s.sectionLabel}>DOCUMENTOS INTERNOS</Text>
+        {has("preciario.view") && (
+          <SideLink active={active === "preciario"} label="Preciario" icon="pricetags" to="/preciario" />
+        )}
+        {has("preciario.view") && (
+          <SideLink active={active === "documentaciones"} label="Documentación y Software" icon="document-text" to="/documentaciones" />
+        )}
+
         {(canOnedrive || canManageUsers || canManageRoles) && (
           <>
             <Text style={s.sectionLabel}>ADMINISTRACIÓN</Text>

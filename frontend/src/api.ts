@@ -222,6 +222,14 @@ export const api = {
     request(`/sat/clients/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   satClientDelete: (id: string) =>
     request(`/sat/clients/${id}`, { method: "DELETE" }),
+  // Preciario
+  getPreciario: (queryString?: string) => request(`/preciario/productos${queryString ? "?" + queryString : ""}`),
+  getDescuentos: () => request("/preciario/descuentos"),
+  updateDescuento: (ref: string, descuento: number) =>
+    request("/preciario/descuentos", { method: "PATCH", body: JSON.stringify({ ref, descuento }) }),
+  updateStock: (ref: string, stock: number) =>
+    request("/preciario/stock", { method: "PATCH", body: JSON.stringify({ ref, stock }) }),
+
   satClientImport: async (file: { uri: string; name: string; mimeType?: string } | File, replace = false) => {
     const form = new FormData();
     // Web File object vs native { uri, name }
@@ -250,9 +258,26 @@ export const api = {
   getBudget: (id: string) => request(`/budgets/${id}`),
   createBudget: (body: any) => request("/budgets", { method: "POST", body: JSON.stringify(body) }),
   updateBudget: (id: string, body: any) => request(`/budgets/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
-  toggleBudgetStatus: (id: string) => request(`/budgets/${id}/status`, { method: "PATCH" }),
+  setBudgetStatus: (id: string, status: string) => request(`/budgets/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) }),
+  duplicateBudget: (id: string) => request(`/budgets/${id}/duplicate`, { method: "POST" }),
+  uploadBudgetAttachment: (bid: string, body: { name: string; data: string; mime: string }) => request(`/budgets/${bid}/attachments`, { method: "POST", body: JSON.stringify(body) }),
+  deleteBudgetAttachment: (bid: string, aid: string) => request(`/budgets/${bid}/attachments/${aid}`, { method: "DELETE" }),
+  getBudgetAttachmentUrl: (bid: string, aid: string) => apiUrl(`/budgets/${bid}/attachments/${aid}`),
   deleteBudget: (id: string) => request(`/budgets/${id}`, { method: "DELETE" }),
   budgetsDefaultEquipos: () => request("/budgets-defaults/equipos"),
+
+  // Versions
+  listBudgetVersions: (bid: string) => request(`/budgets/${bid}/versions`),
+  getBudgetVersion: (bid: string, vid: string) => request(`/budgets/${bid}/versions/${vid}`),
+
+  // Templates
+  listBudgetTemplates: () => request("/budget-templates"),
+  createBudgetTemplate: (body: { name: string; equipos: any[] }) => request("/budget-templates", { method: "POST", body: JSON.stringify(body) }),
+  deleteBudgetTemplate: (tid: string) => request(`/budget-templates/${tid}`, { method: "DELETE" }),
+
+  // Stats (para el dashboard KPI)
+  getBudgetsStats: () => request("/budgets/stats"),
+
   // Get budget PDF URL (authenticated blob fetch)
   getBudgetPdfUrl: (id: string) => apiUrl(`/budgets/${id}/pdf`),
   getBudgetPdfBlob: async (id: string): Promise<Blob> => {

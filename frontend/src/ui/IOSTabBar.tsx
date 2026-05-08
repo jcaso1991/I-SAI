@@ -15,7 +15,8 @@ import { useThemedStyles } from "../theme";
 
 export type BottomTab =
   | "home" | "dashboard" | "proyectos" | "calendario" | "planos"
-  | "presupuestos" | "chat" | "ajustes" | "sat";
+  | "presupuestos" | "chat" | "ajustes" | "sat" | "documentos"
+  | "preciario" | "documentaciones";
 
 const TAB_PERM_MAP: Record<BottomTab, string | null> = {
   home: null,
@@ -26,6 +27,9 @@ const TAB_PERM_MAP: Record<BottomTab, string | null> = {
   presupuestos: "presupuestos.view",
   chat: "chat.view",
   sat: "sat.view",
+  documentos: "preciario.view",
+  preciario: "preciario.view",
+  documentaciones: "preciario.view",
   ajustes: null,
 };
 
@@ -38,6 +42,9 @@ const TAB_ROUTES: Record<BottomTab, string> = {
   presupuestos: "/presupuestos",
   chat: "/chat",
   sat: "/sat",
+  documentos: "/documentos",
+  preciario: "/preciario",
+  documentaciones: "/documentaciones",
   ajustes: "/admin",
 };
 
@@ -51,6 +58,9 @@ const LABELS: Record<BottomTab, string> = {
   chat: "Chat",
   ajustes: "Ajustes",
   sat: "CRM SAT",
+  documentos: "Docs. Internos",
+  preciario: "Preciario",
+  documentaciones: "Docs. y Software",
 };
 
 // Cache permissions in module scope so all tab bars on the same screen
@@ -93,11 +103,12 @@ export default function IOSTabBar({ active, isAdmin: _isAdmin }: { active: Botto
     if (tab === "planos") return <Ionicons name={on ? "map" : "map-outline"} size={sz} color={color} />;
     if (tab === "presupuestos") return <Ionicons name={on ? "document-text" : "document-text-outline"} size={sz} color={color} />;
     if (tab === "sat") return <Ionicons name={on ? "headset" : "headset-outline"} size={sz} color={color} />;
+    if (tab === "documentos") return <Ionicons name={on ? "folder-open" : "folder-open-outline"} size={sz} color={color} />;
     return <Ionicons name={on ? "settings" : "settings-outline"} size={sz} color={color} />;
   };
 
   // Determine which tabs to show. Until perms load, fall back to legacy (admin shows all).
-  const allTabs: BottomTab[] = ["ajustes", "proyectos", "home", "dashboard", "calendario", "planos", "presupuestos", "sat"];
+  const allTabs: BottomTab[] = ["ajustes", "proyectos", "home", "dashboard", "calendario", "planos", "presupuestos", "sat", "documentos"];
   const isReady = perms !== null;
   const visibleTabs = !isReady
     ? allTabs.filter((t) => t !== "sat") // legacy default until perms arrive
@@ -107,7 +118,7 @@ export default function IOSTabBar({ active, isAdmin: _isAdmin }: { active: Botto
       });
 
   // Order: Home leftmost, then functional tabs, Settings rightmost.
-  const ORDER: BottomTab[] = ["home", "dashboard", "calendario", "planos", "proyectos", "presupuestos", "chat", "sat", "ajustes"];
+  const ORDER: BottomTab[] = ["home", "dashboard", "calendario", "planos", "proyectos", "documentos", "presupuestos", "chat", "sat", "ajustes"];
   const ordered = ORDER.filter((t) => visibleTabs.includes(t));
 
   return (

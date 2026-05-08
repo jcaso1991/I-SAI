@@ -238,16 +238,27 @@ PERMISSIONS_CATALOG = [
     {"key": "proyectos.edit", "label": "Editar Proyectos", "module": "Proyectos"},
     {"key": "calendario.view", "label": "Ver Calendario", "module": "Calendario"},
     {"key": "calendario.edit", "label": "Crear/Editar eventos", "module": "Calendario"},
+    {"key": "calendario.assign", "label": "Asignar técnicos a eventos", "module": "Calendario"},
+    {"key": "events.edit", "label": "Editar eventos existentes", "module": "Calendario"},
     {"key": "planos.view", "label": "Ver Planos", "module": "Planos"},
     {"key": "planos.edit", "label": "Editar Planos", "module": "Planos"},
+    {"key": "planos.download", "label": "Descargar planos", "module": "Planos"},
     {"key": "presupuestos.view", "label": "Ver Presupuestos", "module": "Presupuestos"},
     {"key": "presupuestos.edit", "label": "Editar Presupuestos", "module": "Presupuestos"},
+    {"key": "presupuestos.export", "label": "Exportar presupuestos a PDF", "module": "Presupuestos"},
     {"key": "sat.view", "label": "Ver CRM SAT", "module": "CRM SAT"},
     {"key": "sat.edit", "label": "Gestionar incidencias SAT", "module": "CRM SAT"},
+    {"key": "sat.export", "label": "Exportar SAT a Excel", "module": "CRM SAT"},
     {"key": "users.manage", "label": "Gestionar usuarios", "module": "Administración"},
     {"key": "roles.manage", "label": "Gestionar roles y permisos", "module": "Administración"},
     {"key": "onedrive.manage", "label": "Conectar/Sincronizar OneDrive", "module": "Administración"},
-    {"key": "chat.view", "label": "Usar el chat", "module": "Chat"},
+    {"key": "chat.view", "label": "Ver el chat", "module": "Chat"},
+    {"key": "chat.edit", "label": "Enviar mensajes en el chat", "module": "Chat"},
+    {"key": "dashboard.view", "label": "Ver panel de datos", "module": "Dashboard"},
+    {"key": "materiales.view_hours", "label": "Ver horas de proyectos", "module": "Proyectos"},
+    {"key": "preciario.ver_precios", "label": "Ver precios en preciario", "module": "Preciario"},
+    {"key": "preciario.edit", "label": "Editar descuentos y stock del preciario", "module": "Preciario"},
+    {"key": "preciario.view", "label": "Ver preciario y productos", "module": "Preciario"},
 ]
 ALL_PERMS = [p["key"] for p in PERMISSIONS_CATALOG]
 
@@ -262,9 +273,9 @@ NOTIFICATION_CATALOG = [
 ALL_NOTIFS = [n["key"] for n in NOTIFICATION_CATALOG]
 
 NON_ADMIN_PERMS = [p for p in ALL_PERMS if p not in ("users.manage", "roles.manage")]
-TECNICO_PERMS = ["proyectos.view", "proyectos.edit", "calendario.view", "calendario.edit", "planos.view", "planos.edit", "chat.view"]
-COMERCIAL_PERMS = ["presupuestos.view", "presupuestos.edit", "proyectos.view", "chat.view"]
-SAT_PERMS = ["sat.view", "sat.edit", "chat.view"]
+TECNICO_PERMS = ["proyectos.view", "proyectos.edit", "calendario.view", "calendario.edit", "planos.view", "planos.edit", "chat.view", "chat.edit", "planos.download", "events.edit"]
+COMERCIAL_PERMS = ["presupuestos.view", "presupuestos.edit", "presupuestos.export", "proyectos.view", "chat.view", "chat.edit"]
+SAT_PERMS = ["sat.view", "sat.edit", "sat.export", "chat.view", "chat.edit"]
 
 # System roles seeded on startup. Admin role can NEVER be modified or deleted.
 DEFAULT_ROLES = [
@@ -1445,7 +1456,8 @@ async def list_events(
     # Users who can edit calendar see the full team calendar; others see assigned work.
     perms = await get_user_permissions(user)
     can_edit_calendar = "calendario.edit" in perms
-    if not can_edit_calendar:
+    can_edit_events = can_edit_calendar or "events.edit" in perms
+    if not can_edit_events:
         query["assigned_user_ids"] = user["id"]
     events = await db.events.find(query, {"_id": 0}).to_list(2000)
     # Expand recurrences
@@ -1523,10 +1535,12 @@ async def update_event(eid: str, payload: EventPatch, user: dict = Depends(curre
 
     perms = await get_user_permissions(user)
     can_edit_calendar = "calendario.edit" in perms
+    can_edit_events = can_edit_calendar or "events.edit" in perms
+    can_assign = can_edit_calendar or "calendario.assign" in perms
     is_assigned = user["id"] in (ev_current.get("assigned_user_ids") or [])
-    if not can_edit_calendar:
-        # Users without calendario.edit can only modify `status` and `seguimiento`, and only
-        # if they are assigned to this event (i.e. the technician in charge).
+    if not can_edit_events:
+        # Users without calendario.edit or events.edit can only modify `status` and `seguimiento`,
+        # and only if they are assigned to this event (i.e. the technician in charge).
         if not is_assigned:
             raise HTTPException(403, "No autorizado")
         allowed = {"status", "seguimiento"}
@@ -1537,6 +1551,8 @@ async def update_event(eid: str, payload: EventPatch, user: dict = Depends(curre
         if k == "recurrence":
             upd["recurrence"] = v  # dict from pydantic or None (clears)
         elif k == "assigned_user_ids":
+            if not can_assign:
+                raise HTTPException(403, "No tienes permiso para asignar técnicos")
             upd[k] = v or []
         else:
             upd[k] = v
@@ -1646,9 +1662,9 @@ async def get_event(eid: str, user: dict = Depends(current_user)):
     ev = await db.events.find_one({"id": real_id}, {"_id": 0})
     if not ev:
         raise HTTPException(404, "Evento no encontrado")
-    # Permission: calendario.edit OR assigned user OR manager of the event
+    # Permission: calendario.edit, events.edit OR assigned user OR manager of the event
     perms = await get_user_permissions(user)
-    can_edit_calendar = "calendario.edit" in perms
+    can_edit_calendar = "calendario.edit" in perms or "events.edit" in perms
     allowed_ids = set((ev.get("assigned_user_ids") or []))
     if ev.get("manager_id"):
         allowed_ids.add(ev.get("manager_id"))
@@ -1713,9 +1729,9 @@ async def upload_event_attachment(eid: str, payload: AttachmentUpload, user: dic
     ev = await db.events.find_one({"id": real_id}, {"_id": 0})
     if not ev:
         raise HTTPException(404, "Evento no encontrado")
-    # Permission: calendario.edit OR assigned user
+    # Permission: calendario.edit, events.edit OR assigned user
     perms = await get_user_permissions(user)
-    can_edit_calendar = "calendario.edit" in perms
+    can_edit_calendar = "calendario.edit" in perms or "events.edit" in perms
     if not can_edit_calendar and user["id"] not in (ev.get("assigned_user_ids") or []):
         raise HTTPException(403, "No autorizado")
     # Validate base64 size
@@ -1759,7 +1775,7 @@ async def get_event_attachment(eid: str, aid: str, user: dict = Depends(current_
     if not ev:
         raise HTTPException(404, "Evento no encontrado")
     perms = await get_user_permissions(user)
-    can_edit_calendar = "calendario.edit" in perms
+    can_edit_calendar = "calendario.edit" in perms or "events.edit" in perms
     if not can_edit_calendar and user["id"] not in (ev.get("assigned_user_ids") or []):
         raise HTTPException(403, "No autorizado")
     for a in (ev.get("attachments") or []):
@@ -1782,7 +1798,7 @@ async def delete_event_attachment(eid: str, aid: str, user: dict = Depends(curre
     if not ev:
         raise HTTPException(404, "Evento no encontrado")
     perms = await get_user_permissions(user)
-    can_edit_calendar = "calendario.edit" in perms
+    can_edit_calendar = "calendario.edit" in perms or "events.edit" in perms
     if not can_edit_calendar and user["id"] not in (ev.get("assigned_user_ids") or []):
         raise HTTPException(403, "No autorizado")
     res = await db.events.update_one(
@@ -2387,8 +2403,10 @@ async def get_material(mid: str, user: dict = Depends(require_permission("proyec
     if not doc:
         raise HTTPException(404, "Material no encontrado")
     # Imputed hours from events
-    events = await db.events.find({"material_id": mid, "hours": {"$exists": True}}, {"hours": 1}).to_list(1000)
-    doc["horas_imputadas"] = round(sum(_safe_float(ev.get("hours")) for ev in events), 1)
+    perms_get = await get_user_permissions(user)
+    if "materiales.view_hours" in perms_get or "proyectos.edit" in perms_get:
+        events = await db.events.find({"material_id": mid, "hours": {"$exists": True}}, {"hours": 1}).to_list(1000)
+        doc["horas_imputadas"] = round(sum(_safe_float(ev.get("hours")) for ev in events), 1)
     return doc
 
 @api_router.patch("/materiales/{mid}", response_model=Material)
@@ -2441,6 +2459,9 @@ async def stats(user: dict = Depends(require_permission("proyectos.view"))):
 
 @api_router.get("/dashboard")
 async def dashboard(user: dict = Depends(current_user)):
+    perms = await get_user_permissions(user)
+    if "dashboard.view" not in perms:
+        raise HTTPException(403, "No tienes permiso para ver el panel de datos")
     # Projects by status
     statuses = ["pendiente", "planificado", "a_facturar", "facturado", "terminado", "bloqueado", "anulado"]
     projects_by_status = {}
@@ -2607,11 +2628,30 @@ async def current_budget_edit(user: dict = Depends(current_user)):
         raise HTTPException(403, "Requiere permiso para editar Presupuestos")
     return user
 
+async def current_budget_export(user: dict = Depends(current_user)):
+    perms = await get_user_permissions(user)
+    if "presupuestos.export" not in perms and "presupuestos.edit" not in perms:
+        raise HTTPException(403, "Requiere permiso para exportar Presupuestos")
+    return user
+
 class EquipmentRow(BaseModel):
     elemento: str = ""
     cantidad: Optional[str] = ""
     ubicacion: Optional[str] = ""
     observaciones: Optional[str] = ""
+
+def _serialize_equipos(equipos: list) -> list:
+    return [e if isinstance(e, dict) else (e.dict() if hasattr(e, "dict") else e) for e in equipos]
+
+def _validate_date(value: Optional[str]) -> Optional[str]:
+    if value is None or value.strip() == "":
+        return None
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(value.strip(), fmt).strftime("%d/%m/%Y")
+        except ValueError:
+            continue
+    raise HTTPException(422, f"Formato de fecha inválido: {value}. Usá DD/MM/AAAA")
 
 class BudgetCreate(BaseModel):
     # general
@@ -2644,11 +2684,30 @@ class BudgetCreate(BaseModel):
 class BudgetPatch(BudgetCreate):
     pass
 
+class BudgetStatusUpdate(BaseModel):
+    status: str
+
+class BudgetTemplateCreate(BaseModel):
+    name: str
+    equipos: List[dict] = []
+
 @api_router.post("/budgets")
 async def create_budget(payload: BudgetCreate, user: dict = Depends(current_budget_edit)):
     now = datetime.now(timezone.utc).isoformat()
-    doc = payload.dict()
-    doc["equipos"] = [e if isinstance(e, dict) else e.dict() for e in (payload.equipos or [])]
+    doc = payload.dict(exclude_none=True)
+    doc["equipos"] = _serialize_equipos(payload.equipos or [])
+    doc["fecha_inicio"] = _validate_date(doc.get("fecha_inicio"))
+    doc["fecha_fin"] = _validate_date(doc.get("fecha_fin"))
+    if doc["fecha_inicio"] and doc["fecha_fin"]:
+        try:
+            fi = datetime.strptime(doc["fecha_inicio"], "%d/%m/%Y")
+            ff = datetime.strptime(doc["fecha_fin"], "%d/%m/%Y")
+            if ff < fi:
+                raise HTTPException(422, "La fecha de fin no puede ser anterior a la fecha de inicio")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
     doc.update({
         "id": str(uuid.uuid4()),
         "created_at": now,
@@ -2662,16 +2721,16 @@ async def create_budget(payload: BudgetCreate, user: dict = Depends(current_budg
     return doc
 
 @api_router.get("/budgets")
-async def list_budgets(user: dict = Depends(current_budget_view)):
-    items = await db.budgets.find({}, {"_id": 0, "firma_isai": 0, "firma_cliente": 0}).sort("updated_at", -1).to_list(500)
+async def list_budgets(skip: int = 0, limit: int = 100, user: dict = Depends(current_budget_view)):
+    items = await db.budgets.find({}, {"_id": 0, "firma_isai": 0, "firma_cliente": 0, "attachments.data": 0}).sort("updated_at", -1).skip(skip).limit(limit).to_list(limit)
     return items
 
 @api_router.get("/budgets/accepted")
 async def list_accepted_budgets(user: dict = Depends(current_budget_view)):
     items = await db.budgets.find(
         {"status": "aceptado"},
-        {"_id": 0, "firma_isai": 0, "firma_cliente": 0},
-    ).sort("updated_at", -1).to_list(500)
+        {"_id": 0, "firma_isai": 0, "firma_cliente": 0, "attachments.data": 0},
+    ).sort("updated_at", -1).to_list(200)
     return items
 
 @api_router.get("/budgets/{bid}")
@@ -2679,23 +2738,57 @@ async def get_budget(bid: str, user: dict = Depends(current_budget_view)):
     b = await db.budgets.find_one({"id": bid}, {"_id": 0})
     if not b:
         raise HTTPException(404, "Presupuesto no encontrado")
+    if b.get("attachments"):
+        for a in b["attachments"]:
+            a.pop("data", None)
     return b
 
 @api_router.patch("/budgets/{bid}/status")
-async def update_budget_status(bid: str, user: dict = Depends(current_budget_edit)):
+async def update_budget_status(bid: str, payload: BudgetStatusUpdate, user: dict = Depends(current_budget_edit)):
+    if payload.status not in ("pendiente", "en_revision", "aceptado", "rechazado", "facturado"):
+        raise HTTPException(422, "Estado inválido")
     b = await db.budgets.find_one({"id": bid})
     if not b:
         raise HTTPException(404, "Presupuesto no encontrado")
-    new_status = "aceptado" if b.get("status") != "aceptado" else "pendiente"
-    await db.budgets.update_one({"id": bid}, {"$set": {"status": new_status, "updated_at": datetime.now(timezone.utc).isoformat()}})
-    return {"ok": True, "status": new_status}
+    await db.budgets.update_one({"id": bid}, {"$set": {
+        "status": payload.status,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": user["email"],
+        "updated_by_name": user.get("name") or user["email"],
+    }})
+    return {"ok": True, "status": payload.status}
 
 @api_router.patch("/budgets/{bid}")
 async def update_budget(bid: str, payload: BudgetPatch, user: dict = Depends(current_budget_edit)):
-    upd = {k: v for k, v in payload.dict().items() if v is not None}
+    upd = payload.dict(exclude_unset=True)
     if "equipos" in upd:
-        upd["equipos"] = [e if isinstance(e, dict) else (e.dict() if hasattr(e, "dict") else e) for e in upd["equipos"]]
+        upd["equipos"] = _serialize_equipos(upd["equipos"])
+    if "fecha_inicio" in upd:
+        upd["fecha_inicio"] = _validate_date(upd["fecha_inicio"])
+    if "fecha_fin" in upd:
+        upd["fecha_fin"] = _validate_date(upd["fecha_fin"])
     upd["updated_at"] = datetime.now(timezone.utc).isoformat()
+    upd["updated_by"] = user["email"]
+    upd["updated_by_name"] = user.get("name") or user["email"]
+    old = await db.budgets.find_one({"id": bid})
+    fi = upd.get("fecha_inicio", old.get("fecha_inicio") if old else None)
+    ff = upd.get("fecha_fin", old.get("fecha_fin") if old else None)
+    if fi and ff:
+        try:
+            if datetime.strptime(ff, "%d/%m/%Y") < datetime.strptime(fi, "%d/%m/%Y"):
+                raise HTTPException(422, "La fecha de fin no puede ser anterior a la fecha de inicio")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+    if old:
+        version_doc = {k: v for k, v in old.items() if k != "_id"}
+        version_doc["budget_id"] = bid
+        version_doc["version_id"] = str(uuid.uuid4())
+        version_doc["saved_at"] = datetime.now(timezone.utc).isoformat()
+        version_doc["saved_by"] = user["email"]
+        version_doc["saved_by_name"] = user.get("name") or user["email"]
+        await db.budget_versions.insert_one(version_doc)
     res = await db.budgets.update_one({"id": bid}, {"$set": upd})
     if res.matched_count == 0:
         raise HTTPException(404, "Presupuesto no encontrado")
@@ -2707,6 +2800,156 @@ async def delete_budget(bid: str, user: dict = Depends(current_budget_edit)):
     res = await db.budgets.delete_one({"id": bid})
     if res.deleted_count == 0:
         raise HTTPException(404, "Presupuesto no encontrado")
+    return {"ok": True}
+
+@api_router.get("/budgets/{bid}/versions")
+async def list_budget_versions(bid: str, user: dict = Depends(current_budget_view)):
+    items = await db.budget_versions.find(
+        {"budget_id": bid},
+        {"_id": 0, "firma_isai": 0, "firma_cliente": 0, "attachments": 0},
+    ).sort("saved_at", -1).to_list(50)
+    return items
+
+@api_router.get("/budgets/{bid}/versions/{vid}")
+async def get_budget_version(bid: str, vid: str, user: dict = Depends(current_budget_view)):
+    v = await db.budget_versions.find_one({"budget_id": bid, "version_id": vid}, {"_id": 0})
+    if not v:
+        raise HTTPException(404, "Versión no encontrada")
+    return v
+
+@api_router.post("/budget-templates")
+async def create_budget_template(payload: BudgetTemplateCreate, user: dict = Depends(current_budget_view)):
+    doc = {
+        "id": str(uuid.uuid4()),
+        "name": payload.name,
+        "equipos": payload.equipos,
+        "created_by": user["email"],
+        "created_by_name": user.get("name") or user["email"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.budget_templates.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api_router.get("/budget-templates")
+async def list_budget_templates(user: dict = Depends(current_budget_view)):
+    items = await db.budget_templates.find({}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return items
+
+@api_router.delete("/budget-templates/{tid}")
+async def delete_budget_template(tid: str, user: dict = Depends(current_budget_view)):
+    res = await db.budget_templates.delete_one({"id": tid})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Plantilla no encontrada")
+    return {"ok": True}
+
+@api_router.get("/budgets/stats")
+async def budgets_stats(user: dict = Depends(current_budget_view)):
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+    all_budgets = await db.budgets.find({}, {"status": 1, "created_by": 1, "created_by_name": 1, "updated_at": 1}).to_list(2000)
+
+    by_status = {"pendiente": 0, "en_revision": 0, "aceptado": 0, "rechazado": 0, "facturado": 0}
+    by_commercial: dict = {}
+    accepted_this_month = 0
+
+    for b in all_budgets:
+        st = b.get("status", "pendiente")
+        if st in by_status:
+            by_status[st] += 1
+
+        email = b.get("created_by", "desconocido")
+        name = b.get("created_by_name", email)
+        if email not in by_commercial:
+            by_commercial[email] = {"name": name, "pendiente": 0, "en_revision": 0, "aceptado": 0, "rechazado": 0, "facturado": 0, "total": 0}
+        by_commercial[email][st] = by_commercial[email].get(st, 0) + 1
+        by_commercial[email]["total"] += 1
+
+        if st == "aceptado" and b.get("updated_at", "") >= month_start:
+            accepted_this_month += 1
+
+    return {
+        "by_status": by_status,
+        "by_commercial": list(by_commercial.values()),
+        "accepted_this_month": accepted_this_month,
+        "total": len(all_budgets),
+    }
+
+class BudgetAttachmentUpload(BaseModel):
+    name: str
+    data: str  # base64
+    mime: str = "application/octet-stream"
+
+@api_router.post("/budgets/{bid}/duplicate")
+async def duplicate_budget(bid: str, user: dict = Depends(require_permission("presupuestos.edit"))):
+    original = await db.budgets.find_one({"id": bid}, {"_id": 0})
+    if not original:
+        raise HTTPException(404, "Presupuesto no encontrado")
+    now = datetime.now(timezone.utc).isoformat()
+    new_doc = {k: v for k, v in original.items()
+               if k not in ("id", "status", "created_at", "updated_at", "created_by", "created_by_name",
+                            "firma_isai", "firma_cliente")}
+    new_doc.update({
+        "id": str(uuid.uuid4()),
+        "status": "pendiente",
+        "created_at": now,
+        "updated_at": now,
+        "created_by": user["email"],
+        "created_by_name": user.get("name") or user["email"],
+        "firma_isai": "",
+        "firma_cliente": "",
+    })
+    await db.budgets.insert_one(new_doc)
+    return new_doc
+
+@api_router.post("/budgets/{bid}/attachments")
+async def upload_budget_attachment(bid: str, payload: BudgetAttachmentUpload, user: dict = Depends(require_permission("presupuestos.edit"))):
+    b = await db.budgets.find_one({"id": bid}, {"_id": 0})
+    if not b:
+        raise HTTPException(404, "Presupuesto no encontrado")
+    try:
+        raw_bytes = base64.b64decode(payload.data)
+    except Exception:
+        raise HTTPException(400, "Base64 inválido")
+    if len(raw_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(413, "El archivo excede 10MB")
+    now = datetime.now(timezone.utc).isoformat()
+    att = {
+        "id": str(uuid.uuid4()),
+        "name": payload.name[:200],
+        "mime": payload.mime,
+        "data": payload.data,
+        "size": len(raw_bytes),
+        "created_at": now,
+    }
+    await db.budgets.update_one({"id": bid}, {"$push": {"attachments": att}})
+    return {
+        "ok": True,
+        "attachment": {
+            "id": att["id"],
+            "name": att["name"],
+            "mime": att["mime"],
+            "size": att["size"],
+            "created_at": att["created_at"],
+        },
+    }
+
+@api_router.get("/budgets/{bid}/attachments/{aid}")
+async def get_budget_attachment(bid: str, aid: str, user: dict = Depends(require_permission("presupuestos.view"))):
+    b = await db.budgets.find_one({"id": bid}, {"_id": 0})
+    if not b:
+        raise HTTPException(404, "Presupuesto no encontrado")
+    for a in (b.get("attachments") or []):
+        if a.get("id") == aid:
+            return {"id": a["id"], "name": a["name"], "mime": a["mime"], "data": a["data"], "size": a["size"]}
+    raise HTTPException(404, "Adjunto no encontrado")
+
+@api_router.delete("/budgets/{bid}/attachments/{aid}")
+async def delete_budget_attachment(bid: str, aid: str, user: dict = Depends(require_permission("presupuestos.edit"))):
+    res = await db.budgets.update_one({"id": bid}, {"$pull": {"attachments": {"id": aid}}})
+    if res.modified_count == 0:
+        raise HTTPException(404, "Adjunto no encontrado")
     return {"ok": True}
 
 DEFAULT_EQUIPMENT_LIST = [
@@ -2730,7 +2973,7 @@ async def budgets_default_equipos(user: dict = Depends(current_budget_view)):
 
 
 @api_router.get("/budgets/{bid}/pdf")
-async def get_budget_pdf(bid: str, user: dict = Depends(current_budget_view)):
+async def get_budget_pdf(bid: str, user: dict = Depends(current_budget_export)):
     """
     Genera el PDF 'Hoja de instalación' rellenado con los datos del presupuesto,
     manteniendo el layout exacto del template y los campos editables (AcroForm).
@@ -2763,7 +3006,7 @@ async def post_budget_pdf_preview(payload: BudgetCreate,
     guardar. Recibe en el body los mismos campos que BudgetCreate.
     """
     data = payload.dict()
-    data["equipos"] = [e if isinstance(e, dict) else e.dict() for e in (payload.equipos or [])]
+    data["equipos"] = _serialize_equipos(payload.equipos or [])
     try:
         pdf_bytes = build_budget_pdf(data)
     except Exception as e:
@@ -3826,7 +4069,10 @@ async def portfolio_demo_video(request: Request):
 
 
 @api_router.get("/sat/export-excel")
-async def sat_export_excel(user: dict = Depends(require_permission("sat.view"))):
+async def sat_export_excel(user: dict = Depends(current_user)):
+    perms = await get_user_permissions(user)
+    if "sat.export" not in perms and "sat.edit" not in perms:
+        raise HTTPException(403, "No tienes permiso para exportar SAT")
     """Export all SAT incidents as an Excel file grouped by client."""
     incidents = await db.sat_incidents.find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
     clients = await db.sat_clients.find({}, {"_id": 0}).to_list(5000)
@@ -3921,6 +4167,9 @@ async def chat_messages(cid: str, user: dict = Depends(current_user), limit: int
 
 @api_router.post("/chats/{cid}/messages")
 async def chat_send_message(cid: str, payload: MessageCreate, user: dict = Depends(current_user)):
+    perms = await get_user_permissions(user)
+    if "chat.edit" not in perms and "chat.view" not in perms:
+        raise HTTPException(403, "No tienes permiso para enviar mensajes")
     chat = await db.chats.find_one({"id": cid})
     if not chat or user["id"] not in chat.get("participant_ids", []):
         raise HTTPException(404, "Chat no encontrado")
@@ -3972,6 +4221,108 @@ async def chat_unread_total(user: dict = Depends(current_user)):
     })
     return {"unread": total}
 
+@api_router.get("/preciario/productos")
+async def get_preciario_productos(
+    q: Optional[str] = Query(None, description="Buscar por referencia o descripción"),
+    stock_min: Optional[int] = Query(None, ge=0, description="Filtrar por stock mínimo (ej: 1 = solo productos con stock)"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    user: dict = Depends(require_permission("preciario.view")),
+):
+    wb = load_workbook(ROOT_DIR / "Tarifas2025 para isai.xlsx", data_only=True)
+    try:
+        ws = wb["tar2025"]
+        items = []
+        for row in ws.iter_rows(min_row=2, max_col=3, values_only=True):
+            ref_raw, descripcion_raw, precio_raw = row[0], row[1], row[2]
+            if ref_raw is None and descripcion_raw is None and precio_raw is None:
+                continue
+            ref = str(ref_raw).strip() if ref_raw is not None else ""
+            descripcion = str(descripcion_raw).strip() if descripcion_raw is not None else ""
+            precio_str = str(precio_raw).strip() if precio_raw is not None else ""
+            try:
+                # El Excel puede tener coma como separador decimal y punto como miles: 1.234,56
+                precio_str = precio_str.replace(".", "").replace(",", ".")
+                precio_unitario = float(precio_str)
+            except (ValueError, TypeError):
+                precio_unitario = 0.0
+            items.append({
+                "ref": ref,
+                "descripcion": descripcion,
+                "precio_unitario": precio_unitario,
+            })
+    finally:
+        wb.close()
+
+    # Cargar descuentos y stock guardados
+    docs = await db.preciario_descuentos.find({}, {"_id": 0}).to_list(length=None)
+    descuentos = {d["ref"]: d["descuento"] for d in docs}
+    stocks = {d["ref"]: d.get("stock", 0) for d in docs}
+
+    # Filtro por texto
+    if q:
+        q_lower = q.lower()
+        items = [i for i in items if q_lower in i["ref"].lower() or q_lower in i["descripcion"].lower()]
+
+    # Filtro por stock mínimo
+    if stock_min is not None:
+        items = [i for i in items if stocks.get(i["ref"], 0) >= stock_min]
+
+    total = len(items)
+    start = (page - 1) * page_size
+    items_pagina = items[start:start + page_size]
+
+    return {
+        "items": items_pagina,
+        "descuentos": descuentos,
+        "stocks": stocks,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+@api_router.get("/preciario/descuentos")
+async def get_preciario_descuentos(
+    user: dict = Depends(require_permission("preciario.view")),
+):
+    """Devuelve todos los descuentos guardados: { ref: descuento }"""
+    docs = await db.preciario_descuentos.find({}, {"_id": 0}).to_list(length=None)
+    return {d["ref"]: d["descuento"] for d in docs}
+
+class DescuentoBody(BaseModel):
+    ref: str
+    descuento: int = Field(ge=0, le=100)
+
+@api_router.patch("/preciario/descuentos")
+async def update_preciario_descuento(
+    body: DescuentoBody,
+    user: dict = Depends(require_permission("preciario.edit")),
+):
+    """Guarda o actualiza el descuento de un producto. Requiere permiso preciario.edit."""
+    await db.preciario_descuentos.update_one(
+        {"ref": body.ref},
+        {"$set": {"descuento": body.descuento}},
+        upsert=True,
+    )
+    return {"ok": True}
+
+class StockBody(BaseModel):
+    ref: str
+    stock: int = Field(ge=0, le=100)
+
+@api_router.patch("/preciario/stock")
+async def update_preciario_stock(
+    body: StockBody,
+    user: dict = Depends(require_permission("preciario.edit")),
+):
+    """Guarda o actualiza el stock de un producto. Requiere permiso preciario.edit."""
+    await db.preciario_descuentos.update_one(
+        {"ref": body.ref},
+        {"$set": {"stock": body.stock}},
+        upsert=True,
+    )
+    return {"ok": True}
+
 app.include_router(api_router)
 
 cors_origins = [FRONTEND_URL]
@@ -3994,6 +4345,10 @@ logger = logging.getLogger(__name__)
 
 @app.on_event("startup")
 async def on_startup():
+    try:
+        await db.preciario_descuentos.create_index("ref", unique=True)
+    except Exception:
+        pass  # el índice ya existe o hay duplicados; la app sigue funcionando
     await ensure_default_roles_and_migrate()
     await seed_admin_user()
     await seed_initial_data()
