@@ -124,11 +124,12 @@ export default function PreciarioScreen() {
   const setDescuento = async (ref: string, valor: number) => {
     const prev = descuentos[ref];
     setDescuentos((p) => ({ ...p, [ref]: valor }));
+    const prevRef = prev;
     setSaveError("");
     try {
       await api.updateDescuento(ref, valor);
     } catch (e: any) {
-      setDescuentos((p) => prev !== undefined ? { ...p, [ref]: prev } : (() => { const c = { ...p }; delete c[ref]; return c; })());
+      setDescuentos((p) => prevRef !== undefined ? { ...p, [ref]: prevRef } : (() => { const c = { ...p }; delete c[ref]; return c; })());
       setSaveError(e?.message || "Error al guardar el descuento");
     }
   };
@@ -136,11 +137,12 @@ export default function PreciarioScreen() {
   const setStock = async (ref: string, valor: number) => {
     const prev = stocks[ref];
     setStocks((p) => ({ ...p, [ref]: valor }));
+    const prevRef = prev;
     setSaveError("");
     try {
       await api.updateStock(ref, valor);
     } catch (e: any) {
-      setStocks((p) => prev !== undefined ? { ...p, [ref]: prev } : (() => { const c = { ...p }; delete c[ref]; return c; })());
+      setStocks((p) => prevRef !== undefined ? { ...p, [ref]: prevRef } : (() => { const c = { ...p }; delete c[ref]; return c; })());
       setSaveError(e?.message || "Error al guardar el stock");
     }
   };

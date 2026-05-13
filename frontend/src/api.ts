@@ -51,13 +51,14 @@ export const api = {
   register: (email: string, password: string, name?: string) =>
     request("/auth/register", { method: "POST", body: JSON.stringify({ email, password, name }) }, false),
   me: () => request("/auth/me"),
-  listMateriales: (q?: string, pendingOnly?: boolean, managerId?: string, unassigned?: boolean, projectStatus?: string) => {
+  listMateriales: (q?: string, pendingOnly?: boolean, managerId?: string, unassigned?: boolean, projectStatus?: string, year?: string) => {
     const p = new URLSearchParams();
     if (q) p.set("q", q);
     if (pendingOnly) p.set("pending_only", "true");
     if (managerId) p.set("manager_id", managerId);
     if (unassigned) p.set("unassigned", "true");
     if (projectStatus) p.set("project_status", projectStatus);
+    if (year && year !== "todos") p.set("year", year);
     const qs = p.toString();
     return request(`/materiales${qs ? "?" + qs : ""}`);
   },
@@ -66,10 +67,11 @@ export const api = {
     request(`/materiales/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   getMaterialHistory: (id: string) => request(`/materiales/${id}/history`),
   stats: () => request("/stats"),
+  statsByManager: (year?: string) => request(`/stats/by-manager${year && year !== "todos" ? "?year=" + year : ""}`),
   getDashboard: () => request("/dashboard"),
   exportProjectsExcel: async () => {
     const token = await getToken();
-    const res = await fetch(`${BASE}/api/materiales/export-excel`, {
+    const res = await fetch(`${backendBase()}/api/materiales/export-excel`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);

@@ -1,20 +1,23 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, FlatList,
   StyleSheet, ActivityIndicator, RefreshControl, Alert, Platform,
-  LayoutAnimation,
+  LayoutAnimation, ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api, clearToken, COLORS } from "../src/api";
+import { usePermissions } from "../src/permissions";
 import ResponsiveLayout from "../src/ResponsiveLayout";
 import { useBreakpoint } from "../src/useBreakpoint";
 import { useThemedStyles } from "../src/theme";
 
 export default function Materiales() {
   const router = useRouter();
+  const routerRef = useRef(router);
+  routerRef.current = router;
   const { isWide } = useBreakpoint();
   const [items, setItems] = useState<any[]>([]);
   const [q, setQ] = useState("");
@@ -29,6 +32,9 @@ export default function Materiales() {
   const [managerFilterIds, setManagerFilterIds] = useState<string[]>([]);
   const [statusFilterIds, setStatusFilterIds] = useState<string[]>([]);
   const [showStatusFilter, setShowStatusFilter] = useState(false);
+  const [managerStats, setManagerStats] = useState<any[]>([]);
+  const [showManagerPanel, setShowManagerPanel] = useState(false);
+  const [yearFilter, setYearFilter] = useState("todos");
 
   const PROJECT_STATUSES = [
     { key: "pendiente", label: "Pendiente", color: "#F59E0B" },
@@ -58,13 +64,14 @@ export default function Materiales() {
     AsyncStorage.setItem("mat_status_filter", JSON.stringify(statusFilterIds)).catch(() => {});
   }, [statusFilterIds]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
-      const managerId = managerFilterIds.length === 1 ? managerFilterIds[0] : undefined;
+      const managerId = managerFilterIds.length > 0 && !managerFilterIds.includes("__none__")
+        ? managerFilterIds.join(",") : undefined;
       const unassigned = managerFilterIds.includes("__none__");
       const statusParam = statusFilterIds.length > 0 ? statusFilterIds.join(",") : undefined;
       const [list, st, u] = await Promise.all([
-        api.listMateriales(q || undefined, pendingOnly, managerId, unassigned, statusParam),
+        api.listMateriales(q || undefined, pendingOnly, managerId, unassigned, statusParam, yearFilter),
         api.stats(),
         me ? Promise.resolve(me) : api.me(),
       ]);
@@ -74,7 +81,7 @@ export default function Materiales() {
     } catch (e: any) {
       if (/401|Invalid|expired/i.test(e.message)) {
         await clearToken();
-        router.replace("/login");
+        routerRef.current.replace("/login");
       } else {
         Alert.alert("Error", e.message);
       }
@@ -82,17 +89,18 @@ export default function Materiales() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [q, pendingOnly, managerFilterIds, statusFilterIds, yearFilter, me]);
 
   useFocusEffect(useCallback(() => {
     load();
     api.listManagers().then(setManagers).catch(() => {});
-  }, [q, pendingOnly, managerFilterIds, statusFilterIds]));
+    api.statsByManager(yearFilter).then(setManagerStats).catch(() => {});
+  }, [load, yearFilter]));
 
   useEffect(() => {
     const t = setTimeout(load, 300);
     return () => clearTimeout(t);
-  }, [q, pendingOnly, managerFilterIds, statusFilterIds]);
+  }, [load]);
 
   const toggleManagerFilter = (id: string) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -113,6 +121,8 @@ export default function Materiales() {
 
   const isAdmin = me?.role === "admin";
 
+  const { has } = usePermissions();
+  const esEditorCompleto = has("proyectos.edit");
   const s = useThemedStyles(useS);
 
   const renderItem = ({ item }: any) => {
@@ -127,7 +137,7 @@ export default function Materiales() {
       bloqueado: "#EF4444",
       anulado: "#6B7280",
     };
-    const statusBarColor = statusBarColors[projectStatus] || "#F59E0B";
+    const statusBarColor = esEditorCompleto ? (statusBarColors[projectStatus] || "#F59E0B") : "#F59E0B";
     const statusBadgeStyles: Record<string, { bg: string; fg: string; label: string }> = {
       a_facturar: { bg: COLORS.statusFacturarBg, fg: COLORS.statusFacturarFg, label: "Facturar" },
       planificado: { bg: COLORS.statusPlanifBg, fg: COLORS.statusPlanifFg, label: "Planif." },
@@ -136,7 +146,7 @@ export default function Materiales() {
       bloqueado: { bg: COLORS.statusBloqueadoBg, fg: COLORS.statusBloqueadoFg, label: "Bloqueado" },
       anulado: { bg: COLORS.statusAnuladoBg, fg: COLORS.statusAnuladoFg, label: "Anulado" },
     };
-    const st = item.project_status && item.project_status !== "pendiente" ? statusBadgeStyles[item.project_status] : null;
+    const st = esEditorCompleto && item.project_status && item.project_status !== "pendiente" ? statusBadgeStyles[item.project_status] : null;
     const horasPrev = parseFloat(item.horas_prev) || 0;
     const horasImp = parseFloat(item.horas_imputadas) || 0;
     return (
@@ -197,6 +207,160 @@ export default function Materiales() {
   return (
     <ResponsiveLayout active="proyectos" isAdmin={isAdmin} onLogout={logout} userName={me?.name}>
       <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
+      <View style={{ flex: 1, flexDirection: "row" }}>
+        {/* Desktop left panel: dashboard por gestor */}
+        {isWide && managerStats.length > 0 && (
+          <ScrollView style={{ flex: 1, borderRightWidth: 1, borderRightColor: COLORS.border, backgroundColor: COLORS.surface }}>
+            <View style={{ padding: 10 }}>
+              <Text style={{ fontSize: 9.5, fontWeight: "900", color: COLORS.textDisabled, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 8 }}>
+                POR GESTOR
+              </Text>
+              {/* Year filter */}
+              {Platform.OS === "web" ? (
+                <select
+                  value={yearFilter}
+                  onChange={(e: any) => setYearFilter(e.target.value)}
+                  style={{
+                    width: "100%", fontSize: 12, fontWeight: "600", color: COLORS.text,
+                    backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
+                    borderRadius: 7, paddingVertical: 6, paddingHorizontal: 8, marginBottom: 8,
+                    outline: "none",
+                  } as any}
+                >
+                  <option value="todos">Todos los años</option>
+                  {Array.from({ length: new Date().getFullYear() - 2021 }, (_, i) => 2022 + i).map((y) => (
+                    <option key={y} value={String(y)}>{y}</option>
+                  ))}
+                </select>
+              ) : (
+                <TouchableOpacity
+                  style={{
+                    flexDirection: "row", alignItems: "center", backgroundColor: COLORS.bg,
+                    borderWidth: 1, borderColor: COLORS.border, borderRadius: 7,
+                    paddingVertical: 8, paddingHorizontal: 10, marginBottom: 8, gap: 6,
+                  }}
+                  onPress={() => {
+                    const years = ["todos", ...Array.from({ length: new Date().getFullYear() - 2021 }, (_, i) => String(2022 + i))];
+                    const idx = years.indexOf(yearFilter);
+                    setYearFilter(years[(idx + 1) % years.length]);
+                  }}
+                >
+                  <Ionicons name="calendar-outline" size={14} color={COLORS.textSecondary} />
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: COLORS.text, flex: 1 }}>
+                    {yearFilter === "todos" ? "Todos los años" : yearFilter}
+                  </Text>
+                  <Ionicons name="chevron-down" size={12} color={COLORS.textDisabled} />
+                </TouchableOpacity>
+              )}
+              {/* Total row */}
+              {(() => {
+                const totalProyectos = managerStats.reduce((s, m) => s + m.total, 0);
+                const totalByStatus: Record<string, number> = {};
+                managerStats.forEach((m) => {
+                  Object.entries(m.by_status as Record<string, { count: number }>).forEach(([st, info]) => {
+                    totalByStatus[st] = (totalByStatus[st] || 0) + info.count;
+                  });
+                });
+                const STATUS_LABELS: Record<string, string> = {
+                  pendiente: "Pend.", planificado: "Plan.", a_facturar: "Fact.",
+                  facturado: "Fact.", terminado: "Term.", bloqueado: "Bloq.", anulado: "Anul.",
+                };
+                const STATUS_COLORS: Record<string, string> = {
+                  pendiente: "#F59E0B", planificado: "#3B82F6", a_facturar: "#8B5CF6",
+                  facturado: "#10B981", terminado: "#6366F1", bloqueado: "#EF4444", anulado: "#6B7280",
+                };
+                return (
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: COLORS.primarySoft, borderRadius: 7,
+                      padding: 6, marginBottom: 8,
+                    }}
+                    onPress={() => { setManagerFilterIds([]); setStatusFilterIds([]); }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 4 }}>
+                      <Ionicons name="layers" size={12} color={COLORS.primary} />
+                      <Text style={{ fontSize: 11.5, fontWeight: "900", color: COLORS.primary, flex: 1 }}>TOTAL</Text>
+                      <Text style={{ fontSize: 11, fontWeight: "900", color: COLORS.primary }}>{totalProyectos}</Text>
+                    </View>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 2 }}>
+                      {Object.entries(totalByStatus).sort(([a], [b]) => a.localeCompare(b)).map(([st, count]) => {
+                        const color = STATUS_COLORS[st] || "#999";
+                        const active = statusFilterIds.includes(st);
+                        return (
+                        <TouchableOpacity
+                          key={st}
+                          style={{
+                            backgroundColor: active ? color : (color + "18"),
+                            borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1.5,
+                          }}
+                          onPress={() => {
+                            setStatusFilterIds((p) => p.includes(st) ? p.filter((x) => x !== st) : [...p, st]);
+                          }}
+                        >
+                          <Text style={{ fontSize: 9, fontWeight: "700", color: active ? "#fff" : color }}>
+                            {STATUS_LABELS[st] || st} {count}
+                          </Text>
+                        </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })()}
+              {managerStats.map((mgr) => (
+                <TouchableOpacity
+                  key={mgr.id}
+                  style={{
+                    backgroundColor: managerFilterIds.includes(mgr.id) ? COLORS.bg : "transparent",
+                    borderRadius: 7,
+                    borderWidth: managerFilterIds.includes(mgr.id) ? 1.5 : 0,
+                    borderColor: mgr.color,
+                    padding: 6,
+                    marginBottom: 4,
+                  }}
+                  onPress={() => {
+                    setManagerFilterIds((p) => p.includes(mgr.id) ? p.filter((x) => x !== mgr.id) : [...p, mgr.id]);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                    <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: mgr.color }} />
+                    <Text style={{ fontSize: 11.5, fontWeight: "800", color: COLORS.text, flex: 1 }} numberOfLines={1}>
+                      {mgr.name.split(" ")[0]}
+                    </Text>
+                    <Text style={{ fontSize: 10, fontWeight: "900", color: COLORS.textDisabled }}>{mgr.total}</Text>
+                  </View>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 2, marginTop: 4 }}>
+                    {Object.entries(mgr.by_status as Record<string, { count: number; label: string; color: string }>).map(([st, info]) => {
+                      const active = managerFilterIds.includes(mgr.id) && statusFilterIds.includes(st);
+                      return (
+                        <TouchableOpacity
+                          key={st}
+                          style={{
+                            backgroundColor: active ? info.color : (info.color + "15"),
+                            borderRadius: 4,
+                            paddingHorizontal: 5,
+                            paddingVertical: 1.5,
+                          }}
+                          onPress={() => {
+                            setStatusFilterIds((p) => p.includes(st) ? p.filter((x) => x !== st) : [...p, st]);
+                          }}
+                        >
+                          <Text style={{ fontSize: 9, fontWeight: "700", color: active ? "#fff" : info.color }}>
+                            {info.label} <Text style={{ fontWeight: "900" }}>{info.count}</Text>
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        )}
+        {/* Main content area */}
+        <View style={{ flex: 3 }}>
       <View style={s.header}>
         <View style={{ flex: 1 }}>
           <Text style={s.headerTitle}>Proyectos</Text>
@@ -275,6 +439,7 @@ export default function Materiales() {
         >
           <Ionicons name="people" size={16} color={managerFilterIds.length > 0 ? "#fff" : COLORS.navy} />
         </TouchableOpacity>
+        {esEditorCompleto && (
         <TouchableOpacity
           testID="btn-filter-status"
           style={[s.filterBtn, statusFilterIds.length > 0 && s.filterBtnActive]}
@@ -282,6 +447,7 @@ export default function Materiales() {
         >
           <Ionicons name="flag" size={16} color={statusFilterIds.length > 0 ? "#fff" : COLORS.navy} />
         </TouchableOpacity>
+        )}
         <TouchableOpacity
           style={[s.filterBtn, { backgroundColor: COLORS.syncedBg, borderColor: COLORS.syncedText, borderWidth: 1 }]}
           onPress={async () => {
@@ -377,6 +543,110 @@ export default function Materiales() {
           updateCellsBatchingPeriod={50}
           removeClippedSubviews
         />
+      )}
+        </View>  {/* close main content */}
+      </View>  {/* close row */}
+
+      {/* Mobile: collapsible manager panel */}
+      {!isWide && managerStats.length > 0 && (
+        <View style={{ paddingHorizontal: 12 }}>
+          {/* Year filter for mobile */}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 4 }}>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: COLORS.textSecondary }}>Año:</Text>
+            {Platform.OS === "web" ? (
+              <select
+                value={yearFilter}
+                onChange={(e: any) => setYearFilter(e.target.value)}
+                style={{
+                  fontSize: 12, fontWeight: "600", color: COLORS.text,
+                  backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
+                  borderRadius: 7, paddingVertical: 5, paddingHorizontal: 8,
+                  outline: "none",
+                } as any}
+              >
+                <option value="todos">Todos</option>
+                {Array.from({ length: new Date().getFullYear() - 2021 }, (_, i) => 2022 + i).map((y) => (
+                  <option key={y} value={String(y)}>{y}</option>
+                ))}
+              </select>
+            ) : (
+              <TouchableOpacity
+                style={{
+                  flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surface,
+                  borderWidth: 1, borderColor: COLORS.border, borderRadius: 7,
+                  paddingVertical: 6, paddingHorizontal: 10,
+                }}
+                onPress={() => {
+                  const years = ["todos", ...Array.from({ length: new Date().getFullYear() - 2021 }, (_, i) => String(2022 + i))];
+                  const idx = years.indexOf(yearFilter);
+                  setYearFilter(years[(idx + 1) % years.length]);
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: "600", color: COLORS.text }}>
+                  {yearFilter === "todos" ? "Todos" : yearFilter}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <TouchableOpacity
+            style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8 }}
+            onPress={() => setShowManagerPanel(!showManagerPanel)}
+          >
+            <Ionicons name={showManagerPanel ? "chevron-down" : "chevron-forward"} size={16} color={COLORS.primary} />
+            <Text style={{ fontSize: 13, fontWeight: "800", color: COLORS.primary, letterSpacing: 0.5, textTransform: "uppercase" }}>
+              Por gestor
+            </Text>
+          </TouchableOpacity>
+          {showManagerPanel && (
+            <ScrollView horizontal style={{ maxHeight: 200, marginBottom: 8 }}>
+              <View style={{ flexDirection: "row", gap: 8, paddingBottom: 4 }}>
+                {managerStats.map((mgr) => (
+                  <TouchableOpacity
+                    key={mgr.id}
+                    style={{
+                      backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1,
+                      borderColor: managerFilterIds.includes(mgr.id) ? mgr.color : COLORS.border,
+                      padding: 10, minWidth: 180,
+                    }}
+                    onPress={() => {
+                      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                      setManagerFilterIds((p) => p.includes(mgr.id) ? p.filter((x) => x !== mgr.id) : [...p, mgr.id]);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: mgr.color }} />
+                      <Text style={{ fontSize: 13, fontWeight: "800", color: COLORS.text }} numberOfLines={1}>
+                        {mgr.name.split(" ")[0]}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: COLORS.textDisabled }}>{mgr.total}</Text>
+                    </View>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
+                      {Object.entries(mgr.by_status as Record<string, { count: number; label: string; color: string }>).map(([st, info]) => (
+                        <TouchableOpacity
+                          key={st}
+                          style={{
+                            backgroundColor: info.color + "20", borderRadius: 6,
+                            paddingHorizontal: 6, paddingVertical: 2,
+                            borderWidth: statusFilterIds.includes(st) ? 1.5 : 0,
+                            borderColor: info.color,
+                          }}
+                          onPress={() => {
+                            setStatusFilterIds((p) => p.includes(st) ? p.filter((x) => x !== st) : [...p, st]);
+                          }}
+                        >
+                          <Text style={{ fontSize: 10, fontWeight: "700", color: info.color }}>
+                            {info.label} {info.count}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          )}
+        </View>
       )}
 
       </SafeAreaView>

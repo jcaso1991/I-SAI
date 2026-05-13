@@ -10,7 +10,7 @@ import { useEffect, useState, useCallback } from "react";
 import { api } from "./api";
 
 export type PermissionKey =
-  | "proyectos.view" | "proyectos.edit"
+  | "proyectos.view" | "proyectos.edit" | "proyectos.editar_campo"
   | "calendario.view" | "calendario.edit"
   | "planos.view" | "planos.edit"
   | "presupuestos.view" | "presupuestos.edit"

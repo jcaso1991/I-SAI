@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { api, COLORS } from "../../src/api";
 import { useThemedStyles } from "../../src/theme";
+import { usePermissions } from "../../src/permissions";
 
 // ---------- date helpers ----------
 function todayISO(): string {
@@ -76,6 +77,10 @@ export default function MaterialDetail() {
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   const s = useThemedStyles(useS);
+  const { has } = usePermissions();
+  const esEditorCompleto = has("proyectos.edit");
+  const esEditorLimitado = has("proyectos.editar_campo") && !esEditorCompleto;
+  const puedeEditar = esEditorCompleto || esEditorLimitado;
 
   function ReadRow({ label, value }: { label: string; value?: string | null }) {
     return (
@@ -143,10 +148,18 @@ export default function MaterialDetail() {
     })();
   }, [id]);
 
+  const updateEventStatus = (eventId: string, newStatus: string) => {
+    setLinkedEvents((prev) =>
+      prev.map((ev) =>
+        ev.id === eventId ? { ...ev, status: newStatus } : ev
+      )
+    );
+  };
+
   const save = async () => {
     setSaving(true);
     try {
-      const updated = await api.updateMaterial(id, {
+      const payload: any = esEditorCompleto ? {
         fecha: fecha || null,
         entrega_recogida: entrega || null,
         total_parcial: tp || null,
@@ -155,7 +168,12 @@ export default function MaterialDetail() {
         comentarios: comentarios || null,
         manager_id: managerId || null,
         project_status: projectStatus || null,
-      });
+      } : {
+        entrega_recogida: entrega || "",
+        total_parcial: tp || "",
+        comentarios: comentarios || "",
+      };
+      const updated = await api.updateMaterial(id, payload);
       setM(updated);
       setDirty(false);
       Alert.alert("Guardado", "Cambios guardados. Se sincronizarán con OneDrive automáticamente.");
@@ -220,6 +238,8 @@ export default function MaterialDetail() {
           <View style={s.section}>
             <Text style={s.sectionTitle}>EDITABLE</Text>
 
+            {esEditorCompleto && (
+            <>
             <Text style={s.fieldLabel}>Estado</Text>
             <TouchableOpacity
               testID="picker-status"
@@ -241,7 +261,11 @@ export default function MaterialDetail() {
                 </Text>
               </View>
             </TouchableOpacity>
+            </>
+            )}
 
+            {esEditorCompleto && (
+            <>
             <Text style={s.fieldLabel}>Gestor asignado</Text>
             <TouchableOpacity
               testID="picker-manager"
@@ -291,22 +315,6 @@ export default function MaterialDetail() {
                 </TouchableOpacity>
               )}
             </TouchableOpacity>
-
-            <Text style={s.fieldLabel}>Entrega / Recogida</Text>
-            <ChipGroup
-              testID="chips-entrega"
-              value={entrega}
-              options={ENTREGA_OPTS}
-              onChange={(v) => { setEntrega(v); setDirty(true); }}
-            />
-
-            <Text style={s.fieldLabel}>Total / Parcial</Text>
-            <ChipGroup
-              testID="chips-tp"
-              value={tp}
-              options={TP_OPTS}
-              onChange={(v) => { setTp(v); setDirty(true); }}
-            />
 
             <Text style={s.fieldLabel}>Técnicos</Text>
             <TouchableOpacity
@@ -358,33 +366,51 @@ export default function MaterialDetail() {
                 <Text style={{ fontSize: 10, color: COLORS.textSecondary, minWidth: 60 }}>{ev.start_at?.slice(0, 16).replace("T", " ")}</Text>
                 <TouchableOpacity
                   style={[s.statusChip, ev.status === "in_progress" && { backgroundColor: COLORS.primarySoft }]}
-                  onPress={async () => { await api.updateEvent(ev.id.split(":")[0], { status: "in_progress" } as any); ev.status = "in_progress"; setLinkedEvents([...linkedEvents]); }}
+                  onPress={async () => { await api.updateEvent(ev.id.split(":")[0], { status: "in_progress" } as any); updateEventStatus(ev.id, "in_progress"); }}
                 >
                   <Text style={[s.statusChipTxt, ev.status === "in_progress" && { color: COLORS.primary }]}>Curso</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[s.statusChip, ev.status === "pending_completion" && { backgroundColor: COLORS.pendingBg }]}
-                  onPress={async () => { await api.updateEvent(ev.id.split(":")[0], { status: "pending_completion", seguimiento: "Pendiente desde proyecto" } as any); ev.status = "pending_completion"; setLinkedEvents([...linkedEvents]); }}
+                  onPress={async () => { await api.updateEvent(ev.id.split(":")[0], { status: "pending_completion", seguimiento: "Pendiente desde proyecto" } as any); updateEventStatus(ev.id, "pending_completion"); }}
                 >
                   <Text style={[s.statusChipTxt, ev.status === "pending_completion" && { color: COLORS.pendingText }]}>Pendiente</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[s.statusChip, ev.status === "completed" && { backgroundColor: COLORS.syncedBg }]}
-                  onPress={async () => { await api.updateEvent(ev.id.split(":")[0], { status: "completed" } as any); ev.status = "completed"; setLinkedEvents([...linkedEvents]); }}
+                  onPress={async () => { await api.updateEvent(ev.id.split(":")[0], { status: "completed" } as any); updateEventStatus(ev.id, "completed"); }}
                 >
                   <Text style={[s.statusChipTxt, ev.status === "completed" && { color: COLORS.syncedText }]}>Terminado</Text>
                 </TouchableOpacity>
               </View>
             ))}
           </View>
-        )}
+          )}
+            </>
+            )}
+
+            <Text style={s.fieldLabel}>Entrega / Recogida</Text>
+            <ChipGroup
+              testID="chips-entrega"
+              value={entrega}
+              options={ENTREGA_OPTS}
+              onChange={(v) => { if (puedeEditar) { setEntrega(v); setDirty(true); } }}
+            />
+
+            <Text style={s.fieldLabel}>Total / Parcial</Text>
+            <ChipGroup
+              testID="chips-tp"
+              value={tp}
+              options={TP_OPTS}
+              onChange={(v) => { if (puedeEditar) { setTp(v); setDirty(true); } }}
+            />
 
             <Text style={s.fieldLabel}>Comentarios</Text>
             <TextInput
               testID="input-comentarios"
               style={[s.input, s.textarea]}
               value={comentarios}
-              onChangeText={(v) => { setComentarios(v); setDirty(true); }}
+              onChangeText={(v) => { if (puedeEditar) { setComentarios(v); setDirty(true); } }}
               placeholder="Observaciones, incidencias..."
               placeholderTextColor={COLORS.textDisabled}
               multiline

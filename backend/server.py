@@ -235,7 +235,8 @@ async def current_admin(user: dict = Depends(current_user)) -> dict:
 # ---------------- Roles & Permissions ----------------
 PERMISSIONS_CATALOG = [
     {"key": "proyectos.view", "label": "Ver Proyectos", "module": "Proyectos"},
-    {"key": "proyectos.edit", "label": "Editar Proyectos", "module": "Proyectos"},
+    {"key": "proyectos.edit", "label": "Editar Proyectos (completo)", "module": "Proyectos"},
+    {"key": "proyectos.editar_campo", "label": "Editar solo recogida/total/observaciones", "module": "Proyectos"},
     {"key": "calendario.view", "label": "Ver Calendario", "module": "Calendario"},
     {"key": "calendario.edit", "label": "Crear/Editar eventos", "module": "Calendario"},
     {"key": "calendario.assign", "label": "Asignar técnicos a eventos", "module": "Calendario"},
@@ -2151,35 +2152,43 @@ async def sync_push(user: dict = Depends(require_permission("onedrive.manage")))
 
 # ---------------- Materials routes ----------------
 @api_router.get("/materiales", response_model=List[Material])
-async def list_materiales(user: dict = Depends(require_permission("proyectos.view")), q: Optional[str] = None, pending_only: bool = False, limit: int = 2000, manager_id: Optional[str] = None, unassigned: bool = False, project_status: Optional[str] = None):
+async def list_materiales(user: dict = Depends(require_permission("proyectos.view")), q: Optional[str] = None, pending_only: bool = False, limit: int = 2000, manager_id: Optional[str] = None, unassigned: bool = False, project_status: Optional[str] = None, year: Optional[str] = None):
     # fire-and-forget auto-import if stale
     await maybe_auto_import()
-    query: dict = {}
+    user_perms = await get_user_permissions(user)
+    es_editor_completo = "proyectos.edit" in user_perms
+    conditions = []
     if pending_only:
-        query["sync_status"] = "pending"
+        conditions.append({"sync_status": "pending"})
     if q:
         rx = {"$regex": q, "$options": "i"}
-        query["$or"] = [
+        conditions.append({"$or": [
             {"materiales": rx}, {"cliente": rx}, {"ubicacion": rx},
             {"tecnico": rx}, {"comentarios": rx}, {"comercial": rx}, {"gestor": rx},
-        ]
+        ]})
     if manager_id:
-        query["manager_id"] = manager_id
+        ids = [i.strip() for i in manager_id.split(",") if i.strip()]
+        conditions.append({"manager_id": ids[0] if len(ids) == 1 else {"$in": ids}})
     if unassigned:
-        query["manager_id"] = {"$in": [None, ""]}
+        conditions.append({"manager_id": {"$in": [None, ""]}})
     if project_status:
         status_list = [s.strip() for s in project_status.split(",") if s.strip()]
         if len(status_list) == 1:
             st = status_list[0]
             if st == "pendiente":
-                query["$or"] = [{"project_status": "pendiente"}, {"project_status": {"$exists": False}}]
+                conditions.append({"$or": [{"project_status": "pendiente"}, {"project_status": {"$exists": False}}]})
             else:
-                query["project_status"] = st
+                conditions.append({"project_status": st})
         elif len(status_list) > 1:
             q_list = [{"project_status": s} for s in status_list]
             if "pendiente" in status_list:
                 q_list.append({"project_status": {"$exists": False}})
-            query["$or"] = q_list
+            conditions.append({"$or": q_list})
+    if year and year != "todos":
+        conditions.append({"fecha": {"$regex": year}})
+    if not es_editor_completo:
+        conditions.append({"project_status": {"$ne": "terminado"}})
+    query = conditions[0] if len(conditions) == 1 else ({"$and": conditions} if len(conditions) > 1 else {})
     items = await db.materiales.find(query, {"_id": 0}).limit(limit).to_list(limit)
     items.sort(key=lambda x: x.get("row_index", 0))
     # Enrich with manager names and imputed hours from events
@@ -2404,19 +2413,34 @@ async def get_material(mid: str, user: dict = Depends(require_permission("proyec
         raise HTTPException(404, "Material no encontrado")
     # Imputed hours from events
     perms_get = await get_user_permissions(user)
-    if "materiales.view_hours" in perms_get or "proyectos.edit" in perms_get:
+    es_editor_completo = "proyectos.edit" in perms_get
+    if "materiales.view_hours" in perms_get or es_editor_completo:
         events = await db.events.find({"material_id": mid, "hours": {"$exists": True}}, {"hours": 1}).to_list(1000)
         doc["horas_imputadas"] = round(sum(_safe_float(ev.get("hours")) for ev in events), 1)
+    # Ocultar project_status a usuarios sin edición completa
+    if not es_editor_completo:
+        doc.pop("project_status", None)
     return doc
 
 @api_router.patch("/materiales/{mid}", response_model=Material)
-async def update_material(mid: str, payload: MaterialUpdate, user: dict = Depends(require_permission("proyectos.edit"))):
+async def update_material(mid: str, payload: MaterialUpdate, user: dict = Depends(current_user)):
+    user_perms = await get_user_permissions(user)
+    es_editor_completo = "proyectos.edit" in user_perms
+    es_editor_limitado = "proyectos.editar_campo" in user_perms
+    if not es_editor_completo and not es_editor_limitado:
+        raise HTTPException(403, "No tienes permiso para editar proyectos (proyectos.edit o proyectos.editar_campo)")
     old = await db.materiales.find_one({"id": mid})
     if not old:
         raise HTTPException(404, "Material no encontrado")
     upd = {k: v for k, v in payload.dict().items() if v is not None}
     if not upd:
         raise HTTPException(400, "Nada que actualizar")
+    # Editor limitado solo puede tocar entrega_recogida, total_parcial, comentarios
+    CAMPOS_LIMITADOS = {"entrega_recogida", "total_parcial", "comentarios"}
+    if not es_editor_completo:
+        for campo in list(upd.keys()):
+            if campo not in CAMPOS_LIMITADOS and campo != "sync_status":
+                raise HTTPException(403, f"No puedes editar el campo '{campo}'. Solo recogida, total/parcial y observaciones.")
     upd["sync_status"] = "pending"
     upd["updated_at"] = datetime.now(timezone.utc).isoformat()
     upd["updated_by"] = user["email"]
@@ -2455,6 +2479,53 @@ async def stats(user: dict = Depends(require_permission("proyectos.view"))):
     total = await db.materiales.count_documents({})
     pending = await db.materiales.count_documents({"sync_status": "pending"})
     return {"total": total, "pending": pending, "synced": total - pending}
+
+
+@api_router.get("/stats/by-manager")
+async def stats_by_manager(
+    user: dict = Depends(require_permission("proyectos.view")),
+    year: Optional[str] = Query(None, description="Filtrar por año (ej: 2025)"),
+):
+    """Devuelve estadísticas de proyectos por gestor y estado."""
+    user_perms = await get_user_permissions(user)
+    es_editor_completo = "proyectos.edit" in user_perms
+    statuses = ["pendiente", "planificado", "a_facturar", "facturado", "terminado", "bloqueado", "anulado"]
+    STATUS_LABELS = {
+        "pendiente": "Pendiente", "planificado": "Planif.", "a_facturar": "Facturar",
+        "facturado": "Facturado", "terminado": "Terminado", "bloqueado": "Bloqueado", "anulado": "Anulado",
+    }
+    STATUS_COLORS = {
+        "pendiente": "#F59E0B", "planificado": "#3B82F6", "a_facturar": "#8B5CF6",
+        "facturado": "#10B981", "terminado": "#6366F1", "bloqueado": "#EF4444", "anulado": "#6B7280",
+    }
+    managers = await db.users.find(
+        {"$or": [{"role": "admin"}, {"role": "gestor"}]},
+        {"_id": 0, "id": 1, "name": 1, "email": 1, "color": 1},
+    ).to_list(100)
+    result = []
+    for mgr in managers:
+        query: dict = {"manager_id": mgr["id"]}
+        if year and year != "todos":
+            query["fecha"] = {"$regex": year}
+        if not es_editor_completo:
+            query["project_status"] = {"$ne": "terminado"}
+        mats = await db.materiales.find(query, {"project_status": 1}).to_list(5000)
+        if not mats:
+            continue
+        by_status: dict = {}
+        for st in statuses:
+            count = sum(1 for m in mats if (m.get("project_status") or "pendiente") == st)
+            if count > 0:
+                by_status[st] = {"count": count, "label": STATUS_LABELS[st], "color": STATUS_COLORS[st]}
+        result.append({
+            "id": mgr["id"],
+            "name": mgr.get("name") or mgr.get("email", ""),
+            "color": mgr.get("color", "#3B82F6"),
+            "total": len(mats),
+            "by_status": by_status,
+        })
+    result.sort(key=lambda x: x["total"], reverse=True)
+    return result
 
 
 @api_router.get("/dashboard")
@@ -4229,6 +4300,8 @@ async def get_preciario_productos(
     page_size: int = Query(50, ge=1, le=200),
     user: dict = Depends(require_permission("preciario.view")),
 ):
+    user_perms = await get_user_permissions(user)
+    puede_ver_precios = "preciario.ver_precios" in user_perms or "preciario.edit" in user_perms
     wb = load_workbook(ROOT_DIR / "Tarifas2025 para isai.xlsx", data_only=True)
     try:
         ws = wb["tar2025"]
@@ -4249,7 +4322,7 @@ async def get_preciario_productos(
             items.append({
                 "ref": ref,
                 "descripcion": descripcion,
-                "precio_unitario": precio_unitario,
+                "precio_unitario": precio_unitario if puede_ver_precios else 0.0,
             })
     finally:
         wb.close()

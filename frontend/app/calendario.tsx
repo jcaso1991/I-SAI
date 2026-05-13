@@ -8,7 +8,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../src/api";
-import { useThemedStyles } from "../src/theme";
+import { useThemedStyles, useTheme } from "../src/theme";
 import ResponsiveLayout from "../src/ResponsiveLayout";
 import { useBreakpoint } from "../src/useBreakpoint";
 import DateTimeField from "../src/DateTimeField";
@@ -1076,6 +1076,8 @@ function DraggableEvent({
   layout?: { col: number; total: number; span: number };
 }) {
   const s = useThemedStyles(useS);
+  const { theme } = useTheme();
+  const eventTextColor = theme === "dark" ? "#FFFFFF" : COLORS.text;
   const start = new Date(event.start_at);
   const end = new Date(event.end_at);
   const initTop = yFromDate(start);
@@ -1332,7 +1334,7 @@ function DraggableEvent({
     : null;
   const baseColor = userColor || (hasMaterial ? COLORS.primary : "#6366F1");
   // Compute a light tint from the user color (use 22 alpha hex = ~13% opacity)
-  const bgTint = baseColor + "33";
+  const bgTint = baseColor + "CC";
   // Horizontal overlap layout (side-by-side + expand-to-fill + right gap).
   // Leave ~22% empty on the right of the RIGHTMOST event of each cluster so
   // the user can easily click&drag there to create a new overlapping event.
@@ -1401,13 +1403,13 @@ function DraggableEvent({
           <View pointerEvents="none" style={{ padding: 2 }}>
           {/* Top: assigned user(s) */}
           {event.assigned_users && event.assigned_users.length > 0 && (
-            <Text style={[s.eventAssignee, { color: baseColor }]} numberOfLines={1}>
+            <Text style={[s.eventAssignee, { color: eventTextColor }]} numberOfLines={1}>
               👤 {event.assigned_users.map((u) => u.name || u.email.split("@")[0]).join(", ")}
             </Text>
           )}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-            {isRecurring && <Ionicons name="repeat" size={10} color={baseColor} />}
-            <Text style={[s.eventTitle, { color: baseColor }]} numberOfLines={compact ? 1 : 2}>{event.title}</Text>
+            {isRecurring && <Ionicons name="repeat" size={10} color={COLORS.text} />}
+            <Text style={[s.eventTitle, { color: eventTextColor }]} numberOfLines={compact ? 1 : 2}>{event.title}</Text>
           </View>
           <Text style={s.eventTime}>{fmtTime(new Date(event.start_at))} - {fmtTime(new Date(event.end_at))}</Text>
           {!compact && event.material && (
@@ -1423,13 +1425,13 @@ function DraggableEvent({
       ) : (
         <TouchableOpacity onPress={onTap} activeOpacity={0.8} style={{ padding: 2 }}>
           {event.assigned_users && event.assigned_users.length > 0 && (
-            <Text style={[s.eventAssignee, { color: baseColor }]} numberOfLines={1}>
+            <Text style={[s.eventAssignee, { color: eventTextColor }]} numberOfLines={1}>
               👤 {event.assigned_users.map((u) => u.name || u.email.split("@")[0]).join(", ")}
             </Text>
           )}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-            {isRecurring && <Ionicons name="repeat" size={10} color={baseColor} />}
-            <Text style={[s.eventTitle, { color: baseColor }]} numberOfLines={compact ? 1 : 2}>{event.title}</Text>
+            {isRecurring && <Ionicons name="repeat" size={10} color={COLORS.text} />}
+            <Text style={[s.eventTitle, { color: eventTextColor }]} numberOfLines={compact ? 1 : 2}>{event.title}</Text>
           </View>
           <Text style={s.eventTime}>{fmtTime(new Date(event.start_at))} - {fmtTime(new Date(event.end_at))}</Text>
           {!compact && event.material && (
@@ -1474,7 +1476,7 @@ function DraggableEvent({
           }}
           hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
         >
-          <Ionicons name="copy-outline" size={14} color={baseColor} />
+          <Ionicons name="copy-outline" size={14} color={eventTextColor} />
         </TouchableOpacity>
       )}
     </View>
@@ -1978,6 +1980,17 @@ function EventDetailsModal({
       } as any);
       setStatus(newStatus);
       if (segText !== undefined) setSeguimiento(segText);
+      onChanged();
+    } catch (e: any) { Alert.alert("Error", e.message); }
+    finally { setSaving(false); }
+  };
+
+  const saveHours = async (newHours: string) => {
+    const parsed = newHours ? parseFloat(newHours) : null;
+    setSaving(true);
+    try {
+      await api.updateEvent(event.id, { hours: parsed } as any);
+      setEventHours(newHours);
       onChanged();
     } catch (e: any) { Alert.alert("Error", e.message); }
     finally { setSaving(false); }
@@ -2503,11 +2516,12 @@ function EventDetailsModal({
             )}
 
             <Text style={s.mLabel}>Horas asignadas</Text>
-            {editing && isAdmin ? (
+            {isAdmin ? (
               <>
                 <TouchableOpacity
                   style={s.pickMatBtn}
                   onPress={() => setShowEventHours((v) => !v)}
+                  disabled={saving}
                 >
                   <Ionicons name="time-outline" size={20} color={COLORS.primary} />
                   <Text style={{ color: eventHours ? COLORS.navy : COLORS.primary, fontWeight: "700", flex: 1 }}>{eventHours ? `${eventHours}h` : "Sin asignar"}</Text>
@@ -2519,7 +2533,7 @@ function EventDetailsModal({
                       <TouchableOpacity
                         key={h}
                         style={[s.recChip, eventHours === String(h) && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}
-                        onPress={() => { setEventHours(String(h)); setShowEventHours(false); }}
+                        onPress={() => { saveHours(String(h)); setShowEventHours(false); }}
                       >
                         <Text style={[s.recChipText, eventHours === String(h) && { color: "#fff" }]}>{h}h</Text>
                       </TouchableOpacity>
