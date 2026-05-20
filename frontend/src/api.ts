@@ -51,7 +51,7 @@ export const api = {
   register: (email: string, password: string, name?: string) =>
     request("/auth/register", { method: "POST", body: JSON.stringify({ email, password, name }) }, false),
   me: () => request("/auth/me"),
-  listMateriales: (q?: string, pendingOnly?: boolean, managerId?: string, unassigned?: boolean, projectStatus?: string, year?: string) => {
+  listMateriales: (q?: string, pendingOnly?: boolean, managerId?: string, unassigned?: boolean, projectStatus?: string, year?: string, month?: string) => {
     const p = new URLSearchParams();
     if (q) p.set("q", q);
     if (pendingOnly) p.set("pending_only", "true");
@@ -59,6 +59,7 @@ export const api = {
     if (unassigned) p.set("unassigned", "true");
     if (projectStatus) p.set("project_status", projectStatus);
     if (year && year !== "todos") p.set("year", year);
+    if (month && month !== "todos") p.set("month", month);
     const qs = p.toString();
     return request(`/materiales${qs ? "?" + qs : ""}`);
   },
@@ -174,8 +175,14 @@ export const api = {
       return res.json();
     });
   },
-  satList: (status?: "pendiente" | "resuelta") =>
-    request(`/sat/incidents${status ? `?status=${status}` : ""}`),
+  satList: (status?: "pendiente" | "resuelta", year?: string, month?: string) => {
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    if (year && year !== "todos") params.set("year", year);
+    if (month && month !== "todos") params.set("month", month);
+    const qs = params.toString();
+    return request(`/sat/incidents${qs ? "?" + qs : ""}`);
+  },
   satGet: (id: string) => request(`/sat/incidents/${id}`),
   satUpdate: (id: string, body: any) =>
     request(`/sat/incidents/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
@@ -231,6 +238,21 @@ export const api = {
     request("/preciario/descuentos", { method: "PATCH", body: JSON.stringify({ ref, descuento }) }),
   updateStock: (ref: string, stock: number) =>
     request("/preciario/stock", { method: "PATCH", body: JSON.stringify({ ref, stock }) }),
+
+  // Notas personales
+  listNotas: (fecha?: string) => request(`/notas${fecha ? "?fecha=" + fecha : ""}`),
+  createNota: (body: { titulo?: string; contenido?: string; fecha?: string }) =>
+    request("/notas", { method: "POST", body: JSON.stringify(body) }),
+  updateNota: (id: string, body: { titulo?: string; contenido?: string; fecha?: string }) =>
+    request(`/notas/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteNota: (id: string) => request(`/notas/${id}`, { method: "DELETE" }),
+
+  // Documentos (fichas técnicas / manuales)
+  listDocumentos: (categoria?: string) => request(`/documentos${categoria ? "?categoria=" + categoria : ""}`),
+  createDocumento: (body: { titulo: string; categoria: string; filename: string; file_base64: string }) =>
+    request("/documentos", { method: "POST", body: JSON.stringify(body) }),
+  getDocumento: (id: string) => request(`/documentos/${id}`),
+  deleteDocumento: (id: string) => request(`/documentos/${id}`, { method: "DELETE" }),
 
   satClientImport: async (file: { uri: string; name: string; mimeType?: string } | File, replace = false) => {
     const form = new FormData();
@@ -307,7 +329,7 @@ export const api = {
     return await res.blob();
   },
   // Convert JPEG/PNG base64 to a single-page PDF (returns base64 of the PDF)
-  imageToPdfBase64: async (base64: string, mime_type: string = "image/jpeg"): Promise<string> => {
+  imageToPdfBase64: async (base64: string, mime_type: string = "image/jpeg", orientation?: string): Promise<string> => {
     const t = await getToken();
     const res = await fetch(apiUrl("/utils/image-to-pdf"), {
       method: "POST",
@@ -315,7 +337,7 @@ export const api = {
         "Content-Type": "application/json",
         ...(t ? { Authorization: `Bearer ${t}` } : {}),
       },
-      body: JSON.stringify({ base64, mime_type }),
+      body: JSON.stringify({ base64, mime_type, orientation }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const blob = await res.blob();

@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import Svg, { Circle, G } from "react-native-svg";
 import { api, COLORS } from "../../api";
 import { ios } from "../../ui/iosTheme";
 import { useS } from "./DashboardStyles";
@@ -36,6 +37,93 @@ const MONTHS_ES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep"
 
 function getCurrentMonthAbbr(): string {
   return MONTHS_ES[new Date().getMonth()] ?? "";
+}
+
+function DonutChart({ data, size = 140 }: { data: Array<{ label: string; value: number; color: string }>; size?: number }) {
+  const strokeWidth = 22;
+  const radius = (size - strokeWidth) / 2;
+  const center = size / 2;
+  const circumference = 2 * Math.PI * radius;
+  const total = data.reduce((sum, d) => sum + d.value, 0);
+
+  let cumulativeOffset = 0;
+
+  return (
+    <View style={{ position: "relative", width: size, height: size }}>
+      <Svg width={size} height={size}>
+        <G rotation={-90} origin={`${center}, ${center}`}>
+          {data.map((item, i) => {
+            const pct = total > 0 ? item.value / total : 0;
+            const dashLength = Math.max(pct * circumference, pct > 0 ? 2 : 0);
+            const offset = -cumulativeOffset;
+            cumulativeOffset += dashLength;
+            return (
+              <Circle
+                key={i}
+                cx={center}
+                cy={center}
+                r={radius}
+                stroke={item.color}
+                strokeWidth={strokeWidth}
+                fill="none"
+                strokeLinecap="butt"
+                strokeDasharray={`${dashLength} ${circumference}`}
+                strokeDashoffset={offset}
+              />
+            );
+          })}
+        </G>
+      </Svg>
+      <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center" }}>
+        <Text style={{ fontSize: 22, fontWeight: "900", color: COLORS.text }}>{total}</Text>
+        <Text style={{ fontSize: 11, color: COLORS.textSecondary }}>proyectos</Text>
+      </View>
+    </View>
+  );
+}
+
+function CircularProgress({ value, max, size = 110, color, label }: { value: number; max: number; size?: number; color?: string; label?: string }) {
+  const strokeWidth = 14;
+  const radius = (size - strokeWidth) / 2;
+  const center = size / 2;
+  const circumference = 2 * Math.PI * radius;
+  const pct = max > 0 ? Math.min(value / max, 1) : 0;
+  const dashLength = pct * circumference;
+  const progressColor = color || (pct >= 1 ? COLORS.errorText : COLORS.primary);
+
+  return (
+    <View style={{ position: "relative", width: size, height: size }}>
+      <Svg width={size} height={size}>
+        <G rotation={-90} origin={`${center}, ${center}`}>
+          <Circle
+            cx={center}
+            cy={center}
+            r={radius}
+            stroke={COLORS.borderInput}
+            strokeOpacity={0.5}
+            strokeWidth={strokeWidth}
+            fill="none"
+          />
+          <Circle
+            cx={center}
+            cy={center}
+            r={radius}
+            stroke={progressColor}
+            strokeWidth={strokeWidth}
+            fill="none"
+            strokeLinecap="round"
+            strokeDasharray={`${dashLength} ${circumference}`}
+            strokeDashoffset={0}
+          />
+        </G>
+      </Svg>
+      <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center" }}>
+        <Text style={{ fontSize: 20, fontWeight: "900", color: COLORS.text }}>{value}h</Text>
+        <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>de {max}h previstas</Text>
+        <Text style={{ fontSize: 12, fontWeight: "800", color: progressColor }}>{Math.round(pct * 100)}%</Text>
+      </View>
+    </View>
+  );
 }
 
 export default function DashboardData() {
@@ -79,12 +167,15 @@ export default function DashboardData() {
   }
 
   return (
-    <View style={{ gap: 12, marginBottom: 8 }}>
+    <View style={{ gap: 16, marginBottom: 8 }}>
       <TodayRow dash={dash} router={router} />
-      <ProjectsByStatus dash={dash} router={router} />
-      <GlobalHours dash={dash} />
+      <View style={{ flexDirection: "row", gap: 16 }}>
+        <View style={{ flex: 1 }}><ProjectsByStatus dash={dash} router={router} /></View>
+        <View style={{ flex: 1 }}><GlobalHours dash={dash} /></View>
+      </View>
       <ProjectsOverHours dash={dash} router={router} />
       <ManagerHours dash={dash} />
+      <BudgetsKPI />
       <ProjectsByMonth dash={dash} />
       <SatByMonth dash={dash} />
     </View>
@@ -94,72 +185,29 @@ export default function DashboardData() {
 function TodayRow({ dash, router }: { dash: any; router: any }) {
   const s = useThemedStyles(useS);
   return (
-    <>
-      <Text style={s.sectionTitle}>Hoy</Text>
-      <View style={s.dashStripRow}>
-        <TouchableOpacity style={s.dashMiniCard} onPress={() => router.push("/calendario")}>
-          <View style={[s.dashMiniIcon, { backgroundColor: COLORS.primarySoft }]}>
-            <Ionicons name="today-outline" size={18} color={COLORS.primary} />
-          </View>
-          <Text style={s.dashMiniVal}>{dash.today?.events || 0}</Text>
-          <Text style={s.dashMiniLbl}>Eventos hoy</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={s.dashMiniCard} onPress={() => router.push("/sat")}>
-          <View style={[s.dashMiniIcon, { backgroundColor: COLORS.pendingBg }]}>
-            <Ionicons name="alert-circle-outline" size={18} color={COLORS.pendingText} />
-          </View>
-          <Text style={s.dashMiniVal}>{dash.today?.pending_sat || 0}</Text>
-          <Text style={s.dashMiniLbl}>SAT pendiente</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={s.dashMiniCard} onPress={() => router.push("/presupuestos")}>
-          <View style={[s.dashMiniIcon, { backgroundColor: COLORS.pillPurpleBg }]}>
-            <Ionicons name="document-text-outline" size={18} color={COLORS.pillPurpleText} />
-          </View>
-          <Text style={s.dashMiniVal}>{dash.today?.pending_budgets || 0}</Text>
-          <Text style={s.dashMiniLbl}>Presup. pendientes</Text>
-        </TouchableOpacity>
-      </View>
-    </>
-  );
-}
-
-function GlobalHours({ dash }: { dash: any }) {
-  const s = useThemedStyles(useS);
-  const prev = dash.total_previstas_hours || 0;
-  const imp = dash.total_imputadas_hours || 0;
-  const pct = prev > 0 ? Math.min((imp / prev) * 100, 100) : 0;
-  const over = imp > prev;
-  return (
-    <>
-      <Text style={s.sectionTitle}>Horas totales</Text>
-      <View style={{ backgroundColor: COLORS.surface, borderRadius: 10, padding: 14, borderWidth: 1, borderColor: COLORS.border }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
-          <View style={{ flexDirection: "row", alignItems: "baseline", gap: 6 }}>
-            <Text style={{ fontSize: 28, fontWeight: "900", color: over ? COLORS.errorText : COLORS.text }}>{imp}h</Text>
-            <Text style={{ fontSize: 14, color: COLORS.textSecondary }}>de {prev}h previstas</Text>
-          </View>
-          <Text style={{ fontSize: 18, fontWeight: "800", color: over ? COLORS.errorText : COLORS.primary }}>
-            {Math.round(pct)}%
-          </Text>
+    <View style={s.kpiStrip}>
+      <TouchableOpacity style={s.kpiCard} onPress={() => router.push("/calendario")}>
+        <View style={[s.kpiIconCircle, { backgroundColor: COLORS.primarySoft }]}>
+          <Ionicons name="calendar-outline" size={20} color={COLORS.primary} />
         </View>
-        <View style={{ height: 12, backgroundColor: COLORS.bg, borderRadius: 6, overflow: "hidden" }}>
-          <View style={{
-            height: 12,
-            width: `${Math.min(pct, 100)}%`,
-            backgroundColor: over ? COLORS.errorText : COLORS.primary,
-            borderRadius: 6,
-          }} />
+        <Text style={s.kpiValue}>{dash.today?.events || 0}</Text>
+        <Text style={s.kpiLabel}>Eventos hoy</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={s.kpiCard} onPress={() => router.push("/sat")}>
+        <View style={[s.kpiIconCircle, { backgroundColor: COLORS.pendingBg }]}>
+          <Ionicons name="alert-circle-outline" size={20} color={COLORS.pendingText} />
         </View>
-        {over && (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 }}>
-            <Ionicons name="warning" size={14} color={COLORS.errorText} />
-            <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.errorText }}>
-              +{Math.round(imp - prev)}h por encima de lo previsto
-            </Text>
-          </View>
-        )}
-      </View>
-    </>
+        <Text style={s.kpiValue}>{dash.today?.pending_sat || 0}</Text>
+        <Text style={s.kpiLabel}>SAT pendiente</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={s.kpiCard} onPress={() => router.push("/presupuestos")}>
+        <View style={[s.kpiIconCircle, { backgroundColor: COLORS.pillPurpleBg }]}>
+          <Ionicons name="document-text-outline" size={20} color={COLORS.pillPurpleText} />
+        </View>
+        <Text style={s.kpiValue}>{dash.today?.pending_budgets || 0}</Text>
+        <Text style={s.kpiLabel}>Presup. pendientes</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -173,37 +221,57 @@ function ProjectsByStatus({ dash, router }: { dash: any; router: any }) {
 
   const ordered = STATUS_ORDER
     .filter(status => dash.projects_by_status[status] != null)
-    .map(status => [status, dash.projects_by_status[status] as number] as const);
+    .map(status => ({ label: status.replace("_", " "), value: dash.projects_by_status[status] as number, color: PROJECT_STATUS_COLORS[status] || "#999" }));
 
   if (!ordered.length) return null;
 
   return (
-    <>
-      <Text style={s.sectionTitle}>Proyectos por estado</Text>
-      <View style={s.statusBarWrap}>
-        <View style={s.statusBar}>
-          {ordered.map(([status, count]) => (
-            <View
-              key={status}
-              style={[s.statusBarSegment, { width: `${(count / total) * 100}%`, backgroundColor: PROJECT_STATUS_COLORS[status] || "#999" }]}
-            />
-          ))}
-        </View>
-        <View style={s.statusLegend}>
-          {ordered.map(([status, count]) => (
+    <View style={s.cardWrap}>
+      <View style={s.cardHeader}>
+        <Text style={s.cardTitle}>Proyectos por estado</Text>
+      </View>
+      <View style={{ alignItems: "center", gap: 12 }}>
+        <DonutChart data={ordered} size={140} />
+        <View style={[s.donutLegend, { flexDirection: "row", flexWrap: "wrap", justifyContent: "center" }]}>
+          {ordered.map((item) => (
             <TouchableOpacity
-              key={status}
-              style={s.statusLegendItem}
-              onPress={() => router.push(`/materiales?status=${status}` as any)}
+              key={item.label}
+              style={s.donutLegendItem}
+              onPress={() => router.push(`/materiales?status=${item.label.replace(" ", "_")}` as any)}
             >
-              <View style={[s.statusLegendDot, { backgroundColor: PROJECT_STATUS_COLORS[status] || "#999" }]} />
-              <Text style={s.statusLegendText}>{status.replace("_", " ")}</Text>
-              <Text style={s.statusLegendCount}>{count}</Text>
+              <View style={[s.donutLegendDot, { backgroundColor: item.color }]} />
+              <Text style={s.donutLegendText}>{item.label}</Text>
+              <Text style={s.donutLegendCount}>{item.value}</Text>
             </TouchableOpacity>
           ))}
         </View>
       </View>
-    </>
+    </View>
+  );
+}
+
+function GlobalHours({ dash }: { dash: any }) {
+  const s = useThemedStyles(useS);
+  const prev = dash.total_previstas_hours || 0;
+  const imp = dash.total_imputadas_hours || 0;
+  const over = imp > prev;
+  return (
+    <View style={s.cardWrap}>
+      <View style={s.cardHeader}>
+        <Text style={s.cardTitle}>Horas totales</Text>
+      </View>
+      <View style={s.circularProgressWrap}>
+        <CircularProgress value={imp} max={prev} size={110} />
+      </View>
+      {over && (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4, justifyContent: "center" }}>
+          <Ionicons name="warning" size={14} color={COLORS.errorText} />
+          <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.errorText }}>
+            +{Math.round(imp - prev)}h por encima de lo previsto
+          </Text>
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -217,16 +285,16 @@ function ProjectsOverHours({ dash, router }: { dash: any; router: any }) {
   }>;
 
   return (
-    <>
+    <View style={s.cardWrap}>
       <TouchableOpacity
-        style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8, marginLeft: 16 }}
+        style={[s.cardHeader, { marginBottom: open || count === 0 ? 16 : 0 }]}
         onPress={() => setOpen(!open)}
         activeOpacity={0.7}
       >
-        <Ionicons name="warning-outline" size={16} color={COLORS.pendingText} />
-        <Text style={{ fontSize: 13, fontWeight: "600", color: COLORS.textSecondary, textTransform: "uppercase", letterSpacing: 0.5, flex: 1 }}>
-          Proyectos fuera de horas
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+          <Ionicons name="warning-outline" size={16} color={COLORS.pendingText} />
+          <Text style={s.cardTitle}>Proyectos fuera de horas</Text>
+        </View>
         {count > 0 && (
           <View style={s.overHoursBubble}>
             <Text style={s.overHoursBubbleText}>{count}</Text>
@@ -240,7 +308,7 @@ function ProjectsOverHours({ dash, router }: { dash: any; router: any }) {
         <Ionicons name={open ? "chevron-up" : "chevron-down"} size={16} color={COLORS.textSecondary} />
       </TouchableOpacity>
       {count === 0 ? (
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 16, marginBottom: 4 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
           <Ionicons name="checkmark-circle-outline" size={20} color={COLORS.syncedText} />
           <Text style={{ fontSize: 13, color: COLORS.syncedText, fontWeight: "500" }}>
             Todos los proyectos están dentro de lo previsto
@@ -286,7 +354,7 @@ function ProjectsOverHours({ dash, router }: { dash: any; router: any }) {
           })}
         </View>
       ) : null}
-    </>
+    </View>
   );
 }
 
@@ -294,8 +362,10 @@ function ManagerHours({ dash }: { dash: any }) {
   const s = useThemedStyles(useS);
   if (!dash.manager_hours?.length) return null;
   return (
-    <>
-      <Text style={s.sectionTitle}>Horas por gestor</Text>
+    <View style={s.cardWrap}>
+      <View style={s.cardHeader}>
+        <Text style={s.cardTitle}>Horas por gestor</Text>
+      </View>
       {dash.manager_hours.slice(0, 5).map((m: any, i: number) => {
         const byStatus = m.by_status || {};
         const statusColors: Record<string, string> = {
@@ -334,52 +404,178 @@ function ManagerHours({ dash }: { dash: any }) {
           </View>
         );
       })}
-    </>
+    </View>
   );
 }
 
 function ProjectsByMonth({ dash }: { dash: any }) {
   const s = useThemedStyles(useS);
+  const router = useRouter();
   if (!dash.projects_by_month?.length) return null;
   const currentMonth = getCurrentMonthAbbr();
   return (
-    <>
-      <Text style={s.sectionTitle}>Proyectos cerrados por mes · {dash.total_active_hours || 0}h activas</Text>
+    <View style={s.cardWrap}>
+      <View style={s.cardHeader}>
+        <Text style={s.cardTitle}>Proyectos cerrados por mes</Text>
+        <Text style={{ fontSize: 12, fontWeight: "800", color: COLORS.textSecondary }}>{dash.total_active_hours || 0}h activas</Text>
+      </View>
       <View style={s.monthScroll}>
         {dash.projects_by_month.map((m: any, i: number) => {
           const isCurrent = m.month === currentMonth;
           return (
-            <View key={i} style={[s.monthMiniCard, isCurrent && s.monthMiniCurrent]}>
+            <TouchableOpacity
+              key={i}
+              style={[s.monthMiniCard, isCurrent && s.monthMiniCurrent]}
+              onPress={() => {
+                const status = "terminado,facturado";
+                const params = new URLSearchParams();
+                params.set("project_status", status);
+                if (m.year) params.set("year", m.year);
+                if (m.month_num) params.set("month", m.month_num);
+                router.push(`/materiales?${params.toString()}` as any);
+              }}
+              activeOpacity={0.7}
+            >
               <Text style={s.monthMiniMonth}>{m.month}</Text>
               <Text style={s.monthMiniCount}>{m.count}</Text>
               <Text style={s.monthMiniHours}>{m.hours}h</Text>
-            </View>
+            </TouchableOpacity>
           );
         })}
       </View>
-    </>
+    </View>
   );
 }
 
 function SatByMonth({ dash }: { dash: any }) {
   const s = useThemedStyles(useS);
+  const router = useRouter();
   if (!dash.sat_by_month?.length) return null;
   const currentMonth = getCurrentMonthAbbr();
   return (
-    <>
-      <Text style={s.sectionTitle}>Incidencias SAT por mes</Text>
+    <View style={s.cardWrap}>
+      <View style={s.cardHeader}>
+        <Text style={s.cardTitle}>Incidencias SAT por mes</Text>
+      </View>
       <View style={s.monthScroll}>
         {dash.sat_by_month.map((m: any, i: number) => {
           const isCurrent = m.month === currentMonth;
           return (
-            <View key={i} style={[s.monthMiniCard, isCurrent && s.monthMiniCurrent]}>
+            <TouchableOpacity
+              key={i}
+              style={[s.monthMiniCard, isCurrent && s.monthMiniCurrent]}
+              onPress={() => {
+                const params = new URLSearchParams();
+                params.set("status", "resuelta");
+                if (m.year) params.set("year", m.year);
+                if (m.month_num) params.set("month", m.month_num);
+                router.push(`/sat?${params.toString()}` as any);
+              }}
+              activeOpacity={0.7}
+            >
               <Text style={s.monthMiniMonth}>{m.month}</Text>
               <Text style={s.monthMiniCount}>{m.total}</Text>
               <Text style={s.monthMiniHours}>{m.resolved} res.</Text>
-            </View>
+            </TouchableOpacity>
           );
         })}
       </View>
-    </>
+    </View>
+  );
+}
+
+const BUDGET_STATUS_COLORS: Record<string, string> = {
+  pendiente: "#F59E0B",
+  en_revision: "#8B5CF6",
+  aceptado: "#10B981",
+  rechazado: "#EF4444",
+  facturado: "#3B82F6",
+};
+const BUDGET_STATUS_LABELS: Record<string, string> = {
+  pendiente: "Pendientes",
+  en_revision: "En revisión",
+  aceptado: "Aceptados",
+  rechazado: "Rechazados",
+  facturado: "Facturados",
+};
+const BUDGET_STATUS_ORDER = ["pendiente", "en_revision", "aceptado", "rechazado", "facturado"];
+
+function BudgetsKPI() {
+  const s = useThemedStyles(useS);
+  const [stats, setStats] = useState<any>(null);
+
+  useFocusEffect(useCallback(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const d = await api.getBudgetsStats().catch(() => null);
+        if (!alive) return;
+        setStats(d);
+      } catch {}
+    })();
+    return () => { alive = false; };
+  }, []));
+
+  if (!stats || !stats.by_status) return null;
+
+  const total = BUDGET_STATUS_ORDER.reduce((sum, st) => sum + (stats.by_status[st] || 0), 0);
+  if (total === 0) return null;
+
+  return (
+    <View style={s.cardWrap}>
+      <View style={s.cardHeader}>
+        <Text style={s.cardTitle}>Presupuestos</Text>
+        <Text style={{ fontSize: 12, fontWeight: "800", color: COLORS.textSecondary }}>Total: {total}</Text>
+      </View>
+      <View style={{ flexDirection: "row", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        {BUDGET_STATUS_ORDER.map((st) => {
+          const count = stats.by_status[st] || 0;
+          return (
+            <View key={st} style={[s.dashCard, { minWidth: 70, borderLeftWidth: 3, borderLeftColor: BUDGET_STATUS_COLORS[st] || "#999" }]}>
+              <Text style={[s.dashVal, { fontSize: 18 }]}>{count}</Text>
+              <Text style={s.dashLbl}>{BUDGET_STATUS_LABELS[st] || st}</Text>
+            </View>
+          );
+        })}
+        <View style={[s.dashCard, { minWidth: 70, borderLeftWidth: 3, borderLeftColor: "#6B7280" }]}>
+          <Text style={[s.dashVal, { fontSize: 18 }]}>{total}</Text>
+          <Text style={s.dashLbl}>Total</Text>
+        </View>
+      </View>
+      {stats.accepted_this_month != null && (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12, paddingHorizontal: 4 }}>
+          <Ionicons name="checkmark-circle" size={18} color={BUDGET_STATUS_COLORS.aceptado} />
+          <Text style={{ fontSize: 13, fontWeight: "700", color: COLORS.text }}>
+            Aceptados este mes: <Text style={{ color: BUDGET_STATUS_COLORS.aceptado }}>{stats.accepted_this_month}</Text>
+          </Text>
+        </View>
+      )}
+      {stats.by_commercial && stats.by_commercial.length > 0 && (
+        <View style={{ gap: 4 }}>
+          <Text style={{ fontSize: 11, fontWeight: "800", color: COLORS.textSecondary, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4, paddingHorizontal: 4 }}>
+            Por comercial
+          </Text>
+          {stats.by_commercial.map((c: any, i: number) => (
+            <View key={i} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 4, paddingHorizontal: 4 }}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: COLORS.text, flex: 1 }} numberOfLines={1}>
+                {c.name || c.email || "—"}
+              </Text>
+              <View style={{ flexDirection: "row", gap: 4 }}>
+                {BUDGET_STATUS_ORDER.map((st) => {
+                  const v = c[st] || 0;
+                  if (v <= 0) return null;
+                  return (
+                    <View key={st} style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: BUDGET_STATUS_COLORS[st] || "#999" }} />
+                      <Text style={{ fontSize: 10, fontWeight: "700", color: COLORS.textSecondary }}>{v}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
   );
 }

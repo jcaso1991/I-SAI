@@ -5,19 +5,20 @@ import {
   LayoutAnimation, ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api, clearToken, COLORS } from "../src/api";
 import { usePermissions } from "../src/permissions";
 import ResponsiveLayout from "../src/ResponsiveLayout";
 import { useBreakpoint } from "../src/useBreakpoint";
-import { useThemedStyles } from "../src/theme";
+import { useThemedStyles, useTheme } from "../src/theme";
 
 export default function Materiales() {
   const router = useRouter();
   const routerRef = useRef(router);
   routerRef.current = router;
+  const params = useLocalSearchParams<{ project_status?: string; year?: string; month?: string }>();
   const { isWide } = useBreakpoint();
   const [items, setItems] = useState<any[]>([]);
   const [q, setQ] = useState("");
@@ -30,11 +31,14 @@ export default function Materiales() {
   const [managers, setManagers] = useState<any[]>([]);
   const [showManagerFilter, setShowManagerFilter] = useState(false);
   const [managerFilterIds, setManagerFilterIds] = useState<string[]>([]);
-  const [statusFilterIds, setStatusFilterIds] = useState<string[]>([]);
+  const [statusFilterIds, setStatusFilterIds] = useState<string[]>(
+    params.project_status ? params.project_status.split(",") : []
+  );
   const [showStatusFilter, setShowStatusFilter] = useState(false);
   const [managerStats, setManagerStats] = useState<any[]>([]);
   const [showManagerPanel, setShowManagerPanel] = useState(false);
-  const [yearFilter, setYearFilter] = useState("todos");
+  const [yearFilter, setYearFilter] = useState(params.year || "todos");
+  const [monthFilter, setMonthFilter] = useState(params.month || "");
 
   const PROJECT_STATUSES = [
     { key: "pendiente", label: "Pendiente", color: "#F59E0B" },
@@ -46,14 +50,16 @@ export default function Materiales() {
     { key: "anulado", label: "Anulado", color: "#6B7280" },
   ];
 
-  // Persist manager and status filters
+  // Persist manager and status filters (only if no URL params passed)
   useEffect(() => {
-    AsyncStorage.getItem("mat_manager_filter").then((v) => {
-      if (v) try { setManagerFilterIds(JSON.parse(v)); } catch {}
-    }).catch(() => {});
-    AsyncStorage.getItem("mat_status_filter").then((v) => {
-      if (v) try { setStatusFilterIds(JSON.parse(v)); } catch {}
-    }).catch(() => {});
+    if (!params.project_status && !params.year && !params.month) {
+      AsyncStorage.getItem("mat_manager_filter").then((v) => {
+        if (v) try { setManagerFilterIds(JSON.parse(v)); } catch {}
+      }).catch(() => {});
+      AsyncStorage.getItem("mat_status_filter").then((v) => {
+        if (v) try { setStatusFilterIds(JSON.parse(v)); } catch {}
+      }).catch(() => {});
+    }
   }, []);
 
   useEffect(() => {
@@ -71,7 +77,7 @@ export default function Materiales() {
       const unassigned = managerFilterIds.includes("__none__");
       const statusParam = statusFilterIds.length > 0 ? statusFilterIds.join(",") : undefined;
       const [list, st, u] = await Promise.all([
-        api.listMateriales(q || undefined, pendingOnly, managerId, unassigned, statusParam, yearFilter),
+        api.listMateriales(q || undefined, pendingOnly, managerId, unassigned, statusParam, yearFilter, monthFilter),
         api.stats(),
         me ? Promise.resolve(me) : api.me(),
       ]);
@@ -89,7 +95,7 @@ export default function Materiales() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [q, pendingOnly, managerFilterIds, statusFilterIds, yearFilter, me]);
+  }, [q, pendingOnly, managerFilterIds, statusFilterIds, yearFilter, monthFilter, me]);
 
   useFocusEffect(useCallback(() => {
     load();
@@ -124,6 +130,9 @@ export default function Materiales() {
   const { has } = usePermissions();
   const esEditorCompleto = has("proyectos.edit");
   const s = useThemedStyles(useS);
+  const { theme } = useTheme();
+  const darkText = theme === "dark" ? "#E2E8F0" : COLORS.navy;
+  const darkTextSecondary = theme === "dark" ? "#CBD5E1" : COLORS.textSecondary;
 
   const renderItem = ({ item }: any) => {
     const pending = item.sync_status === "pending";
@@ -158,8 +167,8 @@ export default function Materiales() {
       >
         <View style={s.cardHeader}>
           <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Text style={s.code} numberOfLines={1}>{item.materiales || "—"}</Text>
-            <Text style={s.cliente} numberOfLines={1}>{item.cliente || ""}</Text>
+            <Text style={[s.code, { color: darkText }]} numberOfLines={1}>{item.materiales || "—"}</Text>
+            <Text style={[s.cliente, { color: darkText }]} numberOfLines={1}>{item.cliente || ""}</Text>
           </View>
           <View style={{ flexDirection: "row", gap: 3, alignItems: "center" }}>
             {st && (
@@ -177,7 +186,7 @@ export default function Materiales() {
         </View>
         <View style={s.infoGrid}>
            <View style={s.infoCell}>
-            <Text style={s.infoValue}>{item.horas_prev || "—"}h</Text>
+            <Text style={[s.infoValue, { color: darkText }]}>{item.horas_prev || "—"}h</Text>
             {item.horas_imputadas > 0 && (
               <Text style={[s.infoValue, { fontSize: 8, color: horasImp > horasPrev ? COLORS.errorText : COLORS.primary }]}>
                 +{item.horas_imputadas}
@@ -185,19 +194,19 @@ export default function Materiales() {
             )}
           </View>
           <View style={s.infoCell}>
-            <Text style={s.infoValue} numberOfLines={1}>{item.comercial || "—"}</Text>
+            <Text style={[s.infoValue, { color: darkText }]} numberOfLines={1}>{item.comercial || "—"}</Text>
           </View>
           <View style={s.infoCell}>
-            <Text style={s.infoValue} numberOfLines={1}>{item.manager_name || item.gestor || "—"}</Text>
+            <Text style={[s.infoValue, { color: darkText }]} numberOfLines={1}>{item.manager_name || item.gestor || "—"}</Text>
           </View>
           <View style={s.infoCell}>
-            <Text style={s.infoValue} numberOfLines={1}>{item.tecnicos?.join(", ") || item.tecnico || "—"}</Text>
+            <Text style={[s.infoValue, { color: darkText }]} numberOfLines={1}>{item.tecnicos?.join(", ") || item.tecnico || "—"}</Text>
           </View>
         </View>
         {item.ubicacion ? (
           <View style={s.metaItem}>
             <Ionicons name="location" size={10} color={COLORS.textSecondary} />
-            <Text style={s.metaText} numberOfLines={1}>{item.ubicacion}</Text>
+            <Text style={[s.metaText, { color: darkText }]} numberOfLines={1}>{item.ubicacion}</Text>
           </View>
         ) : null}
       </TouchableOpacity>
@@ -221,8 +230,8 @@ export default function Materiales() {
                   value={yearFilter}
                   onChange={(e: any) => setYearFilter(e.target.value)}
                   style={{
-                    width: "100%", fontSize: 12, fontWeight: "600", color: COLORS.text,
-                    backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
+                  width: "100%", fontSize: 12, fontWeight: "600", color: darkText,
+                  backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
                     borderRadius: 7, paddingVertical: 6, paddingHorizontal: 8, marginBottom: 8,
                     outline: "none",
                   } as any}
@@ -246,7 +255,7 @@ export default function Materiales() {
                   }}
                 >
                   <Ionicons name="calendar-outline" size={14} color={COLORS.textSecondary} />
-                  <Text style={{ fontSize: 12, fontWeight: "600", color: COLORS.text, flex: 1 }}>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: darkText, flex: 1 }}>
                     {yearFilter === "todos" ? "Todos los años" : yearFilter}
                   </Text>
                   <Ionicons name="chevron-down" size={12} color={COLORS.textDisabled} />
@@ -326,7 +335,7 @@ export default function Materiales() {
                 >
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
                     <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: mgr.color }} />
-                    <Text style={{ fontSize: 11.5, fontWeight: "800", color: COLORS.text, flex: 1 }} numberOfLines={1}>
+                    <Text style={{ fontSize: 11.5, fontWeight: "800", color: darkText, flex: 1 }} numberOfLines={1}>
                       {mgr.name.split(" ")[0]}
                     </Text>
                     <Text style={{ fontSize: 10, fontWeight: "900", color: COLORS.textDisabled }}>{mgr.total}</Text>
@@ -363,8 +372,8 @@ export default function Materiales() {
         <View style={{ flex: 3 }}>
       <View style={s.header}>
         <View style={{ flex: 1 }}>
-          <Text style={s.headerTitle}>Proyectos</Text>
-          <Text style={s.headerSubHint}>
+          <Text style={[s.headerTitle, { color: darkText }]}>Proyectos</Text>
+          <Text style={[s.headerSubHint, { color: darkTextSecondary }]}>
             {(managerFilterIds.length > 0 || statusFilterIds.length > 0)
               ? `${items.length} proyecto${items.length !== 1 ? "s" : ""} · ${items.reduce((sum: number, it: any) => { const v = parseFloat(it.horas_prev); return isNaN(v) ? sum : sum + v; }, 0)}h totales`
               : "Base sincronizada con OneDrive"}
@@ -384,8 +393,8 @@ export default function Materiales() {
         <View style={s.statsStrip} testID="stats-strip">
           <View style={s.statCard}>
             <Ionicons name="folder" size={14} color={COLORS.primary} />
-            <Text style={s.statVal}>{stats.total}</Text>
-            <Text style={s.statLbl}>Total</Text>
+            <Text style={[s.statVal, { color: darkText }]}>{stats.total}</Text>
+            <Text style={[s.statLbl, { color: darkTextSecondary }]}>Total</Text>
           </View>
           <TouchableOpacity
             style={[s.statCard, pendingOnly && { borderColor: "#F59E0B", backgroundColor: "#F59E0B1A" }]}
@@ -397,13 +406,13 @@ export default function Materiales() {
             activeOpacity={0.75}
           >
             <Ionicons name="time" size={14} color="#F59E0B" />
-            <Text style={s.statVal}>{stats.pending}</Text>
-            <Text style={s.statLbl}>Pendientes</Text>
+            <Text style={[s.statVal, { color: darkText }]}>{stats.pending}</Text>
+            <Text style={[s.statLbl, { color: darkTextSecondary }]}>Pendientes</Text>
           </TouchableOpacity>
           <View style={s.statCard}>
             <Ionicons name="checkmark-circle" size={14} color="#10B981" />
-            <Text style={s.statVal}>{stats.synced}</Text>
-            <Text style={s.statLbl}>Sincronizados</Text>
+            <Text style={[s.statVal, { color: darkText }]}>{stats.synced}</Text>
+            <Text style={[s.statLbl, { color: darkTextSecondary }]}>Sincronizados</Text>
           </View>
         </View>
       )}
@@ -413,7 +422,7 @@ export default function Materiales() {
           <Ionicons name="search" size={16} color={COLORS.textSecondary} />
           <TextInput
             testID="input-search"
-            style={s.searchInput}
+            style={[s.searchInput, { color: darkText }]}
             value={q}
             onChangeText={setQ}
             placeholder="Buscar cliente, proyecto, ubicación..."
@@ -521,7 +530,7 @@ export default function Materiales() {
       ) : items.length === 0 ? (
         <View style={s.centerBox}>
           <Ionicons name="cube-outline" size={48} color={COLORS.textDisabled} />
-          <Text style={s.emptyText}>Sin resultados</Text>
+          <Text style={[s.emptyText, { color: darkTextSecondary }]}>Sin resultados</Text>
         </View>
       ) : (
         <FlatList
@@ -552,13 +561,13 @@ export default function Materiales() {
         <View style={{ paddingHorizontal: 12 }}>
           {/* Year filter for mobile */}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 4 }}>
-            <Text style={{ fontSize: 12, fontWeight: "600", color: COLORS.textSecondary }}>Año:</Text>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: darkTextSecondary }}>Año:</Text>
             {Platform.OS === "web" ? (
               <select
                 value={yearFilter}
                 onChange={(e: any) => setYearFilter(e.target.value)}
                 style={{
-                  fontSize: 12, fontWeight: "600", color: COLORS.text,
+                  fontSize: 12, fontWeight: "600", color: darkText,
                   backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
                   borderRadius: 7, paddingVertical: 5, paddingHorizontal: 8,
                   outline: "none",
@@ -582,7 +591,7 @@ export default function Materiales() {
                   setYearFilter(years[(idx + 1) % years.length]);
                 }}
               >
-                <Text style={{ fontSize: 12, fontWeight: "600", color: COLORS.text }}>
+                <Text style={{ fontSize: 12, fontWeight: "600", color: darkText }}>
                   {yearFilter === "todos" ? "Todos" : yearFilter}
                 </Text>
               </TouchableOpacity>
@@ -616,7 +625,7 @@ export default function Materiales() {
                   >
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
                       <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: mgr.color }} />
-                      <Text style={{ fontSize: 13, fontWeight: "800", color: COLORS.text }} numberOfLines={1}>
+                      <Text style={{ fontSize: 13, fontWeight: "800", color: darkText }} numberOfLines={1}>
                         {mgr.name.split(" ")[0]}
                       </Text>
                       <Text style={{ fontSize: 11, color: COLORS.textDisabled }}>{mgr.total}</Text>

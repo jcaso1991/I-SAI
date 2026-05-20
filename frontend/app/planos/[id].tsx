@@ -741,7 +741,8 @@ export default function PlanEditor() {
           height: cap.h,
         });
         const baseName = safeFilename(title);
-        const pdfBase64 = await api.imageToPdfBase64(pngBase64, "image/png");
+        const orient = rotationRef.current === 90 ? "landscape" : "portrait";
+        const pdfBase64 = await api.imageToPdfBase64(pngBase64, "image/png", orient);
         await shareOrDownloadBase64(pdfBase64, "application/pdf", `${baseName}.pdf`);
       }
     } catch (e: any) {
@@ -770,7 +771,8 @@ export default function PlanEditor() {
           width: cap.w,
           height: cap.h,
         });
-        uploadBase64 = await api.imageToPdfBase64(pngBase64, "image/png");
+        const orient = rotationRef.current === 90 ? "landscape" : "portrait";
+        uploadBase64 = await api.imageToPdfBase64(pngBase64, "image/png", orient);
         mimeType = "application/pdf";
         finalFilename = baseName.endsWith(".pdf") ? baseName : `${baseName}.pdf`;
       } else {

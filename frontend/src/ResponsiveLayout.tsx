@@ -6,6 +6,7 @@ import { COLORS, api } from "./api";
 import BottomNav, { BottomTab } from "./BottomNav";
 import { useBreakpoint } from "./useBreakpoint";
 import { useTheme, useThemedStyles } from "./theme";
+import { ios } from "./ui/iosTheme";
 
 // Build a 2-letter avatar string from a full name.
 function initials(name?: string): string {
@@ -56,25 +57,27 @@ export default function ResponsiveLayout({
   const s = useThemedStyles(useS);
 
   function SideLink({
-    active, label, icon, to, matIcon,
-  }: { active: boolean; label: string; icon: string; to: string; matIcon?: boolean }) {
+    active, label, icon, to, matIcon, accent,
+  }: { active: boolean; label: string; icon: string; to: string; matIcon?: boolean; accent?: string }) {
     const router = useRouter();
-    const color = active ? COLORS.primary : COLORS.textSecondary;
+    const acc = accent || COLORS.primary;
+    const iconColor = accent ? acc : (active ? COLORS.primary : COLORS.textSecondary);
+    const iconBg = accent ? (active ? acc : (acc + "18")) : (active ? COLORS.primarySoft : "transparent");
     return (
       <TouchableOpacity
         style={[s.linkRow, active && s.linkRowActive]}
         onPress={() => router.replace(to as any)}
         activeOpacity={0.7}
       >
-        <View style={[s.linkBar, active && s.linkBarActive]} />
-        <View style={[s.linkIcon, active && s.linkIconActive]}>
+        <View style={[s.linkBar, active && { backgroundColor: acc }]} />
+        <View style={[s.linkIcon, active && s.linkIconActive, { backgroundColor: iconBg }]}>
           {matIcon ? (
-            <MaterialCommunityIcons name={icon as any} size={18} color={color} />
+            <MaterialCommunityIcons name={icon as any} size={18} color={iconColor} />
           ) : (
-            <Ionicons name={icon as any} size={18} color={color} />
+            <Ionicons name={icon as any} size={18} color={iconColor} />
           )}
         </View>
-        <Text style={[s.linkTxt, active && s.linkTxtActive]}>{label}</Text>
+        <Text style={[s.linkTxt, { color: accent ? acc : COLORS.textSecondary }, active && { color: acc, fontWeight: "800" as any }]}>{label}</Text>
       </TouchableOpacity>
     );
   }
@@ -116,28 +119,36 @@ export default function ResponsiveLayout({
               <Text style={s.userRole}>{roleName || (isAdmin ? "Administrador" : "Usuario")}</Text>
             </View>
           </View>
+          {onLogout && (
+            <TouchableOpacity onPress={onLogout} style={{ padding: 4 }}>
+              <Ionicons name="log-out-outline" size={16} color={COLORS.errorText} />
+            </TouchableOpacity>
+          )}
         </View>
 
         <Text style={s.sectionLabel}>NAVEGACIÓN</Text>
-        <SideLink active={active === "home"} label="Inicio" icon="home" to="/home" />
-        <SideLink active={active === "dashboard"} label="Dashboard" icon="stats-chart" to="/dashboard" />
+        <SideLink active={active === "home"} label="Inicio" icon="home" to="/home" accent={ios.colors.brand} />
+        <SideLink active={active === "dashboard"} label="Dashboard" icon="stats-chart" to="/dashboard" accent={ios.colors.brand} />
         {has("calendario.view") && (
-          <SideLink active={active === "calendario"} label="Calendario" icon="calendar" to="/calendario" />
+          <SideLink active={active === "calendario"} label="Calendario" icon="calendar" to="/calendario" accent={ios.colors.green} />
         )}
         {has("planos.view") && (
-          <SideLink active={active === "planos"} label="Planos" icon="map" to="/planos" />
+          <SideLink active={active === "planos"} label="Planos" icon="map" to="/planos" accent={ios.colors.orange} />
         )}
         {has("proyectos.view") && (
-          <SideLink active={active === "proyectos"} label="Proyectos" icon="set-square" to="/materiales" matIcon />
+          <SideLink active={active === "proyectos"} label="Proyectos" icon="set-square" to="/materiales" matIcon accent={ios.colors.brand} />
         )}
         {has("presupuestos.view") && (
-          <SideLink active={active === "presupuestos"} label="Presupuestos" icon="document-text" to="/presupuestos" />
+          <SideLink active={active === "presupuestos"} label="Presupuestos" icon="document-text" to="/presupuestos" accent={ios.colors.purple} />
         )}
         {has("chat.view") && (
-          <SideLink active={active === "chat"} label="Chat" icon="chatbubbles" to="/chat" />
+          <SideLink active={active === "chat"} label="Chat" icon="chatbubbles" to="/chat" accent={ios.colors.green} />
+        )}
+        {has("notas.view") && (
+          <SideLink active={active === "notas"} label="Notas" icon="book" to="/notas" accent={ios.colors.teal} />
         )}
         {has("sat.view") && (
-          <SideLink active={active === "sat"} label="CRM SAT" icon="headset" to="/sat" />
+          <SideLink active={active === "sat"} label="CRM SAT" icon="headset" to="/sat" accent={ios.colors.pink} />
         )}
 
         <Text style={s.sectionLabel}>DOCUMENTOS INTERNOS</Text>
@@ -179,12 +190,6 @@ export default function ResponsiveLayout({
           <Text style={s.themeToggleTxt}>{theme === "dark" ? "Modo claro" : "Modo oscuro"}</Text>
         </TouchableOpacity>
 
-        {onLogout && (
-          <TouchableOpacity style={s.logout} onPress={onLogout}>
-            <Ionicons name="log-out-outline" size={18} color={COLORS.errorText} />
-            <Text style={s.logoutTxt}>Cerrar sesión</Text>
-          </TouchableOpacity>
-        )}
       </View>
       <View style={s.content}>{children}</View>
     </View>

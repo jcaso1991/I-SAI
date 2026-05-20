@@ -1,4 +1,4 @@
-import { StyleSheet } from "react-native";
+import { Platform, StyleSheet } from "react-native";
 import { COLORS } from "../../api";
 import { ios } from "../../ui/iosTheme";
 
@@ -51,7 +51,7 @@ export const useS = () =>
     flexBasis: "48%", maxWidth: "48%",
     backgroundColor: COLORS.surface,
     borderRadius: ios.radius.card,
-    paddingVertical: 22, paddingHorizontal: 16,
+    paddingVertical: 22, paddingHorizontal: 12,
     alignItems: "center", justifyContent: "center",
     minHeight: 140,
     shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 6,
@@ -128,7 +128,7 @@ export const useS = () =>
   overHoursItem: { backgroundColor: COLORS.surface, borderRadius: 10, padding: 12 },
 
   // ── ProjectsByMonth / SatByMonth: mini-tarjetas horizontales ──
-  monthScroll: { flexDirection: "row", gap: 8, paddingHorizontal: 8 },
+  monthScroll: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 8 },
   monthMiniCard: {
     width: 68, padding: 10, borderRadius: 10,
     backgroundColor: COLORS.surface, alignItems: "center", gap: 4,
@@ -140,4 +140,112 @@ export const useS = () =>
   monthMiniMonth: { fontSize: 9, fontWeight: "700", color: COLORS.textSecondary, textTransform: "uppercase" },
   monthMiniCount: { fontSize: 22, fontWeight: "900", color: COLORS.text },
   monthMiniHours: { fontSize: 9, fontWeight: "500", color: COLORS.textDisabled },
+
+  // ── Modern cards ──
+  cardWrap: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 2 } as any,
+    elevation: 3,
+    ...Platform.select({
+      web: { boxShadow: "0 2px 12px rgba(0,0,0,0.06)" } as any,
+    }),
+  },
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  cardSubtitle: {
+    fontSize: 12,
+    color: COLORS.textDisabled,
+    marginTop: 2,
+  },
+  kpiStrip: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 16,
+  },
+  kpiCard: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 } as any,
+    elevation: 2,
+    ...Platform.select({
+      web: { boxShadow: "0 2px 12px rgba(0,0,0,0.04)" } as any,
+    }),
+  },
+  kpiIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  kpiValue: {
+    fontSize: 28,
+    fontWeight: "900",
+    color: COLORS.text,
+  },
+  kpiLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+    marginTop: 4,
+  },
+  donutContainer: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 20,
+  },
+  donutLegend: {
+    flex: 1,
+    gap: 6,
+  },
+  donutLegendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  donutLegendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  donutLegendText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+    flex: 1,
+  },
+  donutLegendCount: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: COLORS.text,
+  },
+  circularProgressWrap: {
+    alignItems: "center",
+    marginBottom: 16,
+  },
 } as Record<string, any>);

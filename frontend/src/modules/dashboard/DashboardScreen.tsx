@@ -66,6 +66,8 @@ export default function DashboardScreen({
   const showPresupuestos = has("presupuestos.view");
   const showChat = has("chat.view");
   const showSat = has("sat.view");
+  const showDocs = has("preciario.view");
+  const showNotas = has("notas.view");
 
   const content = (
     <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
@@ -112,6 +114,13 @@ export default function DashboardScreen({
 
           <Text style={s.sectionTitle}>Módulos</Text>
           <View style={[s.tilesGrid, isWide && s.tilesGridWide]}>
+            <DashboardTile
+              testID="circle-dashboard"
+              icon="stats-chart"
+              title="Dashboard"
+              accent={ios.colors.brand}
+              onPress={() => router.push("/dashboard")}
+            />
             {showCalendario && (
               <DashboardTile
                 testID="circle-calendario"
@@ -138,6 +147,24 @@ export default function DashboardScreen({
                 title="Proyectos"
                 accent={ios.colors.brand}
                 onPress={() => router.push("/materiales")}
+              />
+            )}
+            {showDocs && (
+              <DashboardTile
+                testID="circle-documentos"
+                icon="folder-open"
+                title="Docs. Internos"
+                accent={ios.colors.yellow}
+                onPress={() => router.push("/documentos")}
+              />
+            )}
+            {showNotas && (
+              <DashboardTile
+                testID="circle-notas"
+                icon="book"
+                title="Notas"
+                accent={ios.colors.teal}
+                onPress={() => router.push("/notas")}
               />
             )}
             {showPresupuestos && (

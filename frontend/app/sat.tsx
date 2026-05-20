@@ -84,7 +84,7 @@ function publicFormUrl(): string {
 export default function SATScreen() {
   const router = useRouter();
   const { isWide } = useBreakpoint();
-  const params = useLocalSearchParams<{ openIncident?: string; tab?: string }>();
+  const params = useLocalSearchParams<{ openIncident?: string; tab?: string; status?: string; year?: string; month?: string }>();
 
   const [me, setMe] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -92,7 +92,10 @@ export default function SATScreen() {
     params.tab === "clientes" ? "clientes" : "incidencias"
   );
   const [showViewMenu, setShowViewMenu] = useState(false);
-  const [tab, setTab] = useState<"pendiente" | "resuelta" | "agendada">("pendiente");
+  const initialTab = (params.status as "pendiente" | "resuelta" | "agendada") || "pendiente";
+  const [tab, setTab] = useState<"pendiente" | "resuelta" | "agendada">(initialTab);
+  const [yearFilter, setYearFilter] = useState(params.year || "");
+  const [monthFilter, setMonthFilter] = useState(params.month || "");
   const [items, setItems] = useState<Incident[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [openItem, setOpenItem] = useState<Incident | null>(null);
@@ -106,10 +109,10 @@ export default function SATScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [its, cls] = await Promise.all([api.satList(), api.satClientList()]);
+      const [its, cls] = await Promise.all([api.satList(tab, yearFilter, monthFilter), api.satClientList()]);
       setItems(its); setClients(cls);
     } catch {}
-  }, []);
+  }, [tab, yearFilter, monthFilter]);
 
   useFocusEffect(useCallback(() => {
     let alive = true;

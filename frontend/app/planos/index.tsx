@@ -2,7 +2,7 @@ import { useCallback, useState, useEffect } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Alert, Modal, KeyboardAvoidingView, Platform,
-  FlatList,
+  FlatList, Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -148,6 +148,9 @@ export default function PlansList() {
                     })}
                   </Text>
                 </View>
+                {(p as any).thumbnail ? (
+                  <Image source={{ uri: (p as any).thumbnail }} style={{ width: 64, height: 48, borderRadius: 6 }} resizeMode="cover" />
+                ) : null}
               </TouchableOpacity>
               <View style={s.planActions}>
                 <TouchableOpacity
@@ -180,10 +183,12 @@ export default function PlansList() {
       </SafeAreaView>
     </ResponsiveLayout>
   );
+}
 
-  function CreatePlanModal({
+function CreatePlanModal({
   visible, onClose, onDone,
 }: { visible: boolean; onClose: () => void; onDone: (id: string) => void }) {
+  const s = useThemedStyles(useS);
   const [step, setStep] = useState<ModalStep>("choose");
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
@@ -393,7 +398,6 @@ export default function PlansList() {
       </KeyboardAvoidingView>
     </Modal>
   );
-}
 }
 
 const useS = () => StyleSheet.create({

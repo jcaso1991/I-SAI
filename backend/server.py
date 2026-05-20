@@ -260,6 +260,8 @@ PERMISSIONS_CATALOG = [
     {"key": "preciario.ver_precios", "label": "Ver precios en preciario", "module": "Preciario"},
     {"key": "preciario.edit", "label": "Editar descuentos y stock del preciario", "module": "Preciario"},
     {"key": "preciario.view", "label": "Ver preciario y productos", "module": "Preciario"},
+    {"key": "notas.view", "label": "Ver y crear notas personales", "module": "Notas"},
+    {"key": "documentos.manage", "label": "Gestionar documentos (fichas/manuales)", "module": "Documentación"},
 ]
 ALL_PERMS = [p["key"] for p in PERMISSIONS_CATALOG]
 
@@ -1079,6 +1081,7 @@ class PlanListItem(BaseModel):
     updated_at: str
     created_by: str
     shape_count: int = 0
+    thumbnail: Optional[str] = None
 
 class StampCreate(BaseModel):
     name: str
@@ -1136,17 +1139,43 @@ BUILTIN_STAMPS = [
 @api_router.get("/plans", response_model=List[PlanListItem])
 async def list_plans(user: dict = Depends(require_permission("planos.view"))):
     plans = await db.plans.find({}, {"_id": 0, "data": 0}).to_list(2000)
-    out: List[PlanListItem] = []
-    # fetch shape counts in one pass
     all_data = await db.plans.find({}, {"_id": 0, "id": 1, "data": 1}).to_list(2000)
     counts = {p["id"]: len((p.get("data") or {}).get("shapes", [])) for p in all_data}
+    # Generar thumbnails desde background
+    thumbs: dict = {}
+    for p in all_data:
+        bg = (p.get("data") or {}).get("background")
+        if not bg:
+            continue
+        # bg puede ser string (legacy) o dict {type, data_uri, width, height}
+        b64_data = bg if isinstance(bg, str) else bg.get("data_uri", "")
+        if not b64_data:
+            continue
+        try:
+            if "," in b64_data:
+                b64 = b64_data.split(",", 1)[1]
+            else:
+                b64 = b64_data
+            raw = base64.b64decode(b64)
+            img = Image.open(io.BytesIO(raw))
+            img.thumbnail((200, 200), Image.LANCZOS)
+            if img.mode == "RGBA":
+                img = img.convert("RGB")
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=70)
+            thumb_b64 = base64.b64encode(buf.getvalue()).decode()
+            thumbs[p["id"]] = "data:image/jpeg;base64," + thumb_b64
+        except Exception:
+            pass
     plans.sort(key=lambda p: p.get("updated_at", ""), reverse=True)
+    out: List[PlanListItem] = []
     for p in plans:
         out.append(PlanListItem(
             id=p["id"], title=p["title"],
             created_at=p.get("created_at", ""), updated_at=p.get("updated_at", ""),
             created_by=p.get("created_by", ""),
             shape_count=counts.get(p["id"], 0),
+            thumbnail=thumbs.get(p["id"]),
         ))
     return out
 
@@ -1509,6 +1538,8 @@ async def create_event(payload: EventCreate, admin: dict = Depends(require_permi
         "manager_id": payload.manager_id,
         "recurrence": payload.recurrence.dict() if payload.recurrence else None,
         "hours": payload.hours,
+        "status": payload.status or "in_progress",
+        "seguimiento": payload.seguimiento or "",
         "attachments": [],
         "created_by": admin["email"],
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -2152,7 +2183,7 @@ async def sync_push(user: dict = Depends(require_permission("onedrive.manage")))
 
 # ---------------- Materials routes ----------------
 @api_router.get("/materiales", response_model=List[Material])
-async def list_materiales(user: dict = Depends(require_permission("proyectos.view")), q: Optional[str] = None, pending_only: bool = False, limit: int = 2000, manager_id: Optional[str] = None, unassigned: bool = False, project_status: Optional[str] = None, year: Optional[str] = None):
+async def list_materiales(user: dict = Depends(require_permission("proyectos.view")), q: Optional[str] = None, pending_only: bool = False, limit: int = 2000, manager_id: Optional[str] = None, unassigned: bool = False, project_status: Optional[str] = None, year: Optional[str] = None, month: Optional[str] = None):
     # fire-and-forget auto-import if stale
     await maybe_auto_import()
     user_perms = await get_user_permissions(user)
@@ -2186,6 +2217,12 @@ async def list_materiales(user: dict = Depends(require_permission("proyectos.vie
             conditions.append({"$or": q_list})
     if year and year != "todos":
         conditions.append({"fecha": {"$regex": year}})
+    if month and month != "todos":
+        # month viene como "01" a "12", coincidir con "-MM" en fecha ISO o "/MM/" en fecha ES
+        conditions.append({"$or": [
+            {"fecha": {"$regex": f"-{month}"}},
+            {"fecha": {"$regex": f"/{month}/"}},
+        ]})
     if not es_editor_completo:
         conditions.append({"project_status": {"$ne": "terminado"}})
     query = conditions[0] if len(conditions) == 1 else ({"$and": conditions} if len(conditions) > 1 else {})
@@ -2583,7 +2620,7 @@ async def dashboard(user: dict = Depends(current_user)):
             "created_at": {"$gte": month_start.isoformat(), "$lt": month_end.isoformat()},
         })
         mes = month_start.strftime("%b").capitalize()
-        sat_by_month.append({"month": mes, "total": count, "resolved": resolved})
+        sat_by_month.append({"month": mes, "total": count, "resolved": resolved, "year": str(month_start.year), "month_num": f"{month_start.month:02d}"})
 
     # Projects completed by month (last 6 months)
     projects_by_month = []
@@ -2608,7 +2645,7 @@ async def dashboard(user: dict = Depends(current_user)):
         }, {"horas_prev": 1}).to_list(5000)
         total_hours_month = sum(_safe_float(c.get("horas_prev")) for c in completed)
         mes = month_start.strftime("%b").capitalize()
-        projects_by_month.append({"month": mes, "count": proj_count, "hours": round(total_hours_month, 1)})
+        projects_by_month.append({"month": mes, "count": proj_count, "hours": round(total_hours_month, 1), "year": str(month_start.year), "month_num": f"{month_start.month:02d}"})
 
     # Total hours for all pending/active projects
     active_projects = await db.materiales.find({"project_status": {"$in": ["pendiente", "planificado", "a_facturar"]}}, {"horas_prev": 1}).to_list(10000)
@@ -3098,6 +3135,7 @@ class ImageToPdfBody(BaseModel):
     base64: str
     mime_type: str = "image/jpeg"   # image/jpeg or image/png
     filename: Optional[str] = "plano.pdf"
+    orientation: Optional[str] = None   # "portrait" o "landscape" para forzar A3
 
 
 @api_router.post("/utils/image-to-pdf")
@@ -3118,9 +3156,19 @@ async def utils_image_to_pdf(body: ImageToPdfBody, user: dict = Depends(current_
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
         buf = io.BytesIO()
-        # Save high-DPI PDF (300 DPI) to preserve detail. PIL embeds the JPEG
-        # without re-compression so quality matches the source image.
-        img.save(buf, format="PDF", resolution=300.0)
+        if body.orientation in ("portrait", "landscape"):
+            DPI = 150
+            A3_PORTRAIT = (int(297 * DPI / 25.4), int(420 * DPI / 25.4))  # 1754x2480
+            A3_LANDSCAPE = (int(420 * DPI / 25.4), int(297 * DPI / 25.4))  # 2480x1754
+            canvas_size = A3_PORTRAIT if body.orientation == "portrait" else A3_LANDSCAPE
+            img.thumbnail(canvas_size, Image.Resampling.LANCZOS)
+            canvas = Image.new("RGB", canvas_size, (255, 255, 255))
+            offset_x = (canvas_size[0] - img.width) // 2
+            offset_y = (canvas_size[1] - img.height) // 2
+            canvas.paste(img, (offset_x, offset_y))
+            canvas.save(buf, format="PDF", resolution=DPI)
+        else:
+            img.save(buf, format="PDF", resolution=300.0)
         data = buf.getvalue()
     except Exception as e:
         logging.exception("image-to-pdf failed")
@@ -3687,6 +3735,8 @@ async def sat_list(
     user: dict = Depends(require_permission("sat.view")),
     status: Optional[str] = None,
     client_id: Optional[str] = None,
+    year: Optional[str] = None,
+    month: Optional[str] = None,
 ):
     # Lazy auto-revive: any incident scheduled for past time returns as "pendiente".
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -3707,6 +3757,14 @@ async def sat_list(
             ]
         else:
             q["client_id"] = client_id
+    if year and year != "todos":
+        q["created_at"] = {"$regex": f"^{year}"}
+    if month:
+        # month viene como "01" a "12", coincidir con "-MM" en ISO timestamp
+        q["created_at"] = {"$regex": f"-{month}"} if not q.get("created_at") else q["created_at"]
+        # NOTA: si se pasan ambos year y month, esto pisa el year regex. Se combinan mejor así:
+    if year and year != "todos" and month:
+        q["created_at"] = {"$regex": f"^{year}-{month}"}
     rows = await db.sat_incidents.find(q, {"_id": 0}).sort("created_at", -1).to_list(2000)
     return rows
 
@@ -4144,20 +4202,33 @@ async def sat_export_excel(user: dict = Depends(current_user)):
     perms = await get_user_permissions(user)
     if "sat.export" not in perms and "sat.edit" not in perms:
         raise HTTPException(403, "No tienes permiso para exportar SAT")
-    """Export all SAT incidents as an Excel file grouped by client."""
+    """Export all SAT incidents as an Excel file."""
     incidents = await db.sat_incidents.find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
-    clients = await db.sat_clients.find({}, {"_id": 0}).to_list(5000)
-    client_map = {c["id"]: c for c in clients}
-    client_name_map = {c.get("cliente", "").lower(): c for c in clients}
-
-    # Build client → incidents grouping
-    grouped: Dict[str, List[dict]] = {}
-    all_client_names: set = set()
-    for inc in incidents:
-        key = inc.get("cliente", "Sin cliente")
-        all_client_names.add(key)
-    file_name: Optional[str] = None
-    file_mime: Optional[str] = None
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Incidencias SAT"
+    headers = ["Cliente", "Dirección", "Teléfono", "Observaciones", "Estado", "Creado"]
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1976D2", end_color="1976D2", fill_type="solid")
+    for col, h in enumerate(headers, 1):
+        c = ws.cell(row=1, column=col, value=h)
+        c.font = header_font
+        c.fill = header_fill
+    for i, inc in enumerate(incidents, 2):
+        ws.cell(row=i, column=1, value=inc.get("cliente", ""))
+        ws.cell(row=i, column=2, value=inc.get("direccion", ""))
+        ws.cell(row=i, column=3, value=inc.get("telefono", ""))
+        ws.cell(row=i, column=4, value=inc.get("observaciones", ""))
+        ws.cell(row=i, column=5, value=inc.get("status", ""))
+        ws.cell(row=i, column=6, value=(inc.get("created_at") or "")[:10])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    filename = f"incidencias_sat_{datetime.now(timezone.utc).strftime('%Y%m%d')}.xlsx"
+    return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 @api_router.post("/chats")
 async def chat_create(payload: ChatCreate, user: dict = Depends(current_user)):
@@ -4396,8 +4467,176 @@ async def update_preciario_stock(
     )
     return {"ok": True}
 
-app.include_router(api_router)
 
+# ---------------- Notas ----------------
+
+class NotaCreate(BaseModel):
+    titulo: str = ""
+    contenido: str = ""
+    fecha: Optional[str] = None  # YYYY-MM-DD para notas de calendario
+
+class NotaUpdate(BaseModel):
+    titulo: Optional[str] = None
+    contenido: Optional[str] = None
+    fecha: Optional[str] = None
+
+@api_router.get("/notas")
+async def list_notas(
+    user: dict = Depends(require_permission("notas.view")),
+    fecha: Optional[str] = Query(None, description="Filtrar por fecha YYYY-MM-DD"),
+):
+    q: dict = {"user_id": user["id"]}
+    if fecha:
+        q["fecha"] = fecha
+    items = await db.notas.find(q, {"_id": 0}).sort("updated_at", -1).to_list(500)
+    return items
+
+@api_router.post("/notas")
+async def create_nota(
+    body: NotaCreate,
+    user: dict = Depends(require_permission("notas.view")),
+):
+    nid = str(uuid.uuid4())
+    doc = {
+        "_id": nid,
+        "id": nid,
+        "user_id": user["id"],
+        "titulo": body.titulo or "",
+        "contenido": body.contenido or "",
+        "fecha": body.fecha,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.notas.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api_router.patch("/notas/{nid}")
+async def update_nota(
+    nid: str,
+    body: NotaUpdate,
+    user: dict = Depends(require_permission("notas.view")),
+):
+    doc = await db.notas.find_one({"id": nid, "user_id": user["id"]})
+    if not doc:
+        raise HTTPException(404, "Nota no encontrada")
+    upd = {k: v for k, v in body.dict().items() if v is not None}
+    if not upd:
+        raise HTTPException(400, "Nada que actualizar")
+    upd["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.notas.update_one({"id": nid}, {"$set": upd})
+    doc.update(upd)
+    return doc
+
+@api_router.delete("/notas/{nid}")
+async def delete_nota(
+    nid: str,
+    user: dict = Depends(require_permission("notas.view")),
+):
+    res = await db.notas.delete_one({"id": nid, "user_id": user["id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Nota no encontrada")
+    return {"ok": True}
+
+
+# ---------------- Documentos (fichas técnicas / manuales) ----------------
+
+DOCUMENTOS_DIR = ROOT_DIR / "uploads" / "documentos"
+DOCUMENTOS_DIR.mkdir(parents=True, exist_ok=True)
+
+class DocumentoUpload(BaseModel):
+    titulo: str
+    categoria: str  # "fichas" o "manuales"
+    filename: str
+    file_base64: str
+
+@api_router.get("/documentos")
+async def list_documentos(
+    user: dict = Depends(current_user),
+    categoria: Optional[str] = Query(None),
+):
+    q: dict = {}
+    if categoria:
+        q["categoria"] = categoria
+    docs = await db.documentos.find(q, {"file_path": 0}).sort("created_at", -1).to_list(500)
+    for d in docs:
+        d.pop("file_path", None)  # no enviar ruta interna
+    return docs
+
+@api_router.post("/documentos")
+async def create_documento(
+    body: DocumentoUpload,
+    user: dict = Depends(require_permission("documentos.manage")),
+):
+    if body.categoria not in ("fichas", "manuales"):
+        raise HTTPException(400, "Categoría inválida")
+    did = str(uuid.uuid4())
+    # Guardar archivo en disco
+    cat_dir = DOCUMENTOS_DIR / body.categoria
+    cat_dir.mkdir(parents=True, exist_ok=True)
+    file_path = cat_dir / f"{did}_{body.filename}"
+    raw = base64.b64decode(body.file_base64)
+    file_path.write_bytes(raw)
+    doc = {
+        "_id": did,
+        "id": did,
+        "titulo": body.titulo.strip(),
+        "categoria": body.categoria,
+        "filename": body.filename,
+        "file_path": str(file_path),
+        "created_by": user["email"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.documentos.insert_one(doc)
+    doc.pop("file_path", None)
+    return doc
+
+@api_router.get("/documentos/{did}/file")
+async def get_documento_file(
+    did: str,
+    user: dict = Depends(current_user),
+):
+    doc = await db.documentos.find_one({"_id": did}, {"_id": 0, "file_path": 1, "filename": 1})
+    if not doc or not doc.get("file_path"):
+        raise HTTPException(404, "Documento no encontrado")
+    path = Path(doc["file_path"])
+    if not path.exists():
+        raise HTTPException(404, "Archivo no encontrado en disco")
+    return StreamingResponse(
+        open(path, "rb"),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{doc.get("filename", "documento.pdf")}"'},
+    )
+
+@api_router.get("/documentos/{did}")
+async def get_documento(
+    did: str,
+    user: dict = Depends(current_user),
+):
+    doc = await db.documentos.find_one({"_id": did}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Documento no encontrado")
+    doc.pop("file_path", None)
+    return doc
+
+@api_router.delete("/documentos/{did}")
+async def delete_documento(
+    did: str,
+    user: dict = Depends(require_permission("documentos.manage")),
+):
+    doc = await db.documentos.find_one({"_id": did}, {"file_path": 1})
+    if doc and doc.get("file_path"):
+        try:
+            Path(doc["file_path"]).unlink(missing_ok=True)
+        except Exception:
+            pass
+    res = await db.documentos.delete_one({"_id": did})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Documento no encontrado")
+    return {"ok": True}
+
+
+app.include_router(api_router)
 cors_origins = [FRONTEND_URL]
 if CORS_ORIGINS:
     cors_origins.extend(o.strip() for o in CORS_ORIGINS.split(',') if o.strip())
