@@ -596,6 +596,22 @@ function IncidentCard({ item, clientName, onPress }:
           <Ionicons name="chatbubble-ellipses" size={11} color={COLORS.primary} /> {item.comentarios_sat}
         </Text>
       ) : null}
+      <TouchableOpacity
+        style={{ position: "absolute", top: 8, right: 8, padding: 4 }}
+        onPress={() => {
+          const msg = [
+            `🛠 *Incidencia SAT*`,
+            `👤 ${item.cliente || "Sin cliente"}`,
+            item.direccion ? `📍 ${item.direccion}` : "",
+            item.telefono ? `📞 ${item.telefono}` : "",
+            `📝 ${item.observaciones || ""}`,
+            `📌 Estado: ${item.status || "pendiente"}`,
+          ].filter(Boolean).join("\n");
+          window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+        }}
+      >
+        <Ionicons name="logo-whatsapp" size={18} color="#25D366" />
+      </TouchableOpacity>
     </TouchableOpacity>
   );
 }
@@ -620,10 +636,18 @@ function ClientCard({ client, canEditSat, onEdit, onNewIncident, onViewIncidents
             </View>
           )}
           {!!client.telefono && (
+            <>
             <View style={s.clientChip}>
               <Ionicons name="call-outline" size={12} color={COLORS.textSecondary} />
               <Text style={s.clientChipText}>{client.telefono}</Text>
             </View>
+            <TouchableOpacity onPress={() => {
+              const tel = client.telefono.replace(/\s+/g, "");
+              window.open(`https://wa.me/${tel}`, "_blank");
+            }}>
+              <Ionicons name="logo-whatsapp" size={16} color="#25D366" />
+            </TouchableOpacity>
+            </>
           )}
         </View>
       </View>

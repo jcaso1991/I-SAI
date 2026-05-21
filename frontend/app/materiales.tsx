@@ -466,6 +466,12 @@ export default function Materiales() {
         >
           <Ionicons name="download-outline" size={14} color={COLORS.syncedText} />
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[s.filterBtn, { backgroundColor: COLORS.pillBlueBg, borderColor: COLORS.primary, borderWidth: 1 }]}
+          onPress={() => router.push("/mapa")}
+        >
+          <Ionicons name="map-outline" size={14} color={COLORS.primary} />
+        </TouchableOpacity>
         {(managerFilterIds.length > 0 || statusFilterIds.length > 0) && (
           <TouchableOpacity
             style={[s.filterBtn, { backgroundColor: COLORS.errorBg }]}

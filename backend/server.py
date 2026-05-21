@@ -163,6 +163,9 @@ class Material(BaseModel):
     project_status: Optional[str] = "pendiente"
     # imputed hours from events
     horas_imputadas: Optional[float] = 0
+    # geo coordinates
+    lat: Optional[float] = Field(None, alias="_lat")
+    lng: Optional[float] = Field(None, alias="_lng")
     # meta
     sync_status: str = "synced"  # synced | pending | error
     updated_at: Optional[str] = None
@@ -1822,6 +1825,22 @@ async def get_event_attachment(eid: str, aid: str, user: dict = Depends(current_
                 "uploaded_by": a.get("uploaded_by"),
             }
     raise HTTPException(404, "Adjunto no encontrado")
+
+@api_router.get("/events/{eid}/attachments/{aid}/share-token")
+async def get_attachment_share_token(eid: str, aid: str, user: dict = Depends(current_user)):
+    """Genera un token JWT para compartir un adjunto públicamente (válido 7 días)."""
+    real_id = eid.split(":")[0]
+    ev = await db.events.find_one({"id": real_id}, {"_id": 0})
+    if not ev:
+        raise HTTPException(404, "Evento no encontrado")
+    found = any(a.get("id") == aid for a in (ev.get("attachments") or []))
+    if not found:
+        raise HTTPException(404, "Adjunto no encontrado")
+    token = pyjwt.encode(
+        {"eid": real_id, "aid": aid, "exp": datetime.now(timezone.utc) + timedelta(days=7)},
+        JWT_SECRET, algorithm=JWT_ALGORITHM,
+    )
+    return {"token": token}
 
 @api_router.delete("/events/{eid}/attachments/{aid}")
 async def delete_event_attachment(eid: str, aid: str, user: dict = Depends(current_user)):

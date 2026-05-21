@@ -145,6 +145,9 @@ export const api = {
   deleteEventAttachment: (eid: string, aid: string) =>
     request(`/events/${encodeURIComponent(eid)}/attachments/${aid}`, { method: "DELETE" }),
 
+  getAttachmentShareToken: (eid: string, aid: string) =>
+    request(`/events/${encodeURIComponent(eid)}/attachments/${aid}/share-token`),
+
   // Notifications (in-app bell) — the backend creates these when a
   // technician marks an event as completed / pending-completion.
   listNotifications: (unreadOnly = false) =>

@@ -222,6 +222,11 @@ export default function MaterialDetail() {
             <View style={s.matMeta}>
               <Ionicons name="location" size={14} color={COLORS.textSecondary} />
               <Text style={s.matMetaText}>{m.ubicacion || "—"}</Text>
+              {m.ubicacion ? (
+                <TouchableOpacity onPress={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(m.ubicacion + ", " + (m.cliente || ""))}`, "_blank")} style={{ marginLeft: 4 }}>
+                  <Ionicons name="navigate-outline" size={16} color={COLORS.primary} />
+                </TouchableOpacity>
+              ) : null}
             </View>
           </View>
 

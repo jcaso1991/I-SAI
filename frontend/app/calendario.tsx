@@ -7,9 +7,37 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { api, COLORS } from "../src/api";
+import { api, COLORS, BACKEND_URL } from "../src/api";
 import { useThemedStyles, useTheme } from "../src/theme";
 import ResponsiveLayout from "../src/ResponsiveLayout";
+
+function openMaps(address: string) {
+  const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+  window.open(url, "_blank");
+}
+
+async function shareWhatsApp(event: any) {
+  const lines = [
+    `📅 *${event.title || "Evento"}*`,
+    `📆 ${new Date(event.start_at).toLocaleString("es-ES")} - ${new Date(event.end_at).toLocaleString("es-ES")}`,
+    event.description ? `📝 ${event.description}` : "",
+    event.material?.ubicacion ? `📍 ${event.material.ubicacion}, ${event.material.cliente || ""}` : "",
+    event.assigned_users?.length ? `👤 Técnicos: ${event.assigned_users.map((u: any) => u.name || u.email?.split("@")[0]).join(", ")}` : "",
+  ];
+  // Generar enlaces de descarga para adjuntos
+  if (event.attachments?.length) {
+    const links: string[] = [];
+    for (const a of event.attachments) {
+      try {
+        const token = await api.getAttachmentShareToken(event.id, a.id);
+        const url = `${BACKEND_URL}/api/share/attachment/${token}`;
+        links.push(`📎 ${a.filename}: ${url}`);
+      } catch { links.push(`📎 ${a.filename}`); }
+    }
+    if (links.length) lines.push(links.join("\n"));
+  }
+  window.open(`https://wa.me/?text=${encodeURIComponent(lines.join("\n"))}`, "_blank");
+}
 import { useBreakpoint } from "../src/useBreakpoint";
 import DateTimeField from "../src/DateTimeField";
 import NotificationsBell from "../src/NotificationsBell";
@@ -1412,9 +1440,12 @@ function DraggableEvent({
             <Text style={[s.eventTitle, { color: eventTextColor }]} numberOfLines={compact ? 1 : 2}>{event.title}</Text>
           </View>
           <Text style={s.eventTime}>{fmtTime(new Date(event.start_at))} - {fmtTime(new Date(event.end_at))}</Text>
-          {!compact && event.material && (
-            <Text style={s.eventMeta} numberOfLines={1}>📍 {event.material.ubicacion || ""}</Text>
-          )}
+          {!compact && event.material && event.material.ubicacion ? (
+            <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 1 }} onPress={() => openMaps(`${event.material.ubicacion}, ${event.material.cliente || ""}`)}>
+              <Text style={s.eventMeta} numberOfLines={1}>📍 {event.material.ubicacion}</Text>
+              <Ionicons name="navigate-outline" size={12} color={COLORS.primary} />
+            </TouchableOpacity>
+          ) : null}
           {/* Bottom: manager (gestor) */}
           {event.manager && (
             <Text style={s.eventManager} numberOfLines={1}>
@@ -1434,9 +1465,12 @@ function DraggableEvent({
             <Text style={[s.eventTitle, { color: eventTextColor }]} numberOfLines={compact ? 1 : 2}>{event.title}</Text>
           </View>
           <Text style={s.eventTime}>{fmtTime(new Date(event.start_at))} - {fmtTime(new Date(event.end_at))}</Text>
-          {!compact && event.material && (
-            <Text style={s.eventMeta} numberOfLines={1}>📍 {event.material.ubicacion || ""}</Text>
-          )}
+          {!compact && event.material && event.material.ubicacion ? (
+            <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 1 }} onPress={() => openMaps(`${event.material.ubicacion}, ${event.material.cliente || ""}`)}>
+              <Text style={s.eventMeta} numberOfLines={1}>📍 {event.material.ubicacion}</Text>
+              <Ionicons name="navigate-outline" size={12} color={COLORS.primary} />
+            </TouchableOpacity>
+          ) : null}
           {event.manager && (
             <Text style={s.eventManager} numberOfLines={1}>
               🧑‍💼 {event.manager.name || event.manager.email.split("@")[0]}
@@ -1466,6 +1500,19 @@ function DraggableEvent({
       )}
     </View>
       {isAdmin && onCopy && (
+        <>
+        <TouchableOpacity
+          onPress={() => shareWhatsApp(event)}
+          style={{
+            position: "absolute", top: 2, right: 30,
+            width: 24, height: 24, borderRadius: 4,
+            backgroundColor: "#25D366",
+            alignItems: "center", justifyContent: "center", zIndex: 20,
+          }}
+          hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
+        >
+          <Ionicons name="logo-whatsapp" size={14} color="#fff" />
+        </TouchableOpacity>
         <TouchableOpacity
           onPress={() => onCopy(event)}
           style={{
@@ -1478,6 +1525,7 @@ function DraggableEvent({
         >
           <Ionicons name="copy-outline" size={14} color={eventTextColor} />
         </TouchableOpacity>
+        </>
       )}
     </View>
   );
