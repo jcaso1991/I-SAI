@@ -753,7 +753,15 @@ async def login(payload: UserLogin):
     if not user or not verify_password(payload.password, user["password"]):
         raise HTTPException(401, "Credenciales inválidas")
     token = create_jwt(user)
-    return TokenOut(access_token=token, user=UserOut(id=user["id"], email=user["email"], name=user.get("name"), role=user.get("role", "user"), color=user.get("color")))
+    info = await get_user_role_info(user)
+    return TokenOut(
+        access_token=token,
+        user=UserOut(
+            id=user["id"], email=user["email"], name=user.get("name"),
+            role=user.get("role", "user"), color=user.get("color"),
+            role_id=info["role_id"], role_name=info["role_name"], permissions=info["permissions"],
+        ),
+    )
 
 class TechnicianOut(BaseModel):
     id: str
