@@ -176,6 +176,7 @@ export default function DashboardData() {
         <View style={{ flex: 1, minWidth: 280 }}><GlobalHours dash={dash} /></View>
       </View>
       <TopTechnicians dash={dash} router={router} />
+      <TechAvailability3W dash={dash} router={router} />
       <ProjectsOverHours dash={dash} router={router} />
       <ManagerHours dash={dash} />
       <BudgetPipeline dash={dash} router={router} />
@@ -726,19 +727,30 @@ function WeekSummary({ dash, router }: { dash: any; router: any }) {
           </View>
           <Text style={{ fontSize: 10, color: "#8B5CF6", fontWeight: "700", marginTop: 4 }}>{pct}% completado</Text>
         </View>
-        {/* Técnicos */}
+        {/* Técnicos · 3 semanas (resumen) */}
         <View style={{
           flex: 1.2, minWidth: 160, backgroundColor: "#FFF7ED", borderRadius: 10, padding: 12,
           borderLeftWidth: 3, borderLeftColor: "#F97316",
         }}>
-          <Text style={{ fontSize: 11, color: COLORS.textSecondary, fontWeight: "700" }}>TÉCNICOS HOY</Text>
-          <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4, marginTop: 2 }}>
-            <Text style={{ fontSize: 22, fontWeight: "900", color: "#EA580C" }}>{w.technicians_busy}</Text>
-            <Text style={{ fontSize: 13, color: COLORS.textSecondary }}>de {w.technicians_total}</Text>
-          </View>
-          <Text style={{ fontSize: 11, color: COLORS.textSecondary, marginTop: 2 }}>
-            {w.technicians_free} libres · {busyPct}% ocupados
-          </Text>
+          <Text style={{ fontSize: 11, color: COLORS.textSecondary, fontWeight: "700" }}>TÉCNICOS · 3 SEMANAS</Text>
+          {(() => {
+            const t3 = dash?.tech_three_weeks;
+            const totalTech = t3?.technicians?.length || 0;
+            const totalFree = (t3?.technicians || []).reduce((acc: number, x: any) => acc + (x.free_days || 0), 0);
+            const totalSlots = totalTech * (t3?.total_workdays || 0);
+            const pctFree = totalSlots > 0 ? Math.round((totalFree / totalSlots) * 100) : 0;
+            return (
+              <>
+                <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4, marginTop: 2 }}>
+                  <Text style={{ fontSize: 22, fontWeight: "900", color: "#EA580C" }}>{totalFree}</Text>
+                  <Text style={{ fontSize: 13, color: COLORS.textSecondary }}>días libres</Text>
+                </View>
+                <Text style={{ fontSize: 11, color: COLORS.textSecondary, marginTop: 2 }}>
+                  {totalTech} técnicos · {pctFree}% libre
+                </Text>
+              </>
+            );
+          })()}
         </View>
       </View>
     </View>
@@ -1083,3 +1095,165 @@ function GeoDistribution({ dash, router }: { dash: any; router: any }) {
   );
 }
 
+
+
+// ============================================================================
+// TechAvailability3W — Disponibilidad de técnicos en las próximas 3 semanas
+// ============================================================================
+const DAY_LETTERS = ["L", "M", "X", "J", "V"]; // lun..vie
+function shortDay(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  return `${d.getDate()}`;
+}
+function fmtDayLabel(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  const dia = d.getDate().toString().padStart(2, "0");
+  const mes = (d.getMonth() + 1).toString().padStart(2, "0");
+  return `${dia}/${mes}`;
+}
+
+function TechAvailability3W({ dash, router }: { dash: any; router: any }) {
+  const s = useThemedStyles(useS);
+  const t3 = dash?.tech_three_weeks;
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  if (!t3 || !t3.technicians || t3.technicians.length === 0) return null;
+
+  const techs: any[] = t3.technicians;
+  // Días agrupados por semanas de 5 (lun-vie)
+  const groupByWeeks = (days: any[]) => {
+    const weeks: any[][] = [];
+    for (let i = 0; i < days.length; i += 5) {
+      weeks.push(days.slice(i, i + 5));
+    }
+    return weeks;
+  };
+
+  const weekLabels = ["Esta semana", "Próxima", "+2 sem."];
+
+  return (
+    <View style={s.cardWrap}>
+      <View style={s.cardHeader}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Ionicons name="calendar-clear-outline" size={18} color={COLORS.primary} />
+          <Text style={s.cardTitle}>Técnicos · Próximas 3 semanas</Text>
+        </View>
+        <Text style={{ fontSize: 11, color: COLORS.textSecondary }}>
+          {t3.from?.slice(8, 10)}/{t3.from?.slice(5, 7)} – {t3.to?.slice(8, 10)}/{t3.to?.slice(5, 7)}
+        </Text>
+      </View>
+
+      {/* Leyenda + cabecera con etiquetas de los días */}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          <View style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: "#D1FAE5", borderWidth: 1, borderColor: "#10B981" }} />
+          <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>Libre</Text>
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          <View style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: "#FEE2E2", borderWidth: 1, borderColor: "#EF4444" }} />
+          <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>Ocupado</Text>
+        </View>
+      </View>
+
+      {/* Cabecera con los días de cada semana */}
+      <View style={{ flexDirection: "row", marginBottom: 6, alignItems: "center" }}>
+        <View style={{ width: 110 }} />
+        {groupByWeeks(techs[0]?.days || []).map((week: any[], wi: number) => (
+          <View key={wi} style={{ flex: 1, alignItems: "center", marginHorizontal: 2 }}>
+            <Text style={{ fontSize: 9, fontWeight: "800", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 2 }}>
+              {weekLabels[wi] || `S${wi + 1}`}
+            </Text>
+            <View style={{ flexDirection: "row", gap: 1 }}>
+              {week.map((d, i) => (
+                <View key={i} style={{ width: 22, alignItems: "center" }}>
+                  <Text style={{ fontSize: 9, fontWeight: "700", color: COLORS.textSecondary }}>{DAY_LETTERS[i]}</Text>
+                  <Text style={{ fontSize: 9, color: COLORS.textSecondary }}>{shortDay(d.date)}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ))}
+      </View>
+
+      {/* Filas: 1 por técnico */}
+      {techs.map((tech, i) => {
+        const isOpen = expandedId === tech.id;
+        const pct = Math.round((tech.free_days / tech.total_days) * 100);
+        const ringColor = pct >= 60 ? "#10B981" : pct >= 30 ? "#F59E0B" : "#EF4444";
+        return (
+          <View key={tech.id} style={{ borderTopWidth: i === 0 ? 0 : 1, borderTopColor: COLORS.borderInput, paddingVertical: 6 }}>
+            <TouchableOpacity
+              onPress={() => setExpandedId(isOpen ? null : tech.id)}
+              activeOpacity={0.7}
+              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+            >
+              <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: tech.color, alignItems: "center", justifyContent: "center" }}>
+                <Text style={{ fontSize: 11, fontWeight: "800", color: "#fff" }}>{tech.name.charAt(0).toUpperCase()}</Text>
+              </View>
+              <View style={{ width: 80 }}>
+                <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.text }} numberOfLines={1}>{tech.name}</Text>
+                <Text style={{ fontSize: 10, color: ringColor, fontWeight: "800" }}>{tech.free_days}/{tech.total_days} libres</Text>
+              </View>
+              {/* Cuadrícula compacta: 3 semanas con 5 días cada una */}
+              {groupByWeeks(tech.days).map((week: any[], wi: number) => (
+                <View key={wi} style={{ flex: 1, flexDirection: "row", justifyContent: "center", gap: 1, marginHorizontal: 2 }}>
+                  {week.map((d, di) => (
+                    <View
+                      key={di}
+                      style={{
+                        width: 20, height: 18, borderRadius: 3,
+                        backgroundColor: d.free ? "#D1FAE5" : "#FEE2E2",
+                        borderWidth: 1,
+                        borderColor: d.free ? "#10B981" : "#EF4444",
+                        alignItems: "center", justifyContent: "center",
+                      }}
+                    >
+                      {!d.free && <Ionicons name="close" size={11} color="#EF4444" />}
+                      {d.free && <Ionicons name="checkmark" size={11} color="#10B981" />}
+                    </View>
+                  ))}
+                </View>
+              ))}
+              <Ionicons name={isOpen ? "chevron-up" : "chevron-down"} size={16} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+
+            {/* Detalle desplegable: lista de días libres */}
+            {isOpen && (
+              <View style={{ marginTop: 8, marginLeft: 30, padding: 10, backgroundColor: COLORS.primarySoft || "#F0F9FF", borderRadius: 8 }}>
+                <Text style={{ fontSize: 11, fontWeight: "800", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 6 }}>
+                  Días libres ({tech.free_days})
+                </Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                  {tech.days.filter((d: any) => d.free).map((d: any, k: number) => (
+                    <TouchableOpacity
+                      key={k}
+                      onPress={() => router.push(`/calendario?date=${d.date}` as any)}
+                      style={{
+                        backgroundColor: "#D1FAE5",
+                        borderWidth: 1, borderColor: "#10B981",
+                        paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
+                        flexDirection: "row", alignItems: "center", gap: 4,
+                      }}
+                    >
+                      <Ionicons name="calendar-outline" size={11} color="#065F46" />
+                      <Text style={{ fontSize: 11, fontWeight: "700", color: "#065F46" }}>{DAY_LETTERS[d.weekday]} {fmtDayLabel(d.date)}</Text>
+                    </TouchableOpacity>
+                  ))}
+                  {tech.free_days === 0 && (
+                    <Text style={{ fontSize: 12, color: COLORS.textSecondary, fontStyle: "italic" }}>
+                      Sin días libres en este rango
+                    </Text>
+                  )}
+                </View>
+                {tech.free_days > 0 && (
+                  <Text style={{ fontSize: 10, color: COLORS.textSecondary, marginTop: 6, fontStyle: "italic" }}>
+                    Toca un día para ir al calendario
+                  </Text>
+                )}
+              </View>
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+}

@@ -2772,6 +2772,102 @@ async def dashboard(user: dict = Depends(current_user)):
         "technicians_free": max(0, total_users - busy_users),
     }
 
+    # ---- 1.b Disponibilidad técnicos · 3 semanas (lun a vie) ----
+    # Calculamos para cada técnico los días LABORABLES libres durante las próximas 3 semanas
+    # (incluida la actual). Lun-Vie de la semana actual + 2 siguientes = 15 días.
+    three_w_start = week_start  # lunes de esta semana
+    three_w_end = week_start + timedelta(days=21)  # 3 semanas después
+    # Lista de días laborales (lun-vie)
+    work_days: list[datetime] = []
+    cursor_d = three_w_start
+    while cursor_d < three_w_end:
+        if cursor_d.weekday() < 5:  # 0=lunes ... 4=viernes
+            work_days.append(cursor_d)
+        cursor_d += timedelta(days=1)
+
+    # Cargar todos los eventos del rango
+    three_w_events = await db.events.find(
+        {
+            "start_at": {"$gte": three_w_start.isoformat(), "$lt": three_w_end.isoformat()},
+        },
+        {"_id": 0, "start_at": 1, "end_at": 1, "assigned_user_ids": 1, "status": 1, "manager_id": 1}
+    ).to_list(20000)
+
+    # Cargar lista completa de técnicos / usuarios
+    all_users_full = await db.users.find(
+        {"active": {"$ne": False}},
+        {"_id": 0, "id": 1, "name": 1, "email": 1, "role": 1, "color": 1}
+    ).to_list(500)
+    # Solo consideramos usuarios "operativos" (excluir admin principal si quieres puro)
+    operative_users = [u for u in all_users_full if (u.get("role") or "").lower() in ("user", "tecnico", "technician", "manager", "admin")]
+
+    # Mapa técnico_id -> set(YYYY-MM-DD) días con eventos NO cancelados
+    busy_days_by_user: dict[str, set] = {u["id"]: set() for u in operative_users}
+    for e in three_w_events:
+        if (e.get("status") or "") == "cancelled":
+            continue
+        st = e.get("start_at")
+        if not st:
+            continue
+        try:
+            d = datetime.fromisoformat(st.replace("Z", "+00:00"))
+        except Exception:
+            continue
+        day_key = d.strftime("%Y-%m-%d")
+        for uid in (e.get("assigned_user_ids") or []):
+            if uid in busy_days_by_user:
+                busy_days_by_user[uid].add(day_key)
+
+    # Construir respuesta por técnico
+    tech_availability: list[dict] = []
+    for u in operative_users:
+        uid = u["id"]
+        busy_keys = busy_days_by_user.get(uid, set())
+        days_detail = []
+        free_count = 0
+        for d in work_days:
+            key = d.strftime("%Y-%m-%d")
+            is_free = key not in busy_keys
+            if is_free:
+                free_count += 1
+            days_detail.append({
+                "date": key,
+                "weekday": d.weekday(),  # 0..4
+                "free": is_free,
+            })
+        tech_availability.append({
+            "id": uid,
+            "name": u.get("name") or u.get("email", "Sin nombre"),
+            "color": u.get("color") or "#3B82F6",
+            "free_days": free_count,
+            "total_days": len(work_days),
+            "days": days_detail,
+        })
+    # Ordenar: técnicos con MÁS días libres primero (los que están "menos ocupados")
+    tech_availability.sort(key=lambda x: -x["free_days"])
+
+    # Metadatos del rango
+    tech_three_weeks = {
+        "from": three_w_start.strftime("%Y-%m-%d"),
+        "to": (three_w_end - timedelta(days=1)).strftime("%Y-%m-%d"),
+        "total_workdays": len(work_days),
+        "weeks_meta": [
+            {
+                "label": "Esta semana",
+                "monday": three_w_start.strftime("%Y-%m-%d"),
+            },
+            {
+                "label": "Próxima",
+                "monday": (three_w_start + timedelta(days=7)).strftime("%Y-%m-%d"),
+            },
+            {
+                "label": "+2 sem.",
+                "monday": (three_w_start + timedelta(days=14)).strftime("%Y-%m-%d"),
+            },
+        ],
+        "technicians": tech_availability,
+    }
+
     # ---- 2. Top técnicos del mes ----
     month_start = now_utc.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     month_events = await db.events.find(
@@ -3035,6 +3131,7 @@ async def dashboard(user: dict = Depends(current_user)):
         },
         # New extended fields
         "week_summary": week_summary,
+        "tech_three_weeks": tech_three_weeks,
         "top_technicians": top_technicians,
         "alerts": alerts,
         "budget_pipeline": budget_pipeline,
