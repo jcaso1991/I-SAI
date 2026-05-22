@@ -77,7 +77,13 @@ export default function MapaScreen() {
     if (managerFilter !== "todos" && managerFilter !== "sin_gestor" && p.manager_id !== managerFilter) return;
     const lat = Number(p.lat ?? p._lat);
     const lng = Number(p.lng ?? p._lng);
+    // Excluir si no son números válidos O si caen en (0,0) — esto pasa
+    // cuando lat/lng vienen como null y Number(null)===0, lo que mete a
+    // todos los proyectos sin coordenadas en mitad del Atlántico y
+    // fitBounds hace zoom máximo a la nada.
     if (isNaN(lat) || isNaN(lng)) return;
+    if (lat === 0 && lng === 0) return;
+    if (Math.abs(lat) < 0.1 && Math.abs(lng) < 0.1) return;
     const color = STATUS_COLORS[st] || "#999";
     const label = STATUS_LABELS[st] || st;
     markers.push({
