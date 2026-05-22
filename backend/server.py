@@ -2733,6 +2733,290 @@ async def dashboard(user: dict = Depends(current_user)):
     pending_sat = await db.sat_incidents.count_documents({"status": "pendiente"})
     pending_budgets = await db.budgets.count_documents({"$or": [{"status": "pendiente"}, {"status": {"$exists": False}}]})
 
+    # ====================== EXTENDED DASHBOARD DATA ======================
+
+    # ---- 1. Week summary ----
+    now_utc = datetime.now(timezone.utc)
+    week_start = (now_utc - timedelta(days=now_utc.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    week_end = week_start + timedelta(days=7)
+    today_evt_count = await db.events.count_documents({
+        "start_at": {"$gte": today_start, "$lte": today_end},
+    })
+    week_events = await db.events.find(
+        {"start_at": {"$gte": week_start.isoformat(), "$lt": week_end.isoformat()}},
+        {"_id": 0, "hours": 1, "status": 1, "assigned_user_ids": 1, "start_at": 1}
+    ).to_list(5000)
+    week_events_count = len(week_events)
+    week_hours_planned = round(sum(_safe_float(e.get("hours")) for e in week_events), 1)
+    week_hours_real = round(sum(_safe_float(e.get("hours")) for e in week_events if e.get("status") == "completed"), 1)
+    # Técnicos disponibles vs ocupados (hoy)
+    today_busy_users: set = set()
+    for e in week_events:
+        st = e.get("start_at", "")
+        if today_start <= st <= today_end and (e.get("status") != "completed"):
+            for uid in (e.get("assigned_user_ids") or []):
+                today_busy_users.add(uid)
+    all_tech_users = await db.users.find(
+        {"role": {"$in": ["user", "tecnico", "technician", "admin", "manager"]}},
+        {"id": 1}
+    ).to_list(500)
+    total_users = len(all_tech_users)
+    busy_users = len(today_busy_users)
+    week_summary = {
+        "events_today": today_evt_count,
+        "events_week": week_events_count,
+        "hours_planned_week": week_hours_planned,
+        "hours_real_week": week_hours_real,
+        "technicians_busy": busy_users,
+        "technicians_total": total_users,
+        "technicians_free": max(0, total_users - busy_users),
+    }
+
+    # ---- 2. Top técnicos del mes ----
+    month_start = now_utc.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_events = await db.events.find(
+        {"start_at": {"$gte": month_start.isoformat(), "$lt": now_utc.isoformat()}},
+        {"_id": 0, "assigned_user_ids": 1, "hours": 1, "status": 1}
+    ).to_list(10000)
+    tech_stats: dict = {}
+    for e in month_events:
+        hours = _safe_float(e.get("hours"))
+        completed = e.get("status") == "completed"
+        for uid in (e.get("assigned_user_ids") or []):
+            if uid not in tech_stats:
+                tech_stats[uid] = {"hours_planned": 0.0, "hours_real": 0.0, "events": 0, "completed": 0}
+            tech_stats[uid]["hours_planned"] += hours
+            tech_stats[uid]["events"] += 1
+            if completed:
+                tech_stats[uid]["hours_real"] += hours
+                tech_stats[uid]["completed"] += 1
+    user_map = {u["id"]: u for u in await db.users.find({}, {"_id": 0, "id": 1, "name": 1, "email": 1, "color": 1}).to_list(500)}
+    top_technicians = []
+    for uid, s in tech_stats.items():
+        u = user_map.get(uid, {})
+        planned = round(s["hours_planned"], 1)
+        real = round(s["hours_real"], 1)
+        rate = round((real / planned) * 100, 0) if planned > 0 else 0
+        top_technicians.append({
+            "id": uid,
+            "name": u.get("name") or u.get("email") or "Sin nombre",
+            "color": u.get("color") or "#3B82F6",
+            "hours_planned": planned,
+            "hours_real": real,
+            "events": s["events"],
+            "completed": s["completed"],
+            "completion_rate": rate,
+        })
+    top_technicians.sort(key=lambda x: x["hours_planned"], reverse=True)
+    top_technicians = top_technicians[:8]
+
+    # ---- 3. Alerts críticas ----
+    sat_urgent_open = await db.sat_incidents.count_documents({
+        "status": {"$in": ["abierta", "en_proceso", "pendiente", None]},
+        "prioridad": {"$in": ["alta", "urgente"]},
+    })
+    events_no_tech = await db.events.count_documents({
+        "$or": [
+            {"assigned_user_ids": {"$exists": False}},
+            {"assigned_user_ids": {"$size": 0}},
+            {"assigned_user_ids": None},
+        ],
+        "status": {"$ne": "completed"},
+        "start_at": {"$gte": now_utc.isoformat()},
+    })
+    thirty_days_ago = (now_utc - timedelta(days=30)).isoformat()
+    budgets_old_pending = await db.budgets.count_documents({
+        "status": {"$in": ["pendiente", "enviado", "borrador", None]},
+        "$or": [
+            {"created_at": {"$lt": thirty_days_ago}},
+            {"fecha": {"$lt": thirty_days_ago[:10]}},
+        ],
+    })
+    alerts = {
+        "sat_urgent_open": sat_urgent_open,
+        "events_no_tech": events_no_tech,
+        "budgets_pending_30d": budgets_old_pending,
+        "total": sat_urgent_open + events_no_tech + budgets_old_pending,
+    }
+
+    # ---- 4. Budget pipeline ----
+    pipeline_stages = ["borrador", "enviado", "aceptado", "rechazado"]
+    pipeline = {}
+    for stage in pipeline_stages:
+        # Acepta tanto "status" como "estado"
+        count = await db.budgets.count_documents({
+            "$or": [{"status": stage}, {"estado": stage}]
+        })
+        # Sumar importes (campo "total" o "importe_total")
+        cur = db.budgets.aggregate([
+            {"$match": {"$or": [{"status": stage}, {"estado": stage}]}},
+            {"$group": {"_id": None, "total": {"$sum": {"$ifNull": ["$total", {"$ifNull": ["$importe_total", 0]}]}}}}
+        ])
+        amt = 0.0
+        async for row in cur:
+            amt = row.get("total", 0) or 0
+        pipeline[stage] = {"count": count, "amount": round(float(amt), 2)}
+    # Conversion rate = aceptados / (aceptados + rechazados)
+    accepted = pipeline.get("aceptado", {}).get("count", 0)
+    rejected = pipeline.get("rechazado", {}).get("count", 0)
+    conv_rate = round((accepted / (accepted + rejected)) * 100, 1) if (accepted + rejected) > 0 else 0
+    budget_pipeline = {
+        "stages": pipeline,
+        "conversion_rate": conv_rate,
+        "total_count": sum(p["count"] for p in pipeline.values()),
+        "total_amount": round(sum(p["amount"] for p in pipeline.values()), 2),
+    }
+
+    # ---- 5. SAT health ----
+    # Tiempo medio de resolución (horas)
+    resolved_incidents = await db.sat_incidents.find(
+        {"status": {"$in": ["resuelta", "cerrada"]}, "resolved_at": {"$exists": True, "$ne": None}, "created_at": {"$exists": True}},
+        {"_id": 0, "created_at": 1, "resolved_at": 1, "history": 1, "cliente": 1, "client_name": 1, "lat": 1, "lng": 1, "direccion": 1}
+    ).to_list(5000)
+    resolution_hours = []
+    first_visit_solved = 0
+    by_client: dict = {}
+    heatmap_points = []
+    for inc in resolved_incidents:
+        try:
+            ca = datetime.fromisoformat(inc["created_at"].replace("Z", "+00:00"))
+            ra = datetime.fromisoformat(inc["resolved_at"].replace("Z", "+00:00"))
+            delta_h = (ra - ca).total_seconds() / 3600.0
+            if delta_h >= 0:
+                resolution_hours.append(delta_h)
+        except Exception:
+            pass
+        # First visit: history length <= 1 visita
+        if len(inc.get("history") or []) <= 1:
+            first_visit_solved += 1
+        # Por cliente
+        name = inc.get("cliente") or inc.get("client_name") or "Sin cliente"
+        by_client[name] = by_client.get(name, 0) + 1
+        # Heatmap
+        if inc.get("lat") and inc.get("lng"):
+            heatmap_points.append({"lat": inc["lat"], "lng": inc["lng"]})
+    # Añadir TODAS las incidencias al heatmap (no solo las resueltas)
+    all_incidents = await db.sat_incidents.find(
+        {"lat": {"$exists": True, "$ne": None}},
+        {"_id": 0, "lat": 1, "lng": 1, "prioridad": 1, "status": 1, "cliente": 1}
+    ).to_list(5000)
+    heatmap_full = [{"lat": i["lat"], "lng": i["lng"], "priority": i.get("prioridad") or "media"} for i in all_incidents]
+
+    avg_resolution = round(sum(resolution_hours) / len(resolution_hours), 1) if resolution_hours else 0
+    first_visit_rate = round((first_visit_solved / len(resolved_incidents)) * 100, 1) if resolved_incidents else 0
+    top_clients = sorted([{"name": k, "count": v} for k, v in by_client.items()], key=lambda x: x["count"], reverse=True)[:5]
+    sat_health = {
+        "avg_resolution_hours": avg_resolution,
+        "first_visit_rate": first_visit_rate,
+        "top_clients": top_clients,
+        "total_resolved": len(resolved_incidents),
+        "heatmap": heatmap_full,
+    }
+
+    # ---- 6. Active projects for mini map ----
+    active_projects_map = await db.materiales.find(
+        {
+            "lat": {"$exists": True, "$ne": None},
+            "lng": {"$exists": True, "$ne": None},
+            "project_status": {"$in": ["pendiente", "planificado", "a_facturar"]},
+        },
+        {"_id": 0, "id": 1, "lat": 1, "lng": 1, "cliente": 1, "ubicacion": 1, "project_status": 1}
+    ).to_list(2000)
+
+    # ---- 7. YoY comparison ----
+    current_year = now_utc.year
+    last_year = current_year - 1
+    def year_range(y: int) -> tuple[str, str]:
+        return f"{y}-01-01T00:00:00+00:00", f"{y+1}-01-01T00:00:00+00:00"
+    cy_start, cy_end = year_range(current_year)
+    ly_start, ly_end = year_range(last_year)
+    closed_query = {"project_status": {"$in": ["terminado", "facturado"]}}
+    this_year_closed = await db.materiales.count_documents({**closed_query, "updated_at": {"$gte": cy_start, "$lt": cy_end}})
+    last_year_closed = await db.materiales.count_documents({**closed_query, "updated_at": {"$gte": ly_start, "$lt": ly_end}})
+    growth_pct = round(((this_year_closed - last_year_closed) / last_year_closed) * 100, 1) if last_year_closed > 0 else (100.0 if this_year_closed > 0 else 0)
+    # Quarters
+    quarters_this = []
+    quarters_last = []
+    for q in range(4):
+        q_start_month = q * 3 + 1
+        q_end_month = q_start_month + 3
+        def q_range(y: int, m_start: int, m_end: int) -> tuple[str, str]:
+            s = f"{y}-{m_start:02d}-01T00:00:00+00:00"
+            if m_end > 12:
+                e = f"{y+1}-01-01T00:00:00+00:00"
+            else:
+                e = f"{y}-{m_end:02d}-01T00:00:00+00:00"
+            return s, e
+        s1, e1 = q_range(current_year, q_start_month, q_end_month)
+        s2, e2 = q_range(last_year, q_start_month, q_end_month)
+        quarters_this.append(await db.materiales.count_documents({**closed_query, "updated_at": {"$gte": s1, "$lt": e1}}))
+        quarters_last.append(await db.materiales.count_documents({**closed_query, "updated_at": {"$gte": s2, "$lt": e2}}))
+    yoy_comparison = {
+        "this_year": current_year,
+        "last_year": last_year,
+        "closed_this_year": this_year_closed,
+        "closed_last_year": last_year_closed,
+        "growth_pct": growth_pct,
+        "quarters_this": quarters_this,
+        "quarters_last": quarters_last,
+    }
+
+    # ---- 8. Geo distribution ----
+    pipe_cities = [
+        {"$match": {"ubicacion": {"$exists": True, "$ne": None, "$ne": ""}, "project_status": {"$nin": ["anulado", "facturado", "terminado"]}}},
+        {"$group": {"_id": "$ubicacion", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 8},
+    ]
+    top_cities = []
+    async for row in db.materiales.aggregate(pipe_cities):
+        top_cities.append({"city": row["_id"], "count": row["count"]})
+    # Facturación por provincia (aproximación: mapeo de ciudades -> provincia)
+    province_map = {
+        "BILBAO": "Bizkaia", "BARAKALDO": "Bizkaia", "GETXO": "Bizkaia", "PORTUGALETE": "Bizkaia", "SESTAO": "Bizkaia",
+        "BASAURI": "Bizkaia", "DURANGO": "Bizkaia", "AMOREBIETA": "Bizkaia", "MUNGIA": "Bizkaia", "ERMUA": "Bizkaia",
+        "GERNIKA": "Bizkaia", "GALDAKAO": "Bizkaia", "BERMEO": "Bizkaia", "LEKEITIO": "Bizkaia",
+        "DONOSTIA": "Gipuzkoa", "IRUN": "Gipuzkoa", "ERRENTERIA": "Gipuzkoa", "EIBAR": "Gipuzkoa", "ARRASATE": "Gipuzkoa",
+        "BERGARA": "Gipuzkoa", "HONDARRIBIA": "Gipuzkoa", "ZARAUTZ": "Gipuzkoa", "AZPEITIA": "Gipuzkoa",
+        "BEASAIN": "Gipuzkoa", "ORDIZIA": "Gipuzkoa", "ELGOIBAR": "Gipuzkoa", "ZUMAIA": "Gipuzkoa",
+        "TOLOSA": "Gipuzkoa", "LASARTE": "Gipuzkoa", "ASTIGARRAGA": "Gipuzkoa", "ONATI": "Gipuzkoa",
+        "VITORIA": "Araba", "GASTEIZ": "Araba", "AMURRIO": "Araba", "LAUDIO": "Araba", "LLODIO": "Araba",
+        "PAMPLONA": "Navarra", "IRUNEA": "Navarra", "TUDELA": "Navarra", "TAFALLA": "Navarra", "ESTELLA": "Navarra",
+        "LOGRONO": "La Rioja", "CALAHORRA": "La Rioja", "HARO": "La Rioja",
+        "SANTANDER": "Cantabria", "TORRELAVEGA": "Cantabria",
+        "MADRID": "Madrid", "BARCELONA": "Barcelona", "VALENCIA": "Valencia",
+        "SEVILLA": "Sevilla", "ZARAGOZA": "Zaragoza", "BURGOS": "Burgos",
+    }
+    def to_province(ubic: str) -> str:
+        if not ubic:
+            return "Otros"
+        u = ubic.upper().strip()
+        for key, prov in province_map.items():
+            if key in u:
+                return prov
+        return "Otros"
+    cur = db.materiales.find({"project_status": {"$nin": ["anulado"]}}, {"_id": 0, "ubicacion": 1, "total_parcial": 1})
+    by_province: dict = {}
+    async for m in cur:
+        prov = to_province(m.get("ubicacion") or "")
+        # parsear total_parcial "1.234,56 €" -> 1234.56
+        raw = (m.get("total_parcial") or "").replace("€", "").replace(" ", "").replace(".", "").replace(",", ".").strip()
+        try:
+            val = float(raw) if raw else 0.0
+        except Exception:
+            val = 0.0
+        by_province[prov] = by_province.get(prov, 0) + val
+    total_facturacion = sum(by_province.values()) or 1
+    by_province_list = sorted(
+        [{"province": p, "amount": round(v, 2), "pct": round((v / total_facturacion) * 100, 1)} for p, v in by_province.items()],
+        key=lambda x: x["amount"], reverse=True
+    )[:8]
+    geo_distribution = {
+        "top_cities": top_cities,
+        "by_province": by_province_list,
+        "total_amount": round(total_facturacion, 2),
+    }
+
     return {
         "projects_by_status": projects_by_status,
         "manager_hours": manager_hours[:8],
@@ -2749,6 +3033,15 @@ async def dashboard(user: dict = Depends(current_user)):
             "pending_sat": pending_sat,
             "pending_budgets": pending_budgets,
         },
+        # New extended fields
+        "week_summary": week_summary,
+        "top_technicians": top_technicians,
+        "alerts": alerts,
+        "budget_pipeline": budget_pipeline,
+        "sat_health": sat_health,
+        "active_projects_map": active_projects_map,
+        "yoy_comparison": yoy_comparison,
+        "geo_distribution": geo_distribution,
     }
 
 # ---------------- Budgets (Presupuestos) ----------------

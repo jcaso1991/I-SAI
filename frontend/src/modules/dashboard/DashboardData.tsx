@@ -168,14 +168,22 @@ export default function DashboardData() {
 
   return (
     <View style={{ gap: 16, marginBottom: 8 }}>
+      <CriticalAlerts dash={dash} router={router} />
+      <WeekSummary dash={dash} router={router} />
       <TodayRow dash={dash} router={router} />
-      <View style={{ flexDirection: "row", gap: 16 }}>
-        <View style={{ flex: 1 }}><ProjectsByStatus dash={dash} router={router} /></View>
-        <View style={{ flex: 1 }}><GlobalHours dash={dash} /></View>
+      <View style={{ flexDirection: "row", gap: 16, flexWrap: "wrap" }}>
+        <View style={{ flex: 1, minWidth: 280 }}><ProjectsByStatus dash={dash} router={router} /></View>
+        <View style={{ flex: 1, minWidth: 280 }}><GlobalHours dash={dash} /></View>
       </View>
+      <TopTechnicians dash={dash} router={router} />
       <ProjectsOverHours dash={dash} router={router} />
       <ManagerHours dash={dash} />
+      <BudgetPipeline dash={dash} router={router} />
       <BudgetsKPI />
+      <SatHealth dash={dash} router={router} />
+      <MiniMap dash={dash} router={router} />
+      <YoYComparison dash={dash} />
+      <GeoDistribution dash={dash} router={router} />
       <ProjectsByMonth dash={dash} />
       <SatByMonth dash={dash} />
     </View>
@@ -579,3 +587,499 @@ function BudgetsKPI() {
     </View>
   );
 }
+
+// ============================================================================
+// NEW EXTENDED DASHBOARD COMPONENTS
+// ============================================================================
+
+function formatEur(n: number | undefined | null): string {
+  if (n == null) return "0 €";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M €`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k €`;
+  return `${Math.round(n)} €`;
+}
+
+function CriticalAlerts({ dash, router }: { dash: any; router: any }) {
+  const s = useThemedStyles(useS);
+  const alerts = dash?.alerts;
+  if (!alerts || alerts.total === 0) return null;
+
+  const items: Array<{ icon: any; label: string; value: number; color: string; onPress: () => void }> = [];
+  if (alerts.sat_urgent_open > 0) {
+    items.push({
+      icon: "warning",
+      label: `${alerts.sat_urgent_open} incidencia${alerts.sat_urgent_open === 1 ? "" : "s"} SAT urgente${alerts.sat_urgent_open === 1 ? "" : "s"}`,
+      value: alerts.sat_urgent_open,
+      color: "#DC2626",
+      onPress: () => router.push("/sat"),
+    });
+  }
+  if (alerts.events_no_tech > 0) {
+    items.push({
+      icon: "calendar-outline",
+      label: `${alerts.events_no_tech} evento${alerts.events_no_tech === 1 ? "" : "s"} sin técnico`,
+      value: alerts.events_no_tech,
+      color: "#EA580C",
+      onPress: () => router.push("/calendario"),
+    });
+  }
+  if (alerts.budgets_pending_30d > 0) {
+    items.push({
+      icon: "document-text-outline",
+      label: `${alerts.budgets_pending_30d} presupuesto${alerts.budgets_pending_30d === 1 ? "" : "s"} >30 días`,
+      value: alerts.budgets_pending_30d,
+      color: "#B45309",
+      onPress: () => router.push("/presupuestos"),
+    });
+  }
+
+  return (
+    <View style={{
+      backgroundColor: "#FEF2F2",
+      borderWidth: 1,
+      borderColor: "#FECACA",
+      borderRadius: 12,
+      padding: 12,
+      gap: 8,
+    }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <Ionicons name="alert-circle" size={22} color="#DC2626" />
+        <Text style={{ fontSize: 15, fontWeight: "800", color: "#991B1B" }}>
+          Alertas críticas
+        </Text>
+        <View style={{ backgroundColor: "#DC2626", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 }}>
+          <Text style={{ fontSize: 11, fontWeight: "800", color: "#fff" }}>{alerts.total}</Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+        {items.map((it, i) => (
+          <TouchableOpacity
+            key={i}
+            onPress={it.onPress}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              paddingVertical: 6,
+              paddingHorizontal: 10,
+              backgroundColor: "#fff",
+              borderRadius: 8,
+              borderLeftWidth: 3,
+              borderLeftColor: it.color,
+            }}
+          >
+            <Ionicons name={it.icon} size={14} color={it.color} />
+            <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.text }}>{it.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function WeekSummary({ dash, router }: { dash: any; router: any }) {
+  const s = useThemedStyles(useS);
+  const w = dash?.week_summary;
+  if (!w) return null;
+  const pct = w.hours_planned_week > 0 ? Math.round((w.hours_real_week / w.hours_planned_week) * 100) : 0;
+  const busyPct = w.technicians_total > 0 ? Math.round((w.technicians_busy / w.technicians_total) * 100) : 0;
+
+  return (
+    <View style={s.cardWrap}>
+      <View style={s.cardHeader}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Ionicons name="speedometer-outline" size={18} color={COLORS.primary} />
+          <Text style={s.cardTitle}>Resumen de la semana</Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+        {/* Eventos hoy */}
+        <TouchableOpacity onPress={() => router.push("/calendario")} style={{
+          flex: 1, minWidth: 130, backgroundColor: "#EFF6FF", borderRadius: 10, padding: 12,
+          borderLeftWidth: 3, borderLeftColor: "#3B82F6",
+        }}>
+          <Text style={{ fontSize: 11, color: COLORS.textSecondary, fontWeight: "700" }}>HOY</Text>
+          <Text style={{ fontSize: 22, fontWeight: "900", color: COLORS.text, marginTop: 2 }}>{w.events_today}</Text>
+          <Text style={{ fontSize: 11, color: COLORS.textSecondary }}>eventos</Text>
+        </TouchableOpacity>
+        {/* Eventos semana */}
+        <TouchableOpacity onPress={() => router.push("/calendario")} style={{
+          flex: 1, minWidth: 130, backgroundColor: "#F0FDF4", borderRadius: 10, padding: 12,
+          borderLeftWidth: 3, borderLeftColor: "#10B981",
+        }}>
+          <Text style={{ fontSize: 11, color: COLORS.textSecondary, fontWeight: "700" }}>ESTA SEMANA</Text>
+          <Text style={{ fontSize: 22, fontWeight: "900", color: COLORS.text, marginTop: 2 }}>{w.events_week}</Text>
+          <Text style={{ fontSize: 11, color: COLORS.textSecondary }}>eventos</Text>
+        </TouchableOpacity>
+        {/* Horas plan vs real */}
+        <View style={{
+          flex: 1.4, minWidth: 180, backgroundColor: "#FAF5FF", borderRadius: 10, padding: 12,
+          borderLeftWidth: 3, borderLeftColor: "#8B5CF6",
+        }}>
+          <Text style={{ fontSize: 11, color: COLORS.textSecondary, fontWeight: "700" }}>HORAS SEMANA</Text>
+          <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4, marginTop: 2 }}>
+            <Text style={{ fontSize: 22, fontWeight: "900", color: COLORS.text }}>{w.hours_real_week}h</Text>
+            <Text style={{ fontSize: 13, color: COLORS.textSecondary }}>/ {w.hours_planned_week}h</Text>
+          </View>
+          <View style={{ height: 6, backgroundColor: "#E9D5FF", borderRadius: 3, marginTop: 6, overflow: "hidden" }}>
+            <View style={{ height: 6, width: `${Math.min(pct, 100)}%`, backgroundColor: "#8B5CF6", borderRadius: 3 }} />
+          </View>
+          <Text style={{ fontSize: 10, color: "#8B5CF6", fontWeight: "700", marginTop: 4 }}>{pct}% completado</Text>
+        </View>
+        {/* Técnicos */}
+        <View style={{
+          flex: 1.2, minWidth: 160, backgroundColor: "#FFF7ED", borderRadius: 10, padding: 12,
+          borderLeftWidth: 3, borderLeftColor: "#F97316",
+        }}>
+          <Text style={{ fontSize: 11, color: COLORS.textSecondary, fontWeight: "700" }}>TÉCNICOS HOY</Text>
+          <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4, marginTop: 2 }}>
+            <Text style={{ fontSize: 22, fontWeight: "900", color: "#EA580C" }}>{w.technicians_busy}</Text>
+            <Text style={{ fontSize: 13, color: COLORS.textSecondary }}>de {w.technicians_total}</Text>
+          </View>
+          <Text style={{ fontSize: 11, color: COLORS.textSecondary, marginTop: 2 }}>
+            {w.technicians_free} libres · {busyPct}% ocupados
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function TopTechnicians({ dash, router }: { dash: any; router: any }) {
+  const s = useThemedStyles(useS);
+  const techs: any[] = dash?.top_technicians || [];
+  if (!techs.length) return null;
+  return (
+    <View style={s.cardWrap}>
+      <View style={s.cardHeader}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Ionicons name="trophy-outline" size={18} color="#F59E0B" />
+          <Text style={s.cardTitle}>Top técnicos del mes</Text>
+        </View>
+        <Text style={{ fontSize: 11, color: COLORS.textSecondary }}>productividad</Text>
+      </View>
+      {techs.slice(0, 6).map((t, i) => {
+        const rate = t.completion_rate || 0;
+        const color = rate >= 80 ? "#10B981" : rate >= 50 ? "#F59E0B" : "#EF4444";
+        return (
+          <View key={i} style={{ paddingVertical: 8, paddingHorizontal: 4, borderBottomWidth: i < techs.length - 1 ? 1 : 0, borderBottomColor: COLORS.borderInput }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: t.color || "#3B82F6", alignItems: "center", justifyContent: "center" }}>
+                <Text style={{ fontSize: 11, fontWeight: "800", color: "#fff" }}>{i + 1}</Text>
+              </View>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: COLORS.text, flex: 1 }} numberOfLines={1}>{t.name}</Text>
+              <Text style={{ fontSize: 13, fontWeight: "800", color }}>{rate}%</Text>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <View style={{ flex: 1, height: 5, backgroundColor: COLORS.borderInput, borderRadius: 3, overflow: "hidden" }}>
+                <View style={{ height: 5, width: `${Math.min(rate, 100)}%`, backgroundColor: color, borderRadius: 3 }} />
+              </View>
+              <Text style={{ fontSize: 10, color: COLORS.textSecondary, minWidth: 80, textAlign: "right" }}>
+                {t.hours_real}h / {t.hours_planned}h · {t.events} ev.
+              </Text>
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function BudgetPipeline({ dash, router }: { dash: any; router: any }) {
+  const s = useThemedStyles(useS);
+  const bp = dash?.budget_pipeline;
+  if (!bp || !bp.stages) return null;
+  const stages = [
+    { key: "borrador", label: "Borrador", color: "#9CA3AF", icon: "create-outline" },
+    { key: "enviado", label: "Enviado", color: "#3B82F6", icon: "paper-plane-outline" },
+    { key: "aceptado", label: "Aceptado", color: "#10B981", icon: "checkmark-circle-outline" },
+    { key: "rechazado", label: "Rechazado", color: "#EF4444", icon: "close-circle-outline" },
+  ];
+  const maxCount = Math.max(...stages.map(s2 => bp.stages[s2.key]?.count || 0), 1);
+
+  return (
+    <View style={s.cardWrap}>
+      <View style={s.cardHeader}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Ionicons name="funnel-outline" size={18} color={COLORS.primary} />
+          <Text style={s.cardTitle}>Embudo de presupuestos</Text>
+        </View>
+        <View style={{ backgroundColor: "#10B98120", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+          <Text style={{ fontSize: 12, fontWeight: "800", color: "#059669" }}>Conversión: {bp.conversion_rate}%</Text>
+        </View>
+      </View>
+      <View style={{ gap: 8 }}>
+        {stages.map(st => {
+          const data = bp.stages[st.key] || { count: 0, amount: 0 };
+          const widthPct = (data.count / maxCount) * 100;
+          return (
+            <TouchableOpacity key={st.key} onPress={() => router.push("/presupuestos")} style={{ paddingVertical: 4 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <Ionicons name={st.icon as any} size={14} color={st.color} />
+                <Text style={{ fontSize: 13, fontWeight: "700", color: COLORS.text, flex: 1 }}>{st.label}</Text>
+                <Text style={{ fontSize: 12, fontWeight: "800", color: COLORS.text }}>{data.count}</Text>
+                <Text style={{ fontSize: 11, color: COLORS.textSecondary, minWidth: 60, textAlign: "right" }}>{formatEur(data.amount)}</Text>
+              </View>
+              <View style={{ height: 8, backgroundColor: COLORS.borderInput, borderRadius: 4, overflow: "hidden" }}>
+                <View style={{ height: 8, width: `${Math.max(widthPct, 2)}%`, backgroundColor: st.color, borderRadius: 4 }} />
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: COLORS.borderInput }}>
+        <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>Total presupuestos: <Text style={{ fontWeight: "800", color: COLORS.text }}>{bp.total_count}</Text></Text>
+        <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>Importe total: <Text style={{ fontWeight: "800", color: COLORS.text }}>{formatEur(bp.total_amount)}</Text></Text>
+      </View>
+    </View>
+  );
+}
+
+function SatHealth({ dash, router }: { dash: any; router: any }) {
+  const s = useThemedStyles(useS);
+  const h = dash?.sat_health;
+  if (!h || h.total_resolved === 0) return null;
+  const heatmap: any[] = h.heatmap || [];
+
+  // Mini visual: bounding box ES + dots
+  const minLat = 36.0, maxLat = 44.0, minLng = -9.5, maxLng = 3.5;
+  const w = 260, hgt = 130;
+  const dots = heatmap.slice(0, 200).map((p) => {
+    const x = ((p.lng - minLng) / (maxLng - minLng)) * w;
+    const y = hgt - ((p.lat - minLat) / (maxLat - minLat)) * hgt;
+    const color = p.priority === "urgente" ? "#DC2626" : p.priority === "alta" ? "#F97316" : "#3B82F6";
+    return { x, y, color };
+  });
+
+  return (
+    <View style={s.cardWrap}>
+      <View style={s.cardHeader}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Ionicons name="heart-circle-outline" size={18} color="#DC2626" />
+          <Text style={s.cardTitle}>SAT — Salud del servicio</Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: "row", gap: 12, flexWrap: "wrap" }}>
+        <View style={{ flex: 1, minWidth: 130, backgroundColor: "#FEF2F2", padding: 10, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: "#DC2626" }}>
+          <Text style={{ fontSize: 10, fontWeight: "700", color: COLORS.textSecondary }}>RESOLUCIÓN MEDIA</Text>
+          <Text style={{ fontSize: 20, fontWeight: "900", color: COLORS.text, marginTop: 2 }}>{h.avg_resolution_hours}h</Text>
+          <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>tiempo medio</Text>
+        </View>
+        <View style={{ flex: 1, minWidth: 130, backgroundColor: "#F0FDF4", padding: 10, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: "#10B981" }}>
+          <Text style={{ fontSize: 10, fontWeight: "700", color: COLORS.textSecondary }}>RESUELTAS 1ª VISITA</Text>
+          <Text style={{ fontSize: 20, fontWeight: "900", color: COLORS.text, marginTop: 2 }}>{h.first_visit_rate}%</Text>
+          <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>de {h.total_resolved} resueltas</Text>
+        </View>
+      </View>
+      {/* Top clientes */}
+      {h.top_clients && h.top_clients.length > 0 && (
+        <View style={{ marginTop: 12, gap: 4 }}>
+          <Text style={{ fontSize: 11, fontWeight: "800", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 4 }}>Top 5 clientes por incidencias</Text>
+          {h.top_clients.map((c: any, i: number) => (
+            <View key={i} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 3 }}>
+              <Text style={{ fontSize: 11, fontWeight: "800", color: COLORS.textSecondary, width: 18 }}>{i + 1}.</Text>
+              <Text style={{ flex: 1, fontSize: 12, color: COLORS.text }} numberOfLines={1}>{c.name}</Text>
+              <View style={{ backgroundColor: "#FEF2F2", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                <Text style={{ fontSize: 11, fontWeight: "800", color: "#DC2626" }}>{c.count}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+      {/* Mini heatmap visual */}
+      {dots.length > 0 && (
+        <View style={{ marginTop: 12 }}>
+          <Text style={{ fontSize: 11, fontWeight: "800", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 6 }}>Mapa de calor (incidencias)</Text>
+          <View style={{ width: w, height: hgt, backgroundColor: "#F3F4F6", borderRadius: 8, position: "relative", alignSelf: "center" }}>
+            <Svg width={w} height={hgt}>
+              {dots.map((d, i) => (
+                <Circle key={i} cx={d.x} cy={d.y} r={3} fill={d.color} opacity={0.55} />
+              ))}
+            </Svg>
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "center", gap: 12, marginTop: 6 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#DC2626" }} />
+              <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>Urgente</Text>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#F97316" }} />
+              <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>Alta</Text>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#3B82F6" }} />
+              <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>Media/Baja</Text>
+            </View>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
+function MiniMap({ dash, router }: { dash: any; router: any }) {
+  const s = useThemedStyles(useS);
+  const pts: any[] = dash?.active_projects_map || [];
+  if (!pts.length) return null;
+
+  // Mini map de España con dots
+  const minLat = 36.0, maxLat = 44.0, minLng = -9.5, maxLng = 3.5;
+  const w = 320, hgt = 170;
+  const statusColor: Record<string, string> = {
+    pendiente: "#F59E0B",
+    planificado: "#3B82F6",
+    a_facturar: "#8B5CF6",
+  };
+
+  return (
+    <TouchableOpacity onPress={() => router.push("/mapa")} style={s.cardWrap} activeOpacity={0.85}>
+      <View style={s.cardHeader}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Ionicons name="map-outline" size={18} color={COLORS.primary} />
+          <Text style={s.cardTitle}>Proyectos activos en mapa</Text>
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          <Text style={{ fontSize: 12, fontWeight: "800", color: COLORS.textSecondary }}>{pts.length}</Text>
+          <Ionicons name="arrow-forward" size={14} color={COLORS.primary} />
+        </View>
+      </View>
+      <View style={{ width: "100%", height: hgt, backgroundColor: "#EFF6FF", borderRadius: 10, alignItems: "center", justifyContent: "center" }}>
+        <Svg width={w} height={hgt}>
+          {pts.map((p, i) => {
+            const x = ((p.lng - minLng) / (maxLng - minLng)) * w;
+            const y = hgt - ((p.lat - minLat) / (maxLat - minLat)) * hgt;
+            const color = statusColor[p.project_status] || "#9CA3AF";
+            return <Circle key={i} cx={x} cy={y} r={4} fill={color} opacity={0.75} />;
+          })}
+        </Svg>
+      </View>
+      <View style={{ flexDirection: "row", justifyContent: "center", gap: 12, marginTop: 8 }}>
+        {Object.entries(statusColor).map(([k, c]) => (
+          <View key={k} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c }} />
+            <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>{k.replace("_", " ")}</Text>
+          </View>
+        ))}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function YoYComparison({ dash }: { dash: any }) {
+  const s = useThemedStyles(useS);
+  const y = dash?.yoy_comparison;
+  if (!y) return null;
+  const max = Math.max(...(y.quarters_this || []), ...(y.quarters_last || []), 1);
+  const growthColor = y.growth_pct >= 0 ? "#10B981" : "#EF4444";
+  const growthIcon = y.growth_pct >= 0 ? "trending-up" : "trending-down";
+
+  return (
+    <View style={s.cardWrap}>
+      <View style={s.cardHeader}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Ionicons name="stats-chart-outline" size={18} color={COLORS.primary} />
+          <Text style={s.cardTitle}>Comparativa año vs año</Text>
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: `${growthColor}20`, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+          <Ionicons name={growthIcon} size={12} color={growthColor} />
+          <Text style={{ fontSize: 12, fontWeight: "800", color: growthColor }}>{y.growth_pct > 0 ? "+" : ""}{y.growth_pct}%</Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: "row", gap: 12, marginBottom: 12 }}>
+        <View style={{ flex: 1, backgroundColor: "#EFF6FF", padding: 10, borderRadius: 8 }}>
+          <Text style={{ fontSize: 10, fontWeight: "700", color: COLORS.textSecondary }}>{y.this_year}</Text>
+          <Text style={{ fontSize: 22, fontWeight: "900", color: COLORS.primary, marginTop: 2 }}>{y.closed_this_year}</Text>
+          <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>proyectos cerrados</Text>
+        </View>
+        <View style={{ flex: 1, backgroundColor: "#F3F4F6", padding: 10, borderRadius: 8 }}>
+          <Text style={{ fontSize: 10, fontWeight: "700", color: COLORS.textSecondary }}>{y.last_year}</Text>
+          <Text style={{ fontSize: 22, fontWeight: "900", color: COLORS.textSecondary, marginTop: 2 }}>{y.closed_last_year}</Text>
+          <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>proyectos cerrados</Text>
+        </View>
+      </View>
+      {/* Quarter bars */}
+      <View style={{ gap: 8 }}>
+        {["Q1", "Q2", "Q3", "Q4"].map((q, i) => {
+          const cur = y.quarters_this?.[i] || 0;
+          const prev = y.quarters_last?.[i] || 0;
+          return (
+            <View key={i}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.textSecondary, width: 24 }}>{q}</Text>
+                <View style={{ flex: 1, height: 8, backgroundColor: COLORS.borderInput, borderRadius: 4, overflow: "hidden" }}>
+                  <View style={{ height: 8, width: `${(cur / max) * 100}%`, backgroundColor: COLORS.primary, borderRadius: 4 }} />
+                </View>
+                <Text style={{ fontSize: 10, fontWeight: "800", color: COLORS.primary, width: 28, textAlign: "right" }}>{cur}</Text>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <View style={{ width: 24 }} />
+                <View style={{ flex: 1, height: 5, backgroundColor: COLORS.borderInput, borderRadius: 3, overflow: "hidden" }}>
+                  <View style={{ height: 5, width: `${(prev / max) * 100}%`, backgroundColor: "#9CA3AF", borderRadius: 3 }} />
+                </View>
+                <Text style={{ fontSize: 10, fontWeight: "700", color: COLORS.textSecondary, width: 28, textAlign: "right" }}>{prev}</Text>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function GeoDistribution({ dash, router }: { dash: any; router: any }) {
+  const s = useThemedStyles(useS);
+  const g = dash?.geo_distribution;
+  if (!g) return null;
+  const maxCity = Math.max(...((g.top_cities || []).map((c: any) => c.count)), 1);
+  const maxProv = Math.max(...((g.by_province || []).map((p: any) => p.amount)), 1);
+
+  return (
+    <View style={s.cardWrap}>
+      <View style={s.cardHeader}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Ionicons name="location-outline" size={18} color={COLORS.primary} />
+          <Text style={s.cardTitle}>Distribución geográfica</Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: "row", gap: 16, flexWrap: "wrap" }}>
+        {/* Top ciudades */}
+        <View style={{ flex: 1, minWidth: 240 }}>
+          <Text style={{ fontSize: 11, fontWeight: "800", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 8 }}>Top ciudades (activos)</Text>
+          {(g.top_cities || []).slice(0, 5).map((c: any, i: number) => (
+            <TouchableOpacity key={i} onPress={() => router.push(`/materiales?q=${encodeURIComponent(c.city)}` as any)} style={{ paddingVertical: 4 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.text, flex: 1 }} numberOfLines={1}>{c.city}</Text>
+                <Text style={{ fontSize: 12, fontWeight: "800", color: COLORS.primary }}>{c.count}</Text>
+              </View>
+              <View style={{ height: 5, backgroundColor: COLORS.borderInput, borderRadius: 3, overflow: "hidden" }}>
+                <View style={{ height: 5, width: `${(c.count / maxCity) * 100}%`, backgroundColor: COLORS.primary, borderRadius: 3 }} />
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {/* Por provincia */}
+        <View style={{ flex: 1, minWidth: 240 }}>
+          <Text style={{ fontSize: 11, fontWeight: "800", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 8 }}>Facturación por provincia</Text>
+          {(g.by_province || []).slice(0, 5).map((p: any, i: number) => {
+            const colors = ["#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899"];
+            const c = colors[i % colors.length];
+            return (
+              <View key={i} style={{ paddingVertical: 4 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c }} />
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.text, flex: 1 }} numberOfLines={1}>{p.province}</Text>
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.textSecondary }}>{p.pct}%</Text>
+                  <Text style={{ fontSize: 11, fontWeight: "800", color: COLORS.text, minWidth: 60, textAlign: "right" }}>{formatEur(p.amount)}</Text>
+                </View>
+                <View style={{ height: 5, backgroundColor: COLORS.borderInput, borderRadius: 3, overflow: "hidden", marginLeft: 14 }}>
+                  <View style={{ height: 5, width: `${(p.amount / maxProv) * 100}%`, backgroundColor: c, borderRadius: 3 }} />
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+    </View>
+  );
+}
+
