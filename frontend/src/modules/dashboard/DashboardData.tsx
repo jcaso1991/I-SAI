@@ -168,7 +168,6 @@ export default function DashboardData() {
 
   return (
     <View style={{ gap: 16, marginBottom: 8 }}>
-      <CriticalAlerts dash={dash} router={router} />
       <TechAvailability3W dash={dash} router={router} />
       <WeekSummary dash={dash} router={router} />
       <TodayRow dash={dash} router={router} />
