@@ -1499,33 +1499,74 @@ function DraggableEvent({
         </>
       )}
     </View>
-      {isAdmin && onCopy && boxWidth >= 90 && (
-        <>
-        <TouchableOpacity
-          onPress={() => shareWhatsApp(event)}
-          style={{
-            position: "absolute", top: 2, right: 30,
-            width: 24, height: 24, borderRadius: 4,
-            backgroundColor: "#25D366",
-            alignItems: "center", justifyContent: "center", zIndex: 20,
-          }}
-          hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
-        >
-          <Ionicons name="logo-whatsapp" size={14} color="#fff" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => onCopy(event)}
-          style={{
-            position: "absolute", top: 2, right: 2,
-            width: 24, height: 24, borderRadius: 4,
-            backgroundColor: "rgba(255,255,255,0.9)",
-            alignItems: "center", justifyContent: "center", zIndex: 20,
-          }}
-          hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
-        >
-          <Ionicons name="copy-outline" size={14} color={eventTextColor} />
-        </TouchableOpacity>
-        </>
+      {isAdmin && onCopy && (
+        (() => {
+          // En eventos estrechos, botones más pequeños y apilados verticalmente
+          const narrow = boxWidth > 0 && boxWidth < 90;
+          const btnSize = narrow ? 18 : 24;
+          const iconSize = narrow ? 11 : 14;
+          // Layout: vertical apilados si narrow, horizontal arriba si normal
+          if (narrow) {
+            return (
+              <View style={{
+                position: "absolute", top: 2, right: 2,
+                gap: 2, alignItems: "flex-end", zIndex: 20,
+              }}>
+                <TouchableOpacity
+                  onPress={() => shareWhatsApp(event)}
+                  style={{
+                    width: btnSize, height: btnSize, borderRadius: 4,
+                    backgroundColor: "#25D366",
+                    alignItems: "center", justifyContent: "center",
+                  }}
+                  hitSlop={{ top: 6, right: 6, bottom: 6, left: 6 }}
+                >
+                  <Ionicons name="logo-whatsapp" size={iconSize} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => onCopy(event)}
+                  style={{
+                    width: btnSize, height: btnSize, borderRadius: 4,
+                    backgroundColor: "rgba(255,255,255,0.95)",
+                    alignItems: "center", justifyContent: "center",
+                  }}
+                  hitSlop={{ top: 6, right: 6, bottom: 6, left: 6 }}
+                >
+                  <Ionicons name="copy-outline" size={iconSize} color={eventTextColor} />
+                </TouchableOpacity>
+              </View>
+            );
+          }
+          // Layout horizontal normal (con espacio reservado para el texto)
+          return (
+            <>
+              <TouchableOpacity
+                onPress={() => shareWhatsApp(event)}
+                style={{
+                  position: "absolute", top: 2, right: 30,
+                  width: 24, height: 24, borderRadius: 4,
+                  backgroundColor: "#25D366",
+                  alignItems: "center", justifyContent: "center", zIndex: 20,
+                }}
+                hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
+              >
+                <Ionicons name="logo-whatsapp" size={14} color="#fff" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => onCopy(event)}
+                style={{
+                  position: "absolute", top: 2, right: 2,
+                  width: 24, height: 24, borderRadius: 4,
+                  backgroundColor: "rgba(255,255,255,0.9)",
+                  alignItems: "center", justifyContent: "center", zIndex: 20,
+                }}
+                hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
+              >
+                <Ionicons name="copy-outline" size={14} color={eventTextColor} />
+              </TouchableOpacity>
+            </>
+          );
+        })()
       )}
     </View>
   );
