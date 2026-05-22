@@ -1367,6 +1367,26 @@ class AttachmentUpload(BaseModel):
     mime_type: str
     base64: str  # data only, no data: prefix
 
+# ---------------------------------------------------------------------------
+# Guardias (técnicos de guardia por día). Independientes de eventos.
+# No cuentan como "día ocupado" en el cálculo de planificación mensual.
+# ---------------------------------------------------------------------------
+class GuardCreate(BaseModel):
+    date: str  # YYYY-MM-DD
+    user_id: str
+    note: Optional[str] = None
+
+class GuardOut(BaseModel):
+    id: str
+    date: str
+    user_id: str
+    user_name: Optional[str] = None
+    user_color: Optional[str] = None
+    note: Optional[str] = None
+    created_at: str
+    created_by: Optional[str] = None
+
+
 MAX_ATTACHMENT_MB = 15  # per file
 
 def _strip_attachments(ev: dict) -> dict:
@@ -1697,6 +1717,80 @@ async def delete_event(eid: str, admin: dict = Depends(require_permission("calen
     if mid:
         await _sync_material_hours(mid)
     return {"ok": True}
+
+# ---------------------------------------------------------------------------
+# Guardias (técnicos de guardia por día)
+# ---------------------------------------------------------------------------
+async def _enrich_guard(g: dict) -> dict:
+    """Adjunta datos del usuario a un objeto guardia."""
+    uid = g.get("user_id")
+    if uid:
+        u = await db.users.find_one({"id": uid}, {"_id": 0, "id": 1, "name": 1, "email": 1, "color": 1})
+        if u:
+            g["user_name"] = u.get("name") or u.get("email") or "Usuario"
+            g["user_color"] = u.get("color") or "#3B82F6"
+    return g
+
+
+@api_router.get("/guards")
+async def list_guards(
+    from_: Optional[str] = Query(None, alias="from"),
+    to: Optional[str] = None,
+    user: dict = Depends(current_user),
+):
+    """Lista guardias en un rango de fechas (YYYY-MM-DD)."""
+    q: dict = {}
+    if from_ or to:
+        q["date"] = {}
+        if from_:
+            q["date"]["$gte"] = from_
+        if to:
+            q["date"]["$lte"] = to
+    items = await db.guards.find(q, {"_id": 0}).sort([("date", 1)]).to_list(5000)
+    out = []
+    for g in items:
+        out.append(await _enrich_guard(g))
+    return out
+
+
+@api_router.post("/guards")
+async def create_guard(
+    payload: GuardCreate,
+    user: dict = Depends(require_permission("calendario.edit")),
+):
+    """Asigna un técnico de guardia para una fecha."""
+    # Evitar duplicados (mismo user_id + date)
+    existing = await db.guards.find_one({"date": payload.date, "user_id": payload.user_id})
+    if existing:
+        raise HTTPException(409, "Este técnico ya está de guardia ese día")
+    # Validar que el usuario existe
+    u = await db.users.find_one({"id": payload.user_id}, {"_id": 0})
+    if not u:
+        raise HTTPException(404, "Usuario no encontrado")
+    new_id = str(uuid.uuid4())
+    doc = {
+        "id": new_id,
+        "date": payload.date,
+        "user_id": payload.user_id,
+        "note": payload.note,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": user["id"],
+    }
+    await db.guards.insert_one(doc)
+    doc.pop("_id", None)
+    return await _enrich_guard(doc)
+
+
+@api_router.delete("/guards/{gid}")
+async def delete_guard(
+    gid: str,
+    user: dict = Depends(require_permission("calendario.edit")),
+):
+    res = await db.guards.delete_one({"id": gid})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Guardia no encontrada")
+    return {"ok": True}
+
 
 @api_router.get("/events/{eid}", response_model=EventOut)
 async def get_event(eid: str, user: dict = Depends(current_user)):

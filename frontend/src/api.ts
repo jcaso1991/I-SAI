@@ -140,6 +140,18 @@ export const api = {
   updateEvent: (id: string, body: any) =>
     request(`/events/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteEvent: (id: string) => request(`/events/${id}`, { method: "DELETE" }),
+
+  // Guards (técnicos de guardia por día)
+  listGuards: (from?: string, to?: string) => {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    return request(`/guards${params.toString() ? "?" + params.toString() : ""}`);
+  },
+  createGuard: (body: { date: string; user_id: string; note?: string }) =>
+    request(`/guards`, { method: "POST", body: JSON.stringify(body) }),
+  deleteGuard: (id: string) => request(`/guards/${id}`, { method: "DELETE" }),
+
   // Event attachments
   uploadEventAttachment: (eid: string, body: { filename: string; mime_type: string; base64: string }) =>
     request(`/events/${encodeURIComponent(eid)}/attachments`, { method: "POST", body: JSON.stringify(body) }),

@@ -149,6 +149,7 @@ export default function CalendarScreen() {
   }, []);
   const [anchor, setAnchor] = useState<Date>(new Date());
   const [events, setEvents] = useState<EventT[]>([]);
+  const [guards, setGuards] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [createRange, setCreateRange] = useState<{ day: Date; startMin: number; endMin: number } | null>(null);
   const [openEvent, setOpenEvent] = useState<EventT | null>(null);
@@ -275,17 +276,32 @@ export default function CalendarScreen() {
   const load = async () => {
     setLoading(true);
     try {
-      const [list, who] = await Promise.all([
-        api.listEvents(rangeFrom.toISOString(), rangeTo.toISOString()),
+      const fromIso = rangeFrom.toISOString();
+      const toIso = rangeTo.toISOString();
+      const fromDate = fromIso.slice(0, 10);
+      const toDate = toIso.slice(0, 10);
+      const [list, who, gList] = await Promise.all([
+        api.listEvents(fromIso, toIso),
         api.me(),
+        api.listGuards(fromDate, toDate).catch(() => []),
       ]);
       setEvents(list);
       setMe(who);
+      setGuards(gList || []);
     } catch (e: any) {
       Alert.alert("Error", e.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const reloadGuards = async () => {
+    try {
+      const fromDate = rangeFrom.toISOString().slice(0, 10);
+      const toDate = rangeTo.toISOString().slice(0, 10);
+      const gList = await api.listGuards(fromDate, toDate);
+      setGuards(gList || []);
+    } catch {}
   };
 
   useFocusEffect(useCallback(() => { load(); }, [rangeFrom.getTime(), rangeTo.getTime()]));
@@ -564,6 +580,10 @@ export default function CalendarScreen() {
           onMoveEvent={moveEvent}
           onCopyEvent={setCopiedEvent}
           onSelectDay={(d) => { setAnchor(d); setView("day"); }}
+          guards={guards}
+          allUsers={allUsers}
+          onAddGuard={async (date, userId) => { try { await api.createGuard({ date, user_id: userId }); await reloadGuards(); } catch (e: any) { if (typeof window !== "undefined" && window.alert) window.alert(e?.message || "No se pudo añadir"); } }}
+          onDeleteGuard={async (id) => { try { await api.deleteGuard(id); await reloadGuards(); } catch (e: any) { if (typeof window !== "undefined" && window.alert) window.alert(e?.message || "No se pudo borrar"); } }}
         />
       )}
 
@@ -731,9 +751,164 @@ function MonthView({
   );
 }
 
+// ---------------- GuardBar (técnicos de guardia por día) ----------------
+function GuardBar({
+  days, guards, allUsers, isAdmin, onAddGuard, onDeleteGuard,
+}: {
+  days: Date[];
+  guards: any[];
+  allUsers: any[];
+  isAdmin: boolean;
+  onAddGuard?: (date: string, userId: string) => Promise<void>;
+  onDeleteGuard?: (id: string) => Promise<void>;
+}) {
+  const [pickerDate, setPickerDate] = useState<string | null>(null);
+  const guardsByDay: Record<string, any[]> = useMemo(() => {
+    const map: Record<string, any[]> = {};
+    for (const g of guards || []) {
+      const k = g.date;
+      if (!map[k]) map[k] = [];
+      map[k].push(g);
+    }
+    return map;
+  }, [guards]);
+  const fmtDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        backgroundColor: "#FFF7ED",
+        borderTopWidth: 1, borderBottomWidth: 1,
+        borderColor: "#FED7AA",
+        paddingVertical: 4,
+        minHeight: 40,
+      }}
+    >
+      <View style={{ width: TIME_COL_W, alignItems: "center", justifyContent: "center" }}>
+        <Ionicons name="shield-outline" size={14} color="#EA580C" />
+        <Text style={{ fontSize: 9, fontWeight: "800", color: "#EA580C" }}>GUARDIA</Text>
+      </View>
+      {days.map((d, i) => {
+        const key = fmtDate(d);
+        const dayGuards = guardsByDay[key] || [];
+        return (
+          <TouchableOpacity
+            key={i}
+            onPress={() => isAdmin && setPickerDate(key)}
+            disabled={!isAdmin}
+            activeOpacity={isAdmin ? 0.6 : 1}
+            style={{
+              flex: 1, marginHorizontal: 1, paddingHorizontal: 4, paddingVertical: 2,
+              borderRadius: 6,
+              borderWidth: 1, borderColor: "#FED7AA",
+              backgroundColor: dayGuards.length > 0 ? "#FED7AA" : "rgba(255,255,255,0.6)",
+              flexDirection: "row", alignItems: "center", justifyContent: "center", flexWrap: "wrap", gap: 3,
+              minHeight: 28,
+            }}
+          >
+            {dayGuards.length === 0 ? (
+              <Text style={{ fontSize: 10, color: "#EA580C", fontWeight: "700" }}>
+                {isAdmin ? "+ Asignar" : "—"}
+              </Text>
+            ) : (
+              dayGuards.map((g) => (
+                <TouchableOpacity
+                  key={g.id}
+                  onPress={() => {
+                    if (!isAdmin || !onDeleteGuard) return;
+                    if (typeof window !== "undefined" && typeof window.confirm === "function") {
+                      if (window.confirm(`¿Quitar ${g.user_name} de guardia?`)) onDeleteGuard(g.id);
+                    } else {
+                      Alert.alert("Quitar guardia", `¿Quitar ${g.user_name}?`, [
+                        { text: "Cancelar", style: "cancel" },
+                        { text: "Quitar", style: "destructive", onPress: () => onDeleteGuard(g.id) },
+                      ]);
+                    }
+                  }}
+                  style={{
+                    backgroundColor: g.user_color || "#EA580C",
+                    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10,
+                    flexDirection: "row", alignItems: "center", gap: 3,
+                  }}
+                  hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
+                >
+                  <Text style={{ fontSize: 10, fontWeight: "800", color: "#fff" }} numberOfLines={1}>
+                    {(g.user_name || "?").split(" ").map((p: string) => p[0]).slice(0, 2).join("")}
+                  </Text>
+                </TouchableOpacity>
+              ))
+            )}
+          </TouchableOpacity>
+        );
+      })}
+
+      {/* Modal selector de técnico */}
+      <Modal visible={!!pickerDate} transparent animationType="fade" onRequestClose={() => setPickerDate(null)}>
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 20 }}
+          activeOpacity={1}
+          onPress={() => setPickerDate(null)}
+        >
+          <View
+            style={{ backgroundColor: "#fff", borderRadius: 14, padding: 16, width: "100%", maxWidth: 360, maxHeight: "80%" }}
+            onStartShouldSetResponder={() => true}
+          >
+            <Text style={{ fontSize: 16, fontWeight: "800", color: "#111", marginBottom: 12 }}>
+              Asignar técnico de guardia
+            </Text>
+            <Text style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>
+              Día: {pickerDate}
+            </Text>
+            <ScrollView style={{ maxHeight: 360 }}>
+              {(allUsers || []).filter((u: any) => !(guardsByDay[pickerDate || ""] || []).some((g: any) => g.user_id === u.id)).map((u: any) => (
+                <TouchableOpacity
+                  key={u.id}
+                  onPress={async () => {
+                    if (!onAddGuard || !pickerDate) return;
+                    await onAddGuard(pickerDate, u.id);
+                    setPickerDate(null);
+                  }}
+                  style={{
+                    flexDirection: "row", alignItems: "center", gap: 10,
+                    paddingVertical: 10, paddingHorizontal: 8, borderRadius: 8,
+                    borderBottomWidth: 1, borderBottomColor: "#F3F4F6",
+                  }}
+                >
+                  <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: u.color || "#3B82F6", alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ fontSize: 13, fontWeight: "800", color: "#fff" }}>
+                      {(u.name || u.email || "?").charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: "#111" }} numberOfLines={1}>{u.name || u.email}</Text>
+                    <Text style={{ fontSize: 11, color: "#666" }} numberOfLines={1}>{u.email}</Text>
+                  </View>
+                  <Ionicons name="add-circle" size={22} color="#10B981" />
+                </TouchableOpacity>
+              ))}
+              {(allUsers || []).filter((u: any) => !(guardsByDay[pickerDate || ""] || []).some((g: any) => g.user_id === u.id)).length === 0 && (
+                <Text style={{ fontSize: 13, color: "#666", textAlign: "center", paddingVertical: 20 }}>
+                  Todos los técnicos ya están asignados a este día
+                </Text>
+              )}
+            </ScrollView>
+            <TouchableOpacity
+              onPress={() => setPickerDate(null)}
+              style={{ marginTop: 12, paddingVertical: 10, borderRadius: 8, backgroundColor: "#F3F4F6", alignItems: "center" }}
+            >
+              <Text style={{ fontSize: 14, fontWeight: "700", color: "#444" }}>Cerrar</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </View>
+  );
+}
+
 // ---------------- Week view ----------------
 function WeekView({
   weekStart, events, isAdmin, now, onCreate, onTapEvent, onMoveEvent, onSelectDay, onCopyEvent,
+  guards, allUsers, onAddGuard, onDeleteGuard,
 }: {
   weekStart: Date; events: EventT[]; isAdmin: boolean; now: Date;
   onCreate: (day: Date, startMin: number, endMin: number) => void;
@@ -741,6 +916,10 @@ function WeekView({
   onMoveEvent: (ev: EventT, s: Date, e: Date) => Promise<void>;
   onSelectDay?: (d: Date) => void;
   onCopyEvent?: (e: EventT) => void;
+  guards?: any[];
+  allUsers?: any[];
+  onAddGuard?: (date: string, userId: string) => Promise<void>;
+  onDeleteGuard?: (id: string) => Promise<void>;
 }) {
   const s = useThemedStyles(useS);
   const days = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(weekStart, i)), [weekStart]);
@@ -766,6 +945,15 @@ function WeekView({
           );
         })}
       </View>
+      {/* Banda de guardias (antes de las 08:00) */}
+      <GuardBar
+        days={days}
+        guards={guards || []}
+        allUsers={allUsers || []}
+        isAdmin={isAdmin}
+        onAddGuard={onAddGuard}
+        onDeleteGuard={onDeleteGuard}
+      />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
         <View
           style={s.gridRow}
