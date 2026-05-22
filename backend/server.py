@@ -164,8 +164,9 @@ class Material(BaseModel):
     # imputed hours from events
     horas_imputadas: Optional[float] = 0
     # geo coordinates
-    lat: Optional[float] = Field(None, alias="_lat")
-    lng: Optional[float] = Field(None, alias="_lng")
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    direccion: Optional[str] = None
     # meta
     sync_status: str = "synced"  # synced | pending | error
     updated_at: Optional[str] = None
