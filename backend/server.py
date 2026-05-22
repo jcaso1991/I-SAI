@@ -2772,11 +2772,11 @@ async def dashboard(user: dict = Depends(current_user)):
         "technicians_free": max(0, total_users - busy_users),
     }
 
-    # ---- 1.b Disponibilidad técnicos · 3 semanas (lun a vie) ----
-    # Calculamos para cada técnico los días LABORABLES libres durante las próximas 3 semanas
-    # (incluida la actual). Lun-Vie de la semana actual + 2 siguientes = 15 días.
+    # ---- 1.b Disponibilidad técnicos · Planificación mensual (4 semanas) ----
+    # Calculamos para cada técnico los días LABORABLES libres durante las próximas 4 semanas
+    # (incluida la actual). Lun-Vie de la semana actual + 3 siguientes = 20 días.
     three_w_start = week_start  # lunes de esta semana
-    three_w_end = week_start + timedelta(days=21)  # 3 semanas después
+    three_w_end = week_start + timedelta(days=28)  # 4 semanas después
     # Lista de días laborales (lun-vie)
     work_days: list[datetime] = []
     cursor_d = three_w_start
@@ -2863,6 +2863,10 @@ async def dashboard(user: dict = Depends(current_user)):
             {
                 "label": "+2 sem.",
                 "monday": (three_w_start + timedelta(days=14)).strftime("%Y-%m-%d"),
+            },
+            {
+                "label": "+3 sem.",
+                "monday": (three_w_start + timedelta(days=21)).strftime("%Y-%m-%d"),
             },
         ],
         "technicians": tech_availability,

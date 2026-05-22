@@ -7,6 +7,7 @@ import { api, COLORS } from "../../api";
 import { ios } from "../../ui/iosTheme";
 import { useS } from "./DashboardStyles";
 import { useThemedStyles } from "../../theme";
+import { useBreakpoint } from "../../useBreakpoint";
 
 type DashboardData = {
   projects_by_status: Record<string, number>;
@@ -731,7 +732,7 @@ function WeekSummary({ dash, router }: { dash: any; router: any }) {
           flex: 1.2, minWidth: 160, backgroundColor: "#FFF7ED", borderRadius: 10, padding: 12,
           borderLeftWidth: 3, borderLeftColor: "#F97316",
         }}>
-          <Text style={{ fontSize: 11, color: COLORS.textSecondary, fontWeight: "700" }}>TÉCNICOS · 3 SEMANAS</Text>
+          <Text style={{ fontSize: 11, color: COLORS.textSecondary, fontWeight: "700" }}>TÉCNICOS · MES</Text>
           {(() => {
             const t3 = dash?.tech_three_weeks;
             const totalTech = t3?.technicians?.length || 0;
@@ -1113,8 +1114,11 @@ function fmtDayLabel(dateStr: string): string {
 
 function TechAvailability3W({ dash, router }: { dash: any; router: any }) {
   const s = useThemedStyles(useS);
+  const { isWide } = useBreakpoint();
   const t3 = dash?.tech_three_weeks;
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // En mobile mostramos 1 semana a la vez; en desktop todas
+  const [visibleWeek, setVisibleWeek] = useState<number>(0);
   if (!t3 || !t3.technicians || t3.technicians.length === 0) return null;
 
   const techs: any[] = t3.technicians;
@@ -1127,22 +1131,55 @@ function TechAvailability3W({ dash, router }: { dash: any; router: any }) {
     return weeks;
   };
 
-  const weekLabels = ["Esta semana", "Próxima", "+2 sem."];
+  const totalWeeks = Math.ceil((techs[0]?.days?.length || 0) / 5);
+  const weekLabels = (t3.weeks_meta || []).map((w: any) => w.label);
+  // En mobile: solo una semana (visibleWeek). En desktop: todas
+  const visibleWeekIndices = isWide
+    ? Array.from({ length: totalWeeks }, (_, i) => i)
+    : [visibleWeek];
 
   return (
     <View style={s.cardWrap}>
       <View style={s.cardHeader}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
           <Ionicons name="calendar-clear-outline" size={18} color={COLORS.primary} />
-          <Text style={s.cardTitle}>Técnicos · Próximas 3 semanas</Text>
+          <Text style={s.cardTitle}>Planificación mensual</Text>
         </View>
         <Text style={{ fontSize: 11, color: COLORS.textSecondary }}>
           {t3.from?.slice(8, 10)}/{t3.from?.slice(5, 7)} – {t3.to?.slice(8, 10)}/{t3.to?.slice(5, 7)}
         </Text>
       </View>
 
-      {/* Leyenda + cabecera con etiquetas de los días */}
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+      {/* Selector de semana (solo mobile) */}
+      {!isWide && (
+        <View style={{ flexDirection: "row", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+          {weekLabels.map((lbl: string, i: number) => {
+            const active = visibleWeek === i;
+            return (
+              <TouchableOpacity
+                key={i}
+                onPress={() => setVisibleWeek(i)}
+                style={{
+                  flex: 1,
+                  minWidth: 70,
+                  paddingVertical: 6,
+                  paddingHorizontal: 8,
+                  borderRadius: 8,
+                  backgroundColor: active ? COLORS.primary : COLORS.primarySoft || "#F0F9FF",
+                  borderWidth: 1,
+                  borderColor: active ? COLORS.primary : COLORS.borderInput,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: "800", color: active ? "#fff" : COLORS.primary }}>{lbl}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+
+      {/* Leyenda */}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
           <View style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: "#D1FAE5", borderWidth: 1, borderColor: "#10B981" }} />
           <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>Libre</Text>
@@ -1153,31 +1190,37 @@ function TechAvailability3W({ dash, router }: { dash: any; router: any }) {
         </View>
       </View>
 
-      {/* Cabecera con los días de cada semana */}
+      {/* Cabecera con los días de cada semana visible */}
       <View style={{ flexDirection: "row", marginBottom: 6, alignItems: "center" }}>
-        <View style={{ width: 110 }} />
-        {groupByWeeks(techs[0]?.days || []).map((week: any[], wi: number) => (
-          <View key={wi} style={{ flex: 1, alignItems: "center", marginHorizontal: 2 }}>
-            <Text style={{ fontSize: 9, fontWeight: "800", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 2 }}>
-              {weekLabels[wi] || `S${wi + 1}`}
-            </Text>
-            <View style={{ flexDirection: "row", gap: 1 }}>
-              {week.map((d, i) => (
-                <View key={i} style={{ width: 22, alignItems: "center" }}>
-                  <Text style={{ fontSize: 9, fontWeight: "700", color: COLORS.textSecondary }}>{DAY_LETTERS[i]}</Text>
-                  <Text style={{ fontSize: 9, color: COLORS.textSecondary }}>{shortDay(d.date)}</Text>
-                </View>
-              ))}
+        <View style={{ width: isWide ? 110 : 88 }} />
+        {visibleWeekIndices.map((wi: number) => {
+          const week = groupByWeeks(techs[0]?.days || [])[wi] || [];
+          return (
+            <View key={wi} style={{ flex: 1, alignItems: "center", marginHorizontal: 2 }}>
+              {isWide && (
+                <Text style={{ fontSize: 9, fontWeight: "800", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 2 }}>
+                  {weekLabels[wi] || `S${wi + 1}`}
+                </Text>
+              )}
+              <View style={{ flexDirection: "row", gap: 2 }}>
+                {week.map((d, i) => (
+                  <View key={i} style={{ width: isWide ? 22 : 32, alignItems: "center" }}>
+                    <Text style={{ fontSize: 9, fontWeight: "700", color: COLORS.textSecondary }}>{DAY_LETTERS[i]}</Text>
+                    <Text style={{ fontSize: 9, color: COLORS.textSecondary }}>{shortDay(d.date)}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
-          </View>
-        ))}
+          );
+        })}
       </View>
 
-      {/* Filas: 1 por técnico */}
+      {/* Filas por técnico */}
       {techs.map((tech, i) => {
         const isOpen = expandedId === tech.id;
         const pct = Math.round((tech.free_days / tech.total_days) * 100);
         const ringColor = pct >= 60 ? "#10B981" : pct >= 30 ? "#F59E0B" : "#EF4444";
+        const techWeeks = groupByWeeks(tech.days);
         return (
           <View key={tech.id} style={{ borderTopWidth: i === 0 ? 0 : 1, borderTopColor: COLORS.borderInput, paddingVertical: 6 }}>
             <TouchableOpacity
@@ -1188,26 +1231,26 @@ function TechAvailability3W({ dash, router }: { dash: any; router: any }) {
               <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: tech.color, alignItems: "center", justifyContent: "center" }}>
                 <Text style={{ fontSize: 11, fontWeight: "800", color: "#fff" }}>{tech.name.charAt(0).toUpperCase()}</Text>
               </View>
-              <View style={{ width: 80 }}>
-                <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.text }} numberOfLines={1}>{tech.name}</Text>
-                <Text style={{ fontSize: 10, color: ringColor, fontWeight: "800" }}>{tech.free_days}/{tech.total_days} libres</Text>
+              <View style={{ width: isWide ? 80 : 58 }}>
+                <Text style={{ fontSize: isWide ? 12 : 11, fontWeight: "700", color: COLORS.text }} numberOfLines={1}>{tech.name}</Text>
+                <Text style={{ fontSize: 10, color: ringColor, fontWeight: "800" }}>{tech.free_days}/{tech.total_days}</Text>
               </View>
-              {/* Cuadrícula compacta: 3 semanas con 5 días cada una */}
-              {groupByWeeks(tech.days).map((week: any[], wi: number) => (
-                <View key={wi} style={{ flex: 1, flexDirection: "row", justifyContent: "center", gap: 1, marginHorizontal: 2 }}>
-                  {week.map((d, di) => (
+              {/* Cuadrícula: semanas visibles */}
+              {visibleWeekIndices.map((wi: number) => (
+                <View key={wi} style={{ flex: 1, flexDirection: "row", justifyContent: "center", gap: 2, marginHorizontal: 2 }}>
+                  {(techWeeks[wi] || []).map((d, di) => (
                     <View
                       key={di}
                       style={{
-                        width: 20, height: 18, borderRadius: 3,
+                        width: isWide ? 20 : 30, height: isWide ? 18 : 26, borderRadius: 4,
                         backgroundColor: d.free ? "#D1FAE5" : "#FEE2E2",
                         borderWidth: 1,
                         borderColor: d.free ? "#10B981" : "#EF4444",
                         alignItems: "center", justifyContent: "center",
                       }}
                     >
-                      {!d.free && <Ionicons name="close" size={11} color="#EF4444" />}
-                      {d.free && <Ionicons name="checkmark" size={11} color="#10B981" />}
+                      {!d.free && <Ionicons name="close" size={isWide ? 11 : 14} color="#EF4444" />}
+                      {d.free && <Ionicons name="checkmark" size={isWide ? 11 : 14} color="#10B981" />}
                     </View>
                   ))}
                 </View>
@@ -1215,11 +1258,11 @@ function TechAvailability3W({ dash, router }: { dash: any; router: any }) {
               <Ionicons name={isOpen ? "chevron-up" : "chevron-down"} size={16} color={COLORS.textSecondary} />
             </TouchableOpacity>
 
-            {/* Detalle desplegable: lista de días libres */}
+            {/* Detalle desplegable */}
             {isOpen && (
               <View style={{ marginTop: 8, marginLeft: 30, padding: 10, backgroundColor: COLORS.primarySoft || "#F0F9FF", borderRadius: 8 }}>
                 <Text style={{ fontSize: 11, fontWeight: "800", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 6 }}>
-                  Días libres ({tech.free_days})
+                  Días libres del mes ({tech.free_days})
                 </Text>
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
                   {tech.days.filter((d: any) => d.free).map((d: any, k: number) => (
@@ -1253,6 +1296,41 @@ function TechAvailability3W({ dash, router }: { dash: any; router: any }) {
           </View>
         );
       })}
+
+      {/* Barra de navegación inferior (solo mobile) */}
+      {!isWide && totalWeeks > 1 && (
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: COLORS.borderInput }}>
+          <TouchableOpacity
+            onPress={() => setVisibleWeek(Math.max(0, visibleWeek - 1))}
+            disabled={visibleWeek === 0}
+            style={{
+              flexDirection: "row", alignItems: "center", gap: 4,
+              paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8,
+              backgroundColor: visibleWeek === 0 ? COLORS.borderInput : COLORS.primary,
+              opacity: visibleWeek === 0 ? 0.5 : 1,
+            }}
+          >
+            <Ionicons name="chevron-back" size={14} color="#fff" />
+            <Text style={{ fontSize: 12, fontWeight: "700", color: "#fff" }}>Anterior</Text>
+          </TouchableOpacity>
+          <Text style={{ fontSize: 12, fontWeight: "800", color: COLORS.text }}>
+            {weekLabels[visibleWeek] || ""}
+          </Text>
+          <TouchableOpacity
+            onPress={() => setVisibleWeek(Math.min(totalWeeks - 1, visibleWeek + 1))}
+            disabled={visibleWeek === totalWeeks - 1}
+            style={{
+              flexDirection: "row", alignItems: "center", gap: 4,
+              paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8,
+              backgroundColor: visibleWeek === totalWeeks - 1 ? COLORS.borderInput : COLORS.primary,
+              opacity: visibleWeek === totalWeeks - 1 ? 0.5 : 1,
+            }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: "700", color: "#fff" }}>Siguiente</Text>
+            <Ionicons name="chevron-forward" size={14} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
