@@ -107,7 +107,7 @@ export default function DocumentacionesScreen() {
   const content = (
     <>
     <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
-      {!isWide && <IOSHeader title={seccion === "menu" ? "Docs. y Software" : seccion === "fichas" ? "Fichas técnicas" : "Manuales"} />}
+      {!isWide && <IOSHeader title={seccion === "menu" ? "Docs. y Software" : seccion === "fichas" ? "Fichas técnicas" : "Manuales"} showBack onBack={seccion === "menu" ? undefined : () => setSeccion("menu")} backLabel={seccion === "menu" ? "Atrás" : "Docs"} />}
       <View style={s.body}>
         {seccion === "menu" ? (
           <>

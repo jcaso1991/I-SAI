@@ -43,17 +43,18 @@ export const useS = () =>
   },
 
   tilesGrid: {
-    flexDirection: "row", flexWrap: "wrap", gap: 12,
+    flexDirection: "row", flexWrap: "wrap", gap: 8,
     justifyContent: "flex-start",
   },
   tilesGridWide: { gap: 18 },
   tile: {
-    flexBasis: "48%", maxWidth: "48%",
+    // Mobile: 3 columns (compact tiles) so all modules fit on first view.
+    flexBasis: "31.5%", maxWidth: "31.5%",
     backgroundColor: COLORS.surface,
     borderRadius: ios.radius.card,
-    paddingVertical: 22, paddingHorizontal: 12,
+    paddingVertical: 12, paddingHorizontal: 6,
     alignItems: "center", justifyContent: "center",
-    minHeight: 140,
+    minHeight: 96,
     shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 6,
     shadowOffset: { width: 0, height: 1 } as any, elevation: 1,
   },
@@ -64,13 +65,21 @@ export const useS = () =>
     minHeight: 170,
   },
   tileIcon: {
-    width: 56, height: 56, borderRadius: 14,
+    width: 40, height: 40, borderRadius: 10,
     alignItems: "center", justifyContent: "center",
+    marginBottom: 6,
+  },
+  tileIconWide: {
+    width: 56, height: 56, borderRadius: 14,
     marginBottom: 12,
   },
   tileTitle: {
     fontFamily: ios.font.family,
-    fontSize: 15, fontWeight: "600", color: COLORS.text,
+    fontSize: 11, fontWeight: "600", color: COLORS.text,
+    letterSpacing: -0.1, textAlign: "center",
+  },
+  tileTitleWide: {
+    fontSize: 15,
     letterSpacing: -0.2,
   },
   dashRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },

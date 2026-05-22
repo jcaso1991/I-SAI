@@ -154,7 +154,7 @@ export default function PreciarioScreen() {
 
   const content = (
     <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
-      {!isWide && <IOSHeader title="Preciario" />}
+      {!isWide && <IOSHeader title="Preciario" showBack />}
 
       <View style={s.body}>
         <Text style={s.heading}>Preciario</Text>

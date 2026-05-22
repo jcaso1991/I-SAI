@@ -48,6 +48,7 @@ export default function DashboardPage() {
         <IOSHeader
           title="Dashboard"
           subtitle={spanishToday()}
+          showBack
         />
       )}
 

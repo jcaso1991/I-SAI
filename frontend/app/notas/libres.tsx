@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, FlatList, Alert, StyleSheet } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, FlatList, Alert, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -70,39 +70,44 @@ export default function NotasLibresScreen() {
 
   const content = (
     <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
-      {!isWide && <IOSHeader title="Notas libres" />}
-      <View style={s.body}>
-        {editando ? (
-          <View style={s.editor}>
-            <TextInput style={s.inputTitulo} value={titulo} onChangeText={setTitulo} placeholder="Título" placeholderTextColor={COLORS.textDisabled} />
-            <TextInput style={s.inputContenido} value={contenido} onChangeText={setContenido} placeholder="Escribe tu nota..." placeholderTextColor={COLORS.textDisabled} multiline textAlignVertical="top" />
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <TouchableOpacity style={s.btnGuardar} onPress={guardar}><Text style={s.btnText}>Guardar</Text></TouchableOpacity>
-              <TouchableOpacity style={s.btnCancelar} onPress={() => setEditando(null)}><Text style={[s.btnText, { color: COLORS.textSecondary }]}>Cancelar</Text></TouchableOpacity>
+      {!isWide && <IOSHeader title="Notas libres" showBack />}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
+      >
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: 60, gap: 6 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          {editando ? (
+            <View style={s.editor}>
+              <TextInput style={s.inputTitulo} value={titulo} onChangeText={setTitulo} placeholder="Título" placeholderTextColor={COLORS.textDisabled} />
+              <TextInput style={s.inputContenido} value={contenido} onChangeText={setContenido} placeholder="Escribe tu nota..." placeholderTextColor={COLORS.textDisabled} multiline textAlignVertical="top" />
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <TouchableOpacity style={s.btnGuardar} onPress={guardar}><Text style={s.btnText}>Guardar</Text></TouchableOpacity>
+                <TouchableOpacity style={s.btnCancelar} onPress={() => setEditando(null)}><Text style={[s.btnText, { color: COLORS.textSecondary }]}>Cancelar</Text></TouchableOpacity>
+              </View>
             </View>
-          </View>
-        ) : (
-          <TouchableOpacity style={s.btnNueva} onPress={nuevaNota}>
-            <Ionicons name="add" size={20} color="#fff" />
-            <Text style={[s.btnText, { color: "#fff" }]}>Nueva nota</Text>
-          </TouchableOpacity>
-        )}
-        <FlatList
-          data={notas}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <TouchableOpacity style={s.notaCard} onPress={() => editarNota(item)} activeOpacity={0.7}>
+          ) : (
+            <TouchableOpacity style={s.btnNueva} onPress={nuevaNota}>
+              <Ionicons name="add" size={20} color="#fff" />
+              <Text style={[s.btnText, { color: "#fff" }]}>Nueva nota</Text>
+            </TouchableOpacity>
+          )}
+          {notas.map((item) => (
+            <TouchableOpacity key={item.id} style={s.notaCard} onPress={() => editarNota(item)} activeOpacity={0.7}>
               <View style={{ flex: 1 }}>
                 <Text style={s.notaTitulo} numberOfLines={1}>{item.titulo || "Sin título"}</Text>
                 <Text style={s.notaPreview} numberOfLines={2}>{item.contenido || "Sin contenido"}</Text>
                 <Text style={s.notaFecha}>{item.updated_at?.slice(0, 10)}</Text>
               </View>
-              <TouchableOpacity onPress={() => eliminar(item.id)}><Ionicons name="trash-outline" size={16} color={COLORS.errorText} /></TouchableOpacity>
+              <TouchableOpacity onPress={() => eliminar(item.id)} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}><Ionicons name="trash-outline" size={18} color={COLORS.errorText} /></TouchableOpacity>
             </TouchableOpacity>
-          )}
-          contentContainerStyle={{ gap: 6, paddingBottom: 40 }}
-        />
-      </View>
+          ))}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 

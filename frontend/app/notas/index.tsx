@@ -460,7 +460,7 @@ export default function NotasIndexScreen() {
   const content = (
     <>
     <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
-      {!isWide && <IOSHeader title="Notas" />}
+      {!isWide && <IOSHeader title="Notas" showBack />}
       <View style={s.body}>
         {isWide ? (
           <View style={{ flex: 1, flexDirection: "row", gap: 12 }}>

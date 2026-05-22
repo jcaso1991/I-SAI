@@ -3,9 +3,13 @@
  *
  * On mobile shows the title big at the top (à la iOS). The right slot is
  * for the notifications bell / actions. Optional subtitle.
+ *
+ * Pass `showBack` to render an iOS chevron-style back button on the left.
  */
 import React from "react";
-import { View, Text, StyleSheet, Platform } from "react-native";
+import { View, Text, StyleSheet, Platform, TouchableOpacity } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { ios } from "./iosTheme";
 import { useThemedStyles } from "../theme";
 import { COLORS } from "../api";
@@ -16,6 +20,9 @@ export default function IOSHeader({
   rightSlot,
   leftSlot,
   compact,
+  showBack,
+  backLabel,
+  onBack,
 }: {
   title: string;
   subtitle?: string;
@@ -23,21 +30,56 @@ export default function IOSHeader({
   leftSlot?: React.ReactNode;
   /** When true renders a slim navigation-bar style (no large title). */
   compact?: boolean;
+  /** Show iOS-style back button at the left. */
+  showBack?: boolean;
+  /** Optional label next to the back chevron (defaults to "Atrás"). */
+  backLabel?: string;
+  /** Custom back handler (defaults to router.back()). */
+  onBack?: () => void;
 }) {
   const s = useThemedStyles(useS);
+  const router = useRouter();
+  const handleBack = () => {
+    if (onBack) return onBack();
+    try {
+      // @ts-ignore
+      if (router.canGoBack && router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace("/" as any);
+      }
+    } catch {
+      router.replace("/" as any);
+    }
+  };
+  const BackBtn = (
+    <TouchableOpacity
+      onPress={handleBack}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      style={{ flexDirection: "row", alignItems: "center", gap: 2, paddingVertical: 4, paddingRight: 8 }}
+      accessibilityLabel="Atrás"
+    >
+      <Ionicons name="chevron-back" size={26} color={COLORS.primary} />
+      <Text style={{ fontSize: 16, color: COLORS.primary, fontWeight: "500", letterSpacing: -0.2 }} numberOfLines={1}>
+        {backLabel || "Atrás"}
+      </Text>
+    </TouchableOpacity>
+  );
+  const renderedLeft = leftSlot ?? (showBack ? BackBtn : null);
+
   if (compact) {
     return (
       <View style={s.barRow}>
-        <View style={{ width: 40 }}>{leftSlot}</View>
+        <View style={{ minWidth: 40, flexDirection: "row", alignItems: "center" }}>{renderedLeft}</View>
         <Text style={s.barTitle} numberOfLines={1}>{title}</Text>
-        <View style={{ width: 40, alignItems: "flex-end" }}>{rightSlot}</View>
+        <View style={{ minWidth: 40, alignItems: "flex-end" }}>{rightSlot}</View>
       </View>
     );
   }
   return (
     <View style={s.wrap}>
       <View style={s.topRow}>
-        <View style={{ flex: 1 }}>{leftSlot}</View>
+        <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>{renderedLeft}</View>
         <View>{rightSlot}</View>
       </View>
       <Text style={s.title} numberOfLines={1}>{title}</Text>

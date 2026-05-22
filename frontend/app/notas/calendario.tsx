@@ -90,7 +90,7 @@ export default function CalendarioNotasScreen() {
 
   const content = (
     <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
-      {!isWide && <IOSHeader title="Calendario de notas" />}
+      {!isWide && <IOSHeader title="Calendario de notas" showBack />}
       <View style={s.body}>
         <View style={s.nav}>
           <TouchableOpacity onPress={() => { if (month === 0) { setMonth(11); setYear(year - 1); } else setMonth(month - 1); }}>

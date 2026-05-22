@@ -26,14 +26,14 @@ export default function DashboardTile({
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <View style={[s.tileIcon, { backgroundColor: accent }]}>
+      <View style={[s.tileIcon, isWide && s.tileIconWide, { backgroundColor: accent }]}>
         {iconFamily === "ion" ? (
-          <Ionicons name={icon as any} size={32} color="#fff" />
+          <Ionicons name={icon as any} size={isWide ? 32 : 22} color="#fff" />
         ) : (
-          <MaterialCommunityIcons name={icon as any} size={34} color="#fff" />
+          <MaterialCommunityIcons name={icon as any} size={isWide ? 34 : 22} color="#fff" />
         )}
       </View>
-      <Text style={s.tileTitle} numberOfLines={1}>{title}</Text>
+      <Text style={[s.tileTitle, isWide && s.tileTitleWide]} numberOfLines={1}>{title}</Text>
     </TouchableOpacity>
   );
 }

@@ -30,7 +30,7 @@ export default function DocumentosScreen() {
 
   const content = (
     <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
-      {!isWide && <IOSHeader title="Documentos Internos" />}
+      {!isWide && <IOSHeader title="Documentos Internos" showBack />}
 
       <View style={s.body}>
         <Text style={s.heading}>Documentos Internos</Text>

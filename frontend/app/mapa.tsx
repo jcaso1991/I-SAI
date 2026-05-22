@@ -96,7 +96,7 @@ export default function MapaScreen() {
 
   const content = (
     <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
-      {!isWide && <IOSHeader title="Mapa" />}
+      {!isWide && <IOSHeader title="Mapa" showBack />}
       <View style={s.body}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filtersRow}>
           {Object.entries(STATUS_COLORS).map(([st, color]) => (

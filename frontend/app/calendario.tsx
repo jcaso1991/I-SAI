@@ -1428,7 +1428,7 @@ function DraggableEvent({
           </View>
         )}
         {isAdmin ? (
-          <View pointerEvents="none" style={{ padding: 2 }}>
+          <View pointerEvents="none" style={{ padding: 2, paddingRight: (onCopy && boxWidth >= 90) ? 56 : 2 }}>
           {/* Top: assigned user(s) */}
           {event.assigned_users && event.assigned_users.length > 0 && (
             <Text style={[s.eventAssignee, { color: eventTextColor }]} numberOfLines={1}>
@@ -1499,7 +1499,7 @@ function DraggableEvent({
         </>
       )}
     </View>
-      {isAdmin && onCopy && (
+      {isAdmin && onCopy && boxWidth >= 90 && (
         <>
         <TouchableOpacity
           onPress={() => shareWhatsApp(event)}
