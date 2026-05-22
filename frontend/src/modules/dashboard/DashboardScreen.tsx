@@ -5,7 +5,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { api, clearToken } from "../../api";
+import { api, clearToken, COLORS } from "../../api";
 import ResponsiveLayout from "../../ResponsiveLayout";
 import { useBreakpoint } from "../../useBreakpoint";
 import NotificationsBell from "../../NotificationsBell";
@@ -42,6 +42,13 @@ export default function DashboardScreen({
         const u = await api.me();
         if (!alive) return;
         setMe(u);
+        const perms: string[] = (u?.permissions as string[]) || [];
+        if (perms.includes("notas.view")) {
+          try {
+            const notas = await api.listNotas(undefined, true);
+            setPendingNotes(notas || []);
+          } catch { setPendingNotes([]); }
+        }
       } catch (e: any) {
         if (/401|Invalid|expired/i.test(e?.message || "")) {
           await clearToken();
@@ -68,6 +75,7 @@ export default function DashboardScreen({
   const showSat = has("sat.view");
   const showDocs = has("preciario.view");
   const showNotas = has("notas.view");
+  const [pendingNotes, setPendingNotes] = useState<any[]>([]);
 
   const content = (
     <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
@@ -195,6 +203,30 @@ export default function DashboardScreen({
               />
             )}
           </View>
+          {showNotas && pendingNotes.length > 0 && (
+            <View style={{ marginTop: 16 }}>
+              <Text style={{ fontSize: 13, fontWeight: "900", color: COLORS.textSecondary, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>
+                Notas pendientes ({pendingNotes.length})
+              </Text>
+              {pendingNotes.map((n: any) => (
+                <TouchableOpacity
+                  key={n.id}
+                  style={{ backgroundColor: COLORS.surface, borderRadius: 10, padding: 12, marginBottom: 6, borderWidth: 1, borderColor: COLORS.border, flexDirection: "row", alignItems: "center", gap: 10 }}
+                  onPress={() => router.push(`/notas?open=${n.id}`)}
+                >
+                  <Ionicons name="flag" size={16} color="#F59E0B" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: "700", color: COLORS.text }} numberOfLines={1}>
+                      {n.titulo || "Sin título"}
+                    </Text>
+                    {n.contenido ? <Text style={{ fontSize: 11, color: COLORS.textSecondary, marginTop: 1 }} numberOfLines={1}>{n.contenido}</Text> : null}
+                    {n.material_name ? <Text style={{ fontSize: 10, color: COLORS.primary, marginTop: 1 }}>🔗 {n.material_name}</Text> : null}
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={COLORS.textDisabled} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </ScrollView>
       )}
     </SafeAreaView>
@@ -202,7 +234,7 @@ export default function DashboardScreen({
 
   return (
     <ResponsiveLayout
-      active={active || "home"}
+      active={(active || "home") as any}
       isAdmin={finalIsAdmin}
       onLogout={onLogout}
       userName={finalUserName}

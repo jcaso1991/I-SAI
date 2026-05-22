@@ -2293,6 +2293,22 @@ function EventDetailsModal({
               </View>
             )}
 
+            {/* Seguimiento (observaciones) — siempre editable, auto-guarda */}
+            <Text style={s.mLabel}>Seguimiento (observaciones del técnico)</Text>
+            <TextInput
+              testID="seguimiento-input"
+              style={[s.mInput, { minHeight: 72, textAlignVertical: "top" }]}
+              value={seguimiento}
+              onChangeText={setSeguimiento}
+              onBlur={() => {
+                const segText = seguimiento.trim() || "";
+                saveStatus("pending_completion", segText);
+              }}
+              placeholder="Escribe aquí las observaciones…"
+              placeholderTextColor={COLORS.textDisabled}
+              multiline
+            />
+
             {/* Presupuesto vinculado */}
             <Text style={s.mLabel}>PRESUPUESTO</Text>
             {editing && isAdmin ? (
@@ -2669,27 +2685,6 @@ function EventDetailsModal({
                 <Text style={[s.statusChipText, status === "pending_completion" && { color: "#fff" }]}>Pendiente de terminar</Text>
               </TouchableOpacity>
             </View>
-
-            {(editing || status === "pending_completion" || !!seguimiento) && (
-              <>
-                <Text style={s.mLabel}>Seguimiento (observaciones del técnico)</Text>
-                {editing ? (
-                  <TextInput
-                    testID="seguimiento-input"
-                    style={[s.mInput, { minHeight: 72, textAlignVertical: "top" }]}
-                    value={seguimiento}
-                    onChangeText={setSeguimiento}
-                    placeholder="Escribe aquí las observaciones…"
-                    placeholderTextColor={COLORS.textDisabled}
-                    multiline
-                  />
-                ) : (
-                  <Text style={[s.descText, !seguimiento && { color: COLORS.textDisabled }]}>
-                    {seguimiento || "Sin observaciones"}
-                  </Text>
-                )}
-              </>
-            )}
 
             {/* Attachments */}
             <Text style={s.mLabel}>Archivos adjuntos</Text>

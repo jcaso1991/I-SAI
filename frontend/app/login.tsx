@@ -82,7 +82,7 @@ export default function Login() {
         );
         if (result.type === "success" && result.url) {
           const raw = result.url.includes("?") ? result.url.split("?")[1] : "";
-          router.replace(`/microsoft-callback${raw ? `?${raw}` : ""}`);
+          router.replace(`/microsoft-callback${raw ? `?${raw}` : ""}` as any);
         }
         if (result.type === "cancel") {
           await AsyncStorage.removeItem(MS_STATE_KEY);

@@ -4492,22 +4492,37 @@ async def update_preciario_stock(
 class NotaCreate(BaseModel):
     titulo: str = ""
     contenido: str = ""
-    fecha: Optional[str] = None  # YYYY-MM-DD para notas de calendario
+    fecha: Optional[str] = None
+    material_id: Optional[str] = None
+    marcada: bool = False
 
 class NotaUpdate(BaseModel):
     titulo: Optional[str] = None
     contenido: Optional[str] = None
     fecha: Optional[str] = None
+    material_id: Optional[str] = None
+    marcada: Optional[bool] = None
 
 @api_router.get("/notas")
 async def list_notas(
     user: dict = Depends(require_permission("notas.view")),
     fecha: Optional[str] = Query(None, description="Filtrar por fecha YYYY-MM-DD"),
+    marcada: Optional[bool] = Query(None, description="Filtrar por marcadas (true/false)"),
 ):
     q: dict = {"user_id": user["id"]}
     if fecha:
         q["fecha"] = fecha
+    if marcada is not None:
+        q["marcada"] = marcada
     items = await db.notas.find(q, {"_id": 0}).sort("updated_at", -1).to_list(500)
+    # Enriquecer con nombre de proyecto
+    mids = {n["material_id"] for n in items if n.get("material_id")}
+    if mids:
+        mats = await db.materiales.find({"id": {"$in": list(mids)}}, {"_id": 0, "id": 1, "materiales": 1, "cliente": 1}).to_list(500)
+        mat_map = {m["id"]: f"{m.get('materiales') or ''} — {m.get('cliente') or ''}" for m in mats}
+        for n in items:
+            if n.get("material_id") in mat_map:
+                n["material_name"] = mat_map[n["material_id"]]
     return items
 
 @api_router.post("/notas")
@@ -4523,6 +4538,8 @@ async def create_nota(
         "titulo": body.titulo or "",
         "contenido": body.contenido or "",
         "fecha": body.fecha,
+        "material_id": body.material_id or None,
+        "marcada": body.marcada or False,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }

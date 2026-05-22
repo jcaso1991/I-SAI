@@ -30,6 +30,9 @@ async function request(path: string, opts: RequestInit = {}, auth = true) {
     "Content-Type": "application/json",
     ...(opts.headers as Record<string, string> | undefined),
   };
+  if (!opts.method || opts.method === "GET") {
+    headers["Cache-Control"] = "no-cache";
+  }
   if (auth) {
     const t = await getToken();
     if (t) headers["Authorization"] = `Bearer ${t}`;
@@ -178,7 +181,7 @@ export const api = {
       return res.json();
     });
   },
-  satList: (status?: "pendiente" | "resuelta", year?: string, month?: string) => {
+  satList: (status?: "pendiente" | "resuelta" | "agendada", year?: string, month?: string) => {
     const params = new URLSearchParams();
     if (status) params.set("status", status);
     if (year && year !== "todos") params.set("year", year);
@@ -243,10 +246,16 @@ export const api = {
     request("/preciario/stock", { method: "PATCH", body: JSON.stringify({ ref, stock }) }),
 
   // Notas personales
-  listNotas: (fecha?: string) => request(`/notas${fecha ? "?fecha=" + fecha : ""}`),
-  createNota: (body: { titulo?: string; contenido?: string; fecha?: string }) =>
+  listNotas: (fecha?: string, marcada?: boolean) => {
+    const params = new URLSearchParams();
+    if (fecha) params.set("fecha", fecha);
+    if (marcada !== undefined) params.set("marcada", String(marcada));
+    const qs = params.toString();
+    return request(`/notas${qs ? "?" + qs : ""}`);
+  },
+  createNota: (body: { titulo?: string; contenido?: string; fecha?: string; material_id?: string; marcada?: boolean }) =>
     request("/notas", { method: "POST", body: JSON.stringify(body) }),
-  updateNota: (id: string, body: { titulo?: string; contenido?: string; fecha?: string }) =>
+  updateNota: (id: string, body: { titulo?: string; contenido?: string; fecha?: string; material_id?: string; marcada?: boolean }) =>
     request(`/notas/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteNota: (id: string) => request(`/notas/${id}`, { method: "DELETE" }),
 

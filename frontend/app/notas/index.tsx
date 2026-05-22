@@ -1,7 +1,7 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { View, Text, TouchableOpacity, TextInput, FlatList, Alert, StyleSheet, Platform, ScrollView, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import ResponsiveLayout from "../../src/ResponsiveLayout";
 import { useBreakpoint } from "../../src/useBreakpoint";
@@ -21,6 +21,8 @@ function fmtISO(y: number, m: number, d: number) { return `${y}-${String(m + 1).
 export default function NotasIndexScreen() {
   const router = useRouter();
   const { isWide } = useBreakpoint();
+  const params = useLocalSearchParams<{ open?: string }>();
+  const openedRef = useRef<string | null>(null);
   const s = useThemedStyles(useS);
   const { theme } = useTheme();
   const txtColor = theme === "dark" ? "#E2E8F0" : COLORS.text;
@@ -53,6 +55,10 @@ export default function NotasIndexScreen() {
   const [shareNota, setShareNota] = useState<Nota | null>(null);
   const [usersList, setUsersList] = useState<any[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [linkMaterial, setLinkMaterial] = useState(false);
+  const [materialId, setMaterialId] = useState("");
+  const [matSearch, setMatSearch] = useState("");
+  const [materialesList, setMaterialesList] = useState<any[]>([]);
 
   const loadAll = useCallback(async () => {
     const items = await api.listNotas();
@@ -65,12 +71,32 @@ export default function NotasIndexScreen() {
     });
     setNotasLibres(libres);
     setNotasCalendario(cal);
+    // Auto-abrir nota desde Inicio
+    const openId = (params as any)?.open;
+    if (openId && openedRef.current !== openId) {
+      openedRef.current = openId;
+      const target = (items || []).find((n: Nota) => n.id === openId);
+      if (target) {
+        if (target.fecha) {
+          setSelectedDay(target.fecha);
+          setEditingDay(target.fecha);
+          setNotaDelDia(target);
+          setTituloDia(target.titulo || "");
+          setContenidoDia(target.contenido || "");
+        } else {
+          setEditando(target);
+          setTitulo(target.titulo || "");
+          setContenido(target.contenido || "");
+        }
+        router.replace("/notas");
+      }
+    }
   }, []);
 
   useFocusEffect(useCallback(() => { loadAll(); }, [loadAll]));
 
   // Free notes
-  const nuevaNota = () => { setEditando({ id: "", titulo: "", contenido: "", fecha: null, updated_at: "" } as Nota); setTitulo(""); setContenido(""); };
+  const nuevaNota = () => { setEditando({ id: "", titulo: "", contenido: "", fecha: null, updated_at: "" } as Nota); setTitulo(""); setContenido(""); setLinkMaterial(false); setMaterialId(""); setMatSearch(""); };
   const guardarLibre = async () => {
     if (!titulo.trim() && !contenido.trim()) return;
     const notaEdit = editando;
@@ -81,9 +107,9 @@ export default function NotasIndexScreen() {
     }
     try {
       if (notaEdit?.id) {
-        await api.updateNota(notaEdit.id, { titulo: titulo.trim(), contenido: contenido.trim() });
+        await api.updateNota(notaEdit.id, { titulo: titulo.trim(), contenido: contenido.trim(), material_id: linkMaterial ? materialId || undefined : undefined });
       } else {
-        const created = await api.createNota({ titulo: titulo.trim(), contenido: contenido.trim() });
+        const created = await api.createNota({ titulo: titulo.trim(), contenido: contenido.trim(), material_id: linkMaterial ? materialId || undefined : undefined });
         if (created) setNotasLibres((prev) => [created, ...prev]);
       }
       loadAll();
@@ -150,7 +176,7 @@ export default function NotasIndexScreen() {
       if (updatedNota?.id) {
         await api.updateNota(updatedNota.id, { titulo: tituloDia.trim(), contenido: contenidoDia.trim() });
       } else {
-        const created = await api.createNota({ titulo: tituloDia.trim(), contenido: contenidoDia.trim(), fecha: day || undefined });
+        const created = await api.createNota({ titulo: tituloDia.trim(), contenido: contenidoDia.trim(), fecha: day || undefined, material_id: linkMaterial ? materialId || undefined : undefined });
         if (created && day) {
           setNotasCalendario((prev) => {
             const copy = { ...prev };
@@ -166,6 +192,22 @@ export default function NotasIndexScreen() {
   const eliminarDia = async (notaId: string) => {
     if (Platform.OS === "web" && !window.confirm("¿Borrar?")) return;
     try { await api.deleteNota(notaId); loadAll(); } catch (e: any) { Alert.alert("Error", e.message); }
+  };
+
+  const toggleMarcada = async (nota: Nota) => {
+    const newVal = !(nota as any).marcada;
+    // Optimistic update
+    setNotasLibres((prev) => prev.map((n) => n.id === nota.id ? { ...n, marcada: newVal } as any : n));
+    setNotasCalendario((prev) => {
+      const copy = { ...prev };
+      for (const key of Object.keys(copy)) {
+        copy[key] = copy[key].map((n: Nota) => n.id === nota.id ? { ...n, marcada: newVal } as any : n);
+      }
+      return copy;
+    });
+    try {
+      await api.updateNota(nota.id, { marcada: newVal });
+    } catch { loadAll(); }
   };
 
   const cambiarFecha = async () => {
@@ -221,6 +263,24 @@ export default function NotasIndexScreen() {
         <View style={s.editor}>
           <TextInput style={s.inputTitulo} value={titulo} onChangeText={setTitulo} placeholder="Título" placeholderTextColor={COLORS.textDisabled} />
           <TextInput style={s.inputContenido} value={contenido} onChangeText={setContenido} placeholder="Escribe..." placeholderTextColor={COLORS.textDisabled} multiline textAlignVertical="top" />
+          <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start" }} onPress={() => { setLinkMaterial(!linkMaterial); if (!linkMaterial) { api.listMateriales().then(setMaterialesList).catch(() => {}); } }}>
+            <Ionicons name={linkMaterial ? "link" : "link-outline"} size={14} color={linkMaterial ? COLORS.primary : COLORS.textSecondary} />
+            <Text style={{ fontSize: 11, color: linkMaterial ? COLORS.primary : COLORS.textSecondary }}>
+              {linkMaterial && materialId ? (materialesList.find(m => m.id === materialId)?.materiales || "Proyecto") : "Vincular proyecto"}
+            </Text>
+          </TouchableOpacity>
+          {linkMaterial && (
+            <View style={{ backgroundColor: COLORS.bg, borderRadius: 8, padding: 8, maxHeight: 150 }}>
+              <TextInput style={{ fontSize: 12, color: COLORS.text, borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingVertical: 4, marginBottom: 4 }} value={matSearch} onChangeText={(v) => { setMatSearch(v); api.listMateriales(v || undefined).then(setMaterialesList).catch(() => {}); }} placeholder="Buscar proyecto..." placeholderTextColor={COLORS.textDisabled} />
+              <ScrollView style={{ maxHeight: 100 }}>
+                {(matSearch ? materialesList : []).slice(0, 15).map((m: any) => (
+                  <TouchableOpacity key={m.id} style={{ paddingVertical: 4, paddingHorizontal: 6, borderRadius: 4, backgroundColor: materialId === m.id ? COLORS.primarySoft : "transparent" }} onPress={() => setMaterialId(m.id)}>
+                    <Text style={{ fontSize: 11, color: COLORS.text }} numberOfLines={1}>{m.materiales || "—"} — {m.cliente || ""}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
           <View style={{ flexDirection: "row", gap: 6 }}>
             <TouchableOpacity style={s.btnGuardar} onPress={guardarLibre}><Text style={s.btnText}>Guardar</Text></TouchableOpacity>
             <TouchableOpacity style={s.btnCancelar} onPress={() => setEditando(null)}><Text style={[s.btnText, { color: COLORS.textSecondary }]}>Cancelar</Text></TouchableOpacity>
@@ -241,6 +301,9 @@ export default function NotasIndexScreen() {
           <TouchableOpacity style={{ flex: 1 }} onPress={() => { setEditando(item); setTitulo(item.titulo); setContenido(item.contenido); }} activeOpacity={0.7}>
             <Text style={s.notaTituloCard} numberOfLines={1}>{item.titulo || "Sin título"}</Text>
             {item.contenido ? <Text style={s.notaContCard} numberOfLines={2}>{item.contenido}</Text> : null}
+          </TouchableOpacity>
+          <TouchableOpacity style={{ padding: 4 }} onPress={() => toggleMarcada(item)}>
+            <Ionicons name={(item as any).marcada ? "flag" : "flag-outline"} size={15} color={(item as any).marcada ? "#F59E0B" : COLORS.textSecondary} />
           </TouchableOpacity>
           <TouchableOpacity style={{ padding: 4 }} onPress={() => openShare(item)}>
             <Ionicons name="share-outline" size={15} color={COLORS.textSecondary} />
@@ -327,7 +390,10 @@ export default function NotasIndexScreen() {
                   <Text style={s.notaTituloCard} numberOfLines={1}>{item.titulo || "Sin título"}</Text>
                   {item.contenido ? <Text style={s.notaContCard} numberOfLines={2}>{item.contenido}</Text> : null}
                 </TouchableOpacity>
-                <TouchableOpacity style={{ padding: 4 }} onPress={() => openShare(item)}>
+          <TouchableOpacity style={{ padding: 4 }} onPress={() => toggleMarcada(item)}>
+            <Ionicons name={(item as any).marcada ? "flag" : "flag-outline"} size={15} color={(item as any).marcada ? "#F59E0B" : COLORS.textSecondary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={{ padding: 4 }} onPress={() => openShare(item)}>
                   <Ionicons name="share-outline" size={15} color={COLORS.textSecondary} />
                 </TouchableOpacity>
                 <TouchableOpacity style={{ padding: 4 }} onPress={() => eliminarDia(item.id)}>
