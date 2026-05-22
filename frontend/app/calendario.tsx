@@ -791,52 +791,44 @@ function GuardBar({
       {days.map((d, i) => {
         const key = fmtDate(d);
         const dayGuards = guardsByDay[key] || [];
+        const current = dayGuards[0]; // solo 1 por día
         return (
           <TouchableOpacity
             key={i}
             onPress={() => isAdmin && setPickerDate(key)}
+            onLongPress={() => {
+              if (!isAdmin || !current || !onDeleteGuard) return;
+              if (typeof window !== "undefined" && typeof window.confirm === "function") {
+                if (window.confirm(`¿Quitar a ${current.user_name} de la guardia?`)) onDeleteGuard(current.id);
+              } else {
+                Alert.alert("Quitar guardia", `¿Quitar ${current.user_name}?`, [
+                  { text: "Cancelar", style: "cancel" },
+                  { text: "Quitar", style: "destructive", onPress: () => onDeleteGuard(current.id) },
+                ]);
+              }
+            }}
             disabled={!isAdmin}
             activeOpacity={isAdmin ? 0.6 : 1}
             style={{
               flex: 1, marginHorizontal: 1, paddingHorizontal: 4, paddingVertical: 2,
               borderRadius: 6,
-              borderWidth: 1, borderColor: "#FED7AA",
-              backgroundColor: dayGuards.length > 0 ? "#FED7AA" : "rgba(255,255,255,0.6)",
-              flexDirection: "row", alignItems: "center", justifyContent: "center", flexWrap: "wrap", gap: 3,
+              borderWidth: 1, borderColor: current ? (current.user_color || "#EA580C") : "#FED7AA",
+              backgroundColor: current ? (current.user_color || "#EA580C") : "rgba(255,255,255,0.6)",
+              flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4,
               minHeight: 28,
             }}
           >
-            {dayGuards.length === 0 ? (
+            {!current ? (
               <Text style={{ fontSize: 10, color: "#EA580C", fontWeight: "700" }}>
                 {isAdmin ? "+ Asignar" : "—"}
               </Text>
             ) : (
-              dayGuards.map((g) => (
-                <TouchableOpacity
-                  key={g.id}
-                  onPress={() => {
-                    if (!isAdmin || !onDeleteGuard) return;
-                    if (typeof window !== "undefined" && typeof window.confirm === "function") {
-                      if (window.confirm(`¿Quitar ${g.user_name} de guardia?`)) onDeleteGuard(g.id);
-                    } else {
-                      Alert.alert("Quitar guardia", `¿Quitar ${g.user_name}?`, [
-                        { text: "Cancelar", style: "cancel" },
-                        { text: "Quitar", style: "destructive", onPress: () => onDeleteGuard(g.id) },
-                      ]);
-                    }
-                  }}
-                  style={{
-                    backgroundColor: g.user_color || "#EA580C",
-                    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10,
-                    flexDirection: "row", alignItems: "center", gap: 3,
-                  }}
-                  hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
-                >
-                  <Text style={{ fontSize: 10, fontWeight: "800", color: "#fff" }} numberOfLines={1}>
-                    {(g.user_name || "?").split(" ").map((p: string) => p[0]).slice(0, 2).join("")}
-                  </Text>
-                </TouchableOpacity>
-              ))
+              <>
+                <Text style={{ fontSize: 11, fontWeight: "800", color: "#fff" }} numberOfLines={1}>
+                  {current.user_name || "?"}
+                </Text>
+                {isAdmin && <Ionicons name="swap-horizontal" size={11} color="#fff" />}
+              </>
             )}
           </TouchableOpacity>
         );
@@ -853,25 +845,38 @@ function GuardBar({
             style={{ backgroundColor: "#fff", borderRadius: 14, padding: 16, width: "100%", maxWidth: 360, maxHeight: "80%" }}
             onStartShouldSetResponder={() => true}
           >
-            <Text style={{ fontSize: 16, fontWeight: "800", color: "#111", marginBottom: 12 }}>
+            <Text style={{ fontSize: 16, fontWeight: "800", color: "#111", marginBottom: 4 }}>
               Asignar técnico de guardia
             </Text>
+            {pickerDate && guardsByDay[pickerDate]?.[0] && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8, padding: 8, backgroundColor: "#FFF7ED", borderRadius: 8, borderWidth: 1, borderColor: "#FED7AA" }}>
+                <Ionicons name="information-circle" size={16} color="#EA580C" />
+                <Text style={{ fontSize: 12, color: "#9A3412", flex: 1 }} numberOfLines={2}>
+                  Actualmente: <Text style={{ fontWeight: "800" }}>{guardsByDay[pickerDate][0].user_name}</Text>. Selecciona otro para reemplazar.
+                </Text>
+              </View>
+            )}
             <Text style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>
               Día: {pickerDate}
             </Text>
             <ScrollView style={{ maxHeight: 360 }}>
-              {(allUsers || []).filter((u: any) => !(guardsByDay[pickerDate || ""] || []).some((g: any) => g.user_id === u.id)).map((u: any) => (
+              {(allUsers || []).map((u: any) => {
+                const isCurrent = pickerDate && guardsByDay[pickerDate]?.some((g: any) => g.user_id === u.id);
+                return (
                 <TouchableOpacity
                   key={u.id}
                   onPress={async () => {
-                    if (!onAddGuard || !pickerDate) return;
+                    if (!onAddGuard || !pickerDate || isCurrent) return;
                     await onAddGuard(pickerDate, u.id);
                     setPickerDate(null);
                   }}
+                  disabled={!!isCurrent}
                   style={{
                     flexDirection: "row", alignItems: "center", gap: 10,
                     paddingVertical: 10, paddingHorizontal: 8, borderRadius: 8,
                     borderBottomWidth: 1, borderBottomColor: "#F3F4F6",
+                    backgroundColor: isCurrent ? "#F0FDF4" : "transparent",
+                    opacity: isCurrent ? 0.7 : 1,
                   }}
                 >
                   <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: u.color || "#3B82F6", alignItems: "center", justifyContent: "center" }}>
@@ -883,21 +888,41 @@ function GuardBar({
                     <Text style={{ fontSize: 14, fontWeight: "700", color: "#111" }} numberOfLines={1}>{u.name || u.email}</Text>
                     <Text style={{ fontSize: 11, color: "#666" }} numberOfLines={1}>{u.email}</Text>
                   </View>
-                  <Ionicons name="add-circle" size={22} color="#10B981" />
+                  {isCurrent ? (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+                      <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                      <Text style={{ fontSize: 11, fontWeight: "700", color: "#10B981" }}>actual</Text>
+                    </View>
+                  ) : (
+                    <Ionicons name="arrow-forward-circle" size={22} color="#3B82F6" />
+                  )}
                 </TouchableOpacity>
-              ))}
-              {(allUsers || []).filter((u: any) => !(guardsByDay[pickerDate || ""] || []).some((g: any) => g.user_id === u.id)).length === 0 && (
-                <Text style={{ fontSize: 13, color: "#666", textAlign: "center", paddingVertical: 20 }}>
-                  Todos los técnicos ya están asignados a este día
-                </Text>
-              )}
+              );
+              })}
             </ScrollView>
-            <TouchableOpacity
-              onPress={() => setPickerDate(null)}
-              style={{ marginTop: 12, paddingVertical: 10, borderRadius: 8, backgroundColor: "#F3F4F6", alignItems: "center" }}
-            >
-              <Text style={{ fontSize: 14, fontWeight: "700", color: "#444" }}>Cerrar</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+              {pickerDate && guardsByDay[pickerDate]?.[0] && onDeleteGuard && (
+                <TouchableOpacity
+                  onPress={async () => {
+                    const g = guardsByDay[pickerDate!][0];
+                    if (typeof window !== "undefined" && typeof window.confirm === "function") {
+                      if (!window.confirm(`¿Quitar guardia de ${g.user_name}?`)) return;
+                    }
+                    await onDeleteGuard(g.id);
+                    setPickerDate(null);
+                  }}
+                  style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: "#FEE2E2", alignItems: "center", borderWidth: 1, borderColor: "#FECACA" }}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: "#DC2626" }}>Quitar guardia</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={() => setPickerDate(null)}
+                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: "#F3F4F6", alignItems: "center" }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: "700", color: "#444" }}>Cerrar</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </TouchableOpacity>
       </Modal>

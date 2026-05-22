@@ -1758,15 +1758,13 @@ async def create_guard(
     payload: GuardCreate,
     user: dict = Depends(require_permission("calendario.edit")),
 ):
-    """Asigna un técnico de guardia para una fecha."""
-    # Evitar duplicados (mismo user_id + date)
-    existing = await db.guards.find_one({"date": payload.date, "user_id": payload.user_id})
-    if existing:
-        raise HTTPException(409, "Este técnico ya está de guardia ese día")
-    # Validar que el usuario existe
+    """Asigna UN técnico de guardia para una fecha. Reemplaza al existente si ya hay alguno."""
+    # Validar usuario
     u = await db.users.find_one({"id": payload.user_id}, {"_id": 0})
     if not u:
         raise HTTPException(404, "Usuario no encontrado")
+    # Borrar cualquier guardia anterior de ese día (solo permitimos 1 por día)
+    await db.guards.delete_many({"date": payload.date})
     new_id = str(uuid.uuid4())
     doc = {
         "id": new_id,
