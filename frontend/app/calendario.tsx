@@ -2013,14 +2013,25 @@ function EventDetailsModal({
   };
 
   const doDelete = () => {
+    const performDelete = async () => {
+      try {
+        await api.deleteEvent(event.id);
+        onChanged();
+      } catch (e: any) {
+        if (typeof window !== "undefined" && window.alert) window.alert("Error: " + (e?.message || "No se pudo eliminar"));
+        else Alert.alert("Error", e?.message || "No se pudo eliminar");
+      }
+    };
+    // En web, Alert.alert con callbacks NO funciona — usar window.confirm
+    if (typeof window !== "undefined" && typeof window.confirm === "function") {
+      if (window.confirm("¿Eliminar este evento? Esta acción no se puede deshacer.")) {
+        performDelete();
+      }
+      return;
+    }
     Alert.alert("Eliminar evento", "¿Seguro?", [
       { text: "Cancelar", style: "cancel" },
-      {
-        text: "Eliminar", style: "destructive", onPress: async () => {
-          try { await api.deleteEvent(event.id); onChanged(); }
-          catch (e: any) { Alert.alert("Error", e.message); }
-        },
-      },
+      { text: "Eliminar", style: "destructive", onPress: performDelete },
     ]);
   };
 
@@ -2220,16 +2231,22 @@ function EventDetailsModal({
   };
 
   const deleteAttachment = (aid: string, name: string) => {
+    const performDelete = async () => {
+      try {
+        await api.deleteEventAttachment(event.id, aid);
+        setAttachments((arr) => arr.filter((a) => a.id !== aid));
+      } catch (e: any) {
+        if (typeof window !== "undefined" && window.alert) window.alert("Error: " + (e?.message || ""));
+        else Alert.alert("Error", e?.message || "");
+      }
+    };
+    if (typeof window !== "undefined" && typeof window.confirm === "function") {
+      if (window.confirm(`¿Eliminar "${name}"?`)) performDelete();
+      return;
+    }
     Alert.alert("Eliminar adjunto", `¿Eliminar "${name}"?`, [
       { text: "Cancelar", style: "cancel" },
-      {
-        text: "Eliminar", style: "destructive", onPress: async () => {
-          try {
-            await api.deleteEventAttachment(event.id, aid);
-            setAttachments((arr) => arr.filter((a) => a.id !== aid));
-          } catch (e: any) { Alert.alert("Error", e.message); }
-        },
-      },
+      { text: "Eliminar", style: "destructive", onPress: performDelete },
     ]);
   };
 

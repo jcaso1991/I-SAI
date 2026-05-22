@@ -62,9 +62,14 @@ export default function NotasLibresScreen() {
   };
 
   const eliminar = (id: string) => {
+    const performDelete = async () => { try { await api.deleteNota(id); load(); } catch (e: any) { Alert.alert("Error", e?.message || ""); } };
+    if (typeof window !== "undefined" && typeof window.confirm === "function") {
+      if (window.confirm("¿Eliminar esta nota?")) performDelete();
+      return;
+    }
     Alert.alert("Eliminar nota", "¿Seguro?", [
       { text: "Cancelar", style: "cancel" },
-      { text: "Eliminar", style: "destructive", onPress: async () => { await api.deleteNota(id); load(); } },
+      { text: "Eliminar", style: "destructive", onPress: performDelete },
     ]);
   };
 
