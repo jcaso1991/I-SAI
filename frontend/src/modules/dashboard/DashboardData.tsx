@@ -169,6 +169,7 @@ export default function DashboardData() {
   return (
     <View style={{ gap: 16, marginBottom: 8 }}>
       <CriticalAlerts dash={dash} router={router} />
+      <TechAvailability3W dash={dash} router={router} />
       <WeekSummary dash={dash} router={router} />
       <TodayRow dash={dash} router={router} />
       <View style={{ flexDirection: "row", gap: 16, flexWrap: "wrap" }}>
@@ -176,7 +177,6 @@ export default function DashboardData() {
         <View style={{ flex: 1, minWidth: 280 }}><GlobalHours dash={dash} /></View>
       </View>
       <TopTechnicians dash={dash} router={router} />
-      <TechAvailability3W dash={dash} router={router} />
       <ProjectsOverHours dash={dash} router={router} />
       <ManagerHours dash={dash} />
       <BudgetPipeline dash={dash} router={router} />
