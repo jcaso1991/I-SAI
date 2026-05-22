@@ -687,9 +687,13 @@ async def seed_chats():
 async def seed_events():
     print("\n=== 7. Eventos de calendario ===")
     users = await db.users.find({}).to_list(length=500)
-    projects = await db.materiales.find({}, {"id": 1, "cliente": 1, "ubicacion": 1, "lat": 1, "lng": 1, "direccion": 1}).to_list(length=10000)
+    projects = await db.materiales.find({}, {"id": 1, "cliente": 1, "ubicacion": 1, "lat": 1, "lng": 1, "direccion": 1, "manager_id": 1}).to_list(length=10000)
     if not users:
         return
+
+    # Limpiar eventos demo previos malformados
+    deleted = await db.events.delete_many({"start_at": {"$exists": False}})
+    print(f"  Eliminados {deleted.deleted_count} eventos malformados previos")
 
     inserted = 0
     titles = [
@@ -697,35 +701,46 @@ async def seed_events():
         "Entrega de material", "Recogida de material", "Revisión", "Auditoría",
         "Formación", "Coordinación interna",
     ]
-    for _ in range(300):
+    statuses = ["in_progress", "completed", "pending_completion"]
+    status_weights = [0.5, 0.35, 0.15]
+
+    for _ in range(400):
         p = random.choice(projects)
-        u = random.choice(users)
-        when = datetime.now(timezone.utc) + timedelta(days=random.randint(-30, 60), hours=random.randint(8, 18))
-        duration_h = random.choice([1, 2, 3, 4, 8])
+        # 1-3 técnicos asignados
+        n_assigned = random.randint(1, 3)
+        assigned = random.sample(users, min(n_assigned, len(users)))
+        manager = p.get("manager_id") or random.choice(users)["id"]
+        creator = random.choice(users)
+
+        # Fecha en rango -30 a +60 días
+        when = datetime.now(timezone.utc) + timedelta(days=random.randint(-30, 60))
+        # hora de inicio entre 7:00 y 18:00
+        start = when.replace(hour=random.randint(7, 17), minute=random.choice([0, 15, 30, 45]), second=0, microsecond=0)
+        duration_h = random.choice([1, 2, 2, 3, 4, 8])
+        end = start + timedelta(hours=duration_h)
+
+        title = f"{random.choice(titles)} · {(p.get('cliente') or 'Proyecto')[:25]}"
+
         ev = {
             "id": f"ev_{random.randint(100000,999999)}_{inserted}",
-            "title": random.choice(titles) + " - " + p.get("cliente", "")[:20],
-            "project_id": p["id"],
-            "user_id": u["id"],
-            "user_name": u.get("name") or u.get("email"),
-            "tecnicos": [u["id"]],
-            "start": when.isoformat(),
-            "end": (when + timedelta(hours=duration_h)).isoformat(),
-            "fecha": when.strftime("%Y-%m-%d"),
-            "hora_inicio": when.strftime("%H:%M"),
-            "hora_fin": (when + timedelta(hours=duration_h)).strftime("%H:%M"),
-            "ubicacion": p.get("ubicacion"),
-            "direccion": p.get("direccion"),
-            "lat": p.get("lat"), "lng": p.get("lng"),
-            "horas": duration_h,
-            "tipo": random.choice(["visita", "instalacion", "mantenimiento", "reunion"]),
-            "notas": random.choice(NOTES),
-            "estado": random.choice(["programado", "completado", "cancelado"]),
+            "title": title,
+            "start_at": start.isoformat(),
+            "end_at": end.isoformat(),
+            "description": random.choice(NOTES),
+            "material_id": p["id"],
+            "assigned_user_ids": [u["id"] for u in assigned],
+            "manager_id": manager,
+            "recurrence": None,
+            "attachments": [],
+            "created_by": creator["id"],
             "created_at": datetime.now(timezone.utc).isoformat(),
+            "status": random.choices(statuses, weights=status_weights)[0],
+            "seguimiento": random.choice(NOTES) if random.random() < 0.3 else None,
+            "hours": float(duration_h),
         }
         await db.events.insert_one(ev)
         inserted += 1
-    print(f"  ✅ {inserted} eventos en calendario")
+    print(f"  ✅ {inserted} eventos en calendario (esquema correcto)")
 
 
 # ---------------------------------------------------------------------------
