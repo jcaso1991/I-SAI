@@ -55,7 +55,7 @@ const DAY_LABELS_FULL = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 const DAY_LABELS_MONTH = ["L", "M", "X", "J", "V", "S", "D"];
 const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
-type ViewMode = "day" | "week" | "month" | "multi";
+type ViewMode = "day" | "week" | "month" | "multi" | "gestor";
 type Technician = { id: string; name: string; email: string };
 type RecurrenceType = "none" | "daily" | "weekly" | "monthly";
 
@@ -132,9 +132,10 @@ function yFromDate(d: Date): number {
 export default function CalendarScreen() {
   const router = useRouter();
   const { isWide } = useBreakpoint();
-  const params = useLocalSearchParams<{ openEvent?: string; from?: string }>();
+  const params = useLocalSearchParams<{ openEvent?: string; from?: string; date?: string }>();
   const [me, setMe] = useState<any>(null);
   const s = useThemedStyles(useS);
+  const { theme } = useTheme();
   const [view, setViewState] = useState<ViewMode>("week");
   const setView = (v: ViewMode) => {
     setViewState(v);
@@ -159,6 +160,10 @@ export default function CalendarScreen() {
   const [allUsers, setAllUsers] = useState<{ id: string; name: string; email: string; color?: string }[]>([]);
   const [disabledUserIds, setDisabledUserIds] = useState<Set<string>>(new Set());
   const [filterOpen, setFilterOpen] = useState(false);
+  const [gestorTab, setGestorTab] = useState("general");
+  const [gestorYear, setGestorYear] = useState("");
+  const [gestorMonth, setGestorMonth] = useState("");
+  const [gestorOpenFor, setGestorOpenFor] = useState<string | null>(null);
 
   // Notifications state (bell icon in header + modal list).
   type Notif = {
@@ -327,7 +332,8 @@ export default function CalendarScreen() {
   // event's week after closing the modal.
   useEffect(() => {
     if (!params.openEvent) return;
-    const raw = String(params.openEvent);
+    const raw = Array.isArray(params.openEvent) ? params.openEvent[0] : String(params.openEvent);
+    if (!raw || raw === "undefined") return;
     const targetId = raw.split(":")[0];
     const match = events.find((e) => e.id.split(":")[0] === targetId);
     if (match) {
@@ -374,6 +380,18 @@ export default function CalendarScreen() {
     })();
     return () => { cancelled = true; };
   }, [params.openEvent, events]);
+
+  useEffect(() => {
+    if (!params.date) return;
+    try {
+      const d = new Date(String(params.date) + "T00:00:00");
+      if (!isNaN(d.getTime())) {
+        setAnchor(d);
+        if (view === "month") setView("week");
+      }
+    } catch {}
+    router.setParams?.({ date: undefined });
+  }, [params.date]);
 
   // Keyboard shortcuts on web (arrow keys + D/S/M + T for today)
   useEffect(() => {
@@ -456,7 +474,7 @@ export default function CalendarScreen() {
 
       {/* View selector */}
       <View style={s.viewSelector}>
-        {(["day", "week", "multi", "month"] as ViewMode[]).map((v) => (
+        {(["day", "week", "multi", "month", "gestor"] as ViewMode[]).map((v) => (
           <TouchableOpacity
             key={v}
             testID={`view-${v}`}
@@ -464,12 +482,12 @@ export default function CalendarScreen() {
             onPress={() => setView(v)}
           >
             <Ionicons
-              name={v === "day" ? "today-outline" : v === "week" ? "calendar-outline" : v === "multi" ? "people-outline" : "grid-outline"}
+              name={v === "day" ? "today-outline" : v === "week" ? "calendar-outline" : v === "multi" ? "people-outline" : v === "gestor" ? "list-outline" : "grid-outline"}
               size={16}
               color={view === v ? "#fff" : COLORS.navy}
             />
             <Text style={[s.viewChipText, view === v && { color: "#fff" }]}>
-              {v === "day" ? "Día" : v === "week" ? "Semana" : v === "multi" ? "Equipo" : "Mes"}
+              {v === "day" ? "Día" : v === "week" ? "Semana" : v === "multi" ? "Equipo" : v === "gestor" ? "Gestor" : "Mes"}
             </Text>
           </TouchableOpacity>
         ))}
@@ -556,19 +574,140 @@ export default function CalendarScreen() {
           onMoveEvent={moveEvent}
           onCopyEvent={setCopiedEvent}
         />
-      ) : view === "multi" ? (
-        <MultiView
-          weekStart={mondayOf(anchor)}
-          events={filteredEvents}
-          isAdmin={isAdmin}
-          now={now}
-          onCreate={(day, startMin, endMin) => setCreateRange({ day, startMin, endMin })}
-          onTapEvent={openTappedEvent}
-          onMoveEvent={moveEvent}
-          onSelectDay={(d) => { setAnchor(d); setView("day"); }}
-          users={allUsers}
-          disabledUserIds={disabledUserIds}
-        />
+      ) : view === "gestor" ? (
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 6, gap: 4, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
+            {[
+              { key: "general", label: "General" },
+              { key: "pendiente_reagendar", label: "Pend. reagendar" },
+              { key: "pendiente_revisar", label: "Pend. revisar" },
+              { key: "archivados", label: "Terminados" },
+            ].map((tab) => (
+              <TouchableOpacity
+                key={tab.key}
+                style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: gestorTab === tab.key ? COLORS.primary + "22" : "transparent", borderWidth: 1, borderColor: gestorTab === tab.key ? COLORS.primary : COLORS.border }}
+                onPress={() => setGestorTab(tab.key)}
+              >
+                <Text style={{ fontSize: 11, fontWeight: "700", color: gestorTab === tab.key ? COLORS.primary : COLORS.textSecondary }}>{tab.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {/* Filtro por año y mes */}
+          <View style={{ paddingHorizontal: 10, paddingVertical: 4, gap: 4 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={{ flexDirection: "row", gap: 4, alignItems: "center" }}>
+                <Text style={{ fontSize: 10, fontWeight: "700", color: COLORS.textSecondary }}>Año:</Text>
+                <TouchableOpacity style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, backgroundColor: !gestorYear ? COLORS.primary + "22" : "transparent", borderWidth: 1, borderColor: !gestorYear ? COLORS.primary : COLORS.border }} onPress={() => { setGestorYear(""); setGestorMonth(""); }}>
+                  <Text style={{ fontSize: 10, fontWeight: "700", color: !gestorYear ? COLORS.primary : COLORS.textSecondary }}>Todos</Text>
+                </TouchableOpacity>
+                {Array.from({ length: new Date().getFullYear() - 2021 }, (_, i) => {
+                  const y = String(2022 + i);
+                  return (
+                    <TouchableOpacity key={y} style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, backgroundColor: gestorYear === y ? COLORS.primary + "22" : "transparent", borderWidth: 1, borderColor: gestorYear === y ? COLORS.primary : COLORS.border }} onPress={() => { setGestorYear(gestorYear === y ? "" : y); setGestorMonth(""); }}>
+                      <Text style={{ fontSize: 10, fontWeight: "700", color: gestorYear === y ? COLORS.primary : COLORS.textSecondary }}>{y}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+            {gestorYear ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={{ flexDirection: "row", gap: 4, alignItems: "center" }}>
+                  <Text style={{ fontSize: 10, fontWeight: "700", color: COLORS.textSecondary }}>Mes:</Text>
+                  <TouchableOpacity style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, backgroundColor: !gestorMonth ? COLORS.primary + "22" : "transparent", borderWidth: 1, borderColor: !gestorMonth ? COLORS.primary : COLORS.border }} onPress={() => setGestorMonth("")}>
+                    <Text style={{ fontSize: 10, fontWeight: "700", color: !gestorMonth ? COLORS.primary : COLORS.textSecondary }}>Todos</Text>
+                  </TouchableOpacity>
+                  {Array.from({ length: 12 }, (_, i) => {
+                    const m = String(i + 1).padStart(2, "0");
+                    const label = new Date(2024, i).toLocaleDateString("es-ES", { month: "short" });
+                    return (
+                      <TouchableOpacity key={m} style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, backgroundColor: gestorMonth === m ? COLORS.primary + "22" : "transparent", borderWidth: 1, borderColor: gestorMonth === m ? COLORS.primary : COLORS.border }} onPress={() => setGestorMonth(gestorMonth === m ? "" : m)}>
+                        <Text style={{ fontSize: 10, fontWeight: "700", color: gestorMonth === m ? COLORS.primary : COLORS.textSecondary }}>{label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            ) : null}
+          </View>
+          <FlatList
+            data={filteredEvents.filter((e) => {
+              const inTab = (e as any).gestor_list === gestorTab || (!(e as any).gestor_list && gestorTab === "general");
+              if (!inTab) return false;
+              const date = (e as any).updated_at || e.start_at || "";
+              if (gestorYear && !date.startsWith(gestorYear)) return false;
+              if (gestorMonth && !date.slice(5, 7).startsWith(gestorMonth)) return false;
+              return true;
+            })}
+            keyExtractor={(e) => e.id}
+            renderItem={({ item }) => {
+              const m = item.material;
+              const isGestor = true;
+              return (
+                <View style={{ flexDirection: "row", alignItems: "center", padding: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border, gap: 8 }}>
+                  <TouchableOpacity style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 8 }} onPress={() => openTappedEvent(item)}>
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: item.status === "completed" ? (theme === "dark" ? "#34D399" : "#10B981") : item.status === "pending_completion" ? (theme === "dark" ? "#FBBF24" : "#F59E0B") : COLORS.primary }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: "700", color: COLORS.text }} numberOfLines={1}>{item.title}</Text>
+                      <Text style={{ fontSize: 11, color: COLORS.textSecondary }}>
+                        {new Date(item.start_at).toLocaleDateString("es-ES")} · {m ? `${m.materiales || ""} — ${m.cliente || ""}` : "Sin proyecto"}
+                        {m?.project_status ? ` [${m.project_status}]` : ""}
+                      </Text>
+                      {item.seguimiento ? <Text style={{ fontSize: 10, color: COLORS.textDisabled }} numberOfLines={1}>📝 {item.seguimiento}</Text> : null}
+                    </View>
+                  </TouchableOpacity>
+                  <View style={{ alignItems: "flex-end", gap: 2 }}>
+                    <TouchableOpacity
+                      style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, minWidth: 110, flexDirection: "row", alignItems: "center", gap: 4 }}
+                      onPress={() => setGestorOpenFor(gestorOpenFor === item.id ? null : item.id)}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: "600", color: COLORS.text }}>
+                        {(item as any).gestor_list === "pendiente_reagendar" ? "Pend. reag." : (item as any).gestor_list === "pendiente_revisar" ? "Pend. rev." : (item as any).gestor_list === "archivados" ? "Terminados" : "General"}
+                      </Text>
+                      <Ionicons name={gestorOpenFor === item.id ? "chevron-up" : "chevron-down"} size={12} color={COLORS.textSecondary} />
+                    </TouchableOpacity>
+                    <Text style={{ fontSize: 10, color: COLORS.textDisabled }}>{new Date(item.updated_at || item.start_at).toLocaleDateString("es-ES")}</Text>
+                    <Text style={{ fontSize: 10, fontWeight: "600", color: item.status === "completed" ? (theme === "dark" ? "#34D399" : "#10B981") : item.status === "pending_completion" ? (theme === "dark" ? "#FBBF24" : "#F59E0B") : COLORS.textSecondary }}>
+                      {item.status === "completed" ? "Terminado" : item.status === "pending_completion" ? "Pend. terminar" : "En curso"}
+                    </Text>
+                  </View>
+                </View>
+              );
+            }}
+          />
+          {/* Overlay del menú de cambio de lista */}
+          {gestorOpenFor && (
+            <TouchableOpacity style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 50 }} activeOpacity={1} onPress={() => setGestorOpenFor(null)}>
+              <View style={{ position: "absolute", top: "30%", left: "50%", transform: "translateX(-50%)" as any, backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, overflow: "hidden", ...(Platform.OS === "web" ? { boxShadow: "0 4px 16px rgba(0,0,0,0.2)" } as any : {}), zIndex: 60 }}>
+                <Text style={{ padding: 10, fontSize: 12, fontWeight: "800", color: COLORS.textSecondary, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>Mover a...</Text>
+                {[
+                  { key: "general", label: "General" },
+                  { key: "pendiente_reagendar", label: "Pendiente reagendar" },
+                  { key: "pendiente_revisar", label: "Pendiente revisar" },
+                  { key: "archivados", label: "Terminados" },
+                ].map((opt) => {
+                  const currentList = (filteredEvents.find((e) => e.id === gestorOpenFor) as any)?.gestor_list || "general";
+                  return (
+                    <TouchableOpacity
+                      key={opt.key}
+                      style={{ paddingHorizontal: 16, paddingVertical: 10, backgroundColor: currentList === opt.key ? COLORS.primarySoft : "transparent" }}
+                      onPress={() => {
+                        api.setEventGestorList(gestorOpenFor, opt.key).then(() => {
+                          const ev = filteredEvents.find((e) => e.id === gestorOpenFor);
+                          if (ev) (ev as any).gestor_list = opt.key;
+                          setGestorOpenFor(null);
+                          setEvents((prev) => [...prev]);
+                        }).catch((e) => alert(e.message));
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: "600", color: currentList === opt.key ? COLORS.primary : COLORS.text }}>{opt.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </TouchableOpacity>
+          )}
+        </View>
       ) : (
         <WeekView
           weekStart={mondayOf(anchor)}
@@ -643,7 +782,7 @@ export default function CalendarScreen() {
                 {notifications.map((n) => {
                   const isCompleted = n.type === "event_completed";
                   const isPending = n.type === "event_pending_completion";
-                  const accent = isPending ? "#F59E0B" : isCompleted ? "#10B981" : COLORS.primary;
+                  const accent = isPending ? (theme === "dark" ? "#FBBF24" : "#F59E0B") : isCompleted ? (theme === "dark" ? "#34D399" : "#10B981") : COLORS.primary;
                   return (
                     <TouchableOpacity
                       key={n.id}
@@ -763,6 +902,7 @@ function GuardBar({
   onDeleteGuard?: (id: string) => Promise<void>;
 }) {
   const [pickerDate, setPickerDate] = useState<string | null>(null);
+  const { theme: guardTheme } = useTheme();
   const guardsByDay: Record<string, any[]> = useMemo(() => {
     const map: Record<string, any[]> = {};
     for (const g of guards || []) {
@@ -777,16 +917,16 @@ function GuardBar({
     <View
       style={{
         flexDirection: "row",
-        backgroundColor: "#FFF7ED",
+        backgroundColor: COLORS.pillOrangeBg,
         borderTopWidth: 1, borderBottomWidth: 1,
-        borderColor: "#FED7AA",
+        borderColor: guardTheme === "dark" ? "#78350F" : "#FED7AA",
         paddingVertical: 4,
         minHeight: 40,
       }}
     >
       <View style={{ width: TIME_COL_W, alignItems: "center", justifyContent: "center" }}>
-        <Ionicons name="shield-outline" size={14} color="#EA580C" />
-        <Text style={{ fontSize: 9, fontWeight: "800", color: "#EA580C" }}>GUARDIA</Text>
+        <Ionicons name="shield-outline" size={14} color={COLORS.accent} />
+        <Text style={{ fontSize: 9, fontWeight: "800", color: COLORS.accent }}>GUARDIA</Text>
       </View>
       {days.map((d, i) => {
         const key = fmtDate(d);
@@ -812,14 +952,14 @@ function GuardBar({
             style={{
               flex: 1, marginHorizontal: 1, paddingHorizontal: 4, paddingVertical: 2,
               borderRadius: 6,
-              borderWidth: 1, borderColor: current ? (current.user_color || "#EA580C") : "#FED7AA",
-              backgroundColor: current ? (current.user_color || "#EA580C") : "rgba(255,255,255,0.6)",
+              borderWidth: 1, borderColor: current ? (current.user_color || COLORS.accent) : (guardTheme === "dark" ? "#78350F" : "#FED7AA"),
+              backgroundColor: current ? (current.user_color || COLORS.accent) : (guardTheme === "dark" ? "rgba(17,24,39,0.6)" : "rgba(255,255,255,0.6)"),
               flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4,
               minHeight: 28,
             }}
           >
             {!current ? (
-              <Text style={{ fontSize: 10, color: "#EA580C", fontWeight: "700" }}>
+              <Text style={{ fontSize: 10, color: COLORS.accent, fontWeight: "700" }}>
                 {isAdmin ? "+ Asignar" : "—"}
               </Text>
             ) : (
@@ -842,21 +982,21 @@ function GuardBar({
           onPress={() => setPickerDate(null)}
         >
           <View
-            style={{ backgroundColor: "#fff", borderRadius: 14, padding: 16, width: "100%", maxWidth: 360, maxHeight: "80%" }}
+            style={{ backgroundColor: COLORS.surface, borderRadius: 14, padding: 16, width: "100%", maxWidth: 360, maxHeight: "80%" }}
             onStartShouldSetResponder={() => true}
           >
-            <Text style={{ fontSize: 16, fontWeight: "800", color: "#111", marginBottom: 4 }}>
+            <Text style={{ fontSize: 16, fontWeight: "800", color: COLORS.text, marginBottom: 4 }}>
               Asignar técnico de guardia
             </Text>
             {pickerDate && guardsByDay[pickerDate]?.[0] && (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8, padding: 8, backgroundColor: "#FFF7ED", borderRadius: 8, borderWidth: 1, borderColor: "#FED7AA" }}>
-                <Ionicons name="information-circle" size={16} color="#EA580C" />
-                <Text style={{ fontSize: 12, color: "#9A3412", flex: 1 }} numberOfLines={2}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8, padding: 8, backgroundColor: COLORS.pillOrangeBg, borderRadius: 8, borderWidth: 1, borderColor: guardTheme === "dark" ? "#78350F" : "#FED7AA" }}>
+                <Ionicons name="information-circle" size={16} color={COLORS.accent} />
+                <Text style={{ fontSize: 12, color: guardTheme === "dark" ? "#FDE68A" : "#9A3412", flex: 1 }} numberOfLines={2}>
                   Actualmente: <Text style={{ fontWeight: "800" }}>{guardsByDay[pickerDate][0].user_name}</Text>. Selecciona otro para reemplazar.
                 </Text>
               </View>
             )}
-            <Text style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>
+            <Text style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 12 }}>
               Día: {pickerDate}
             </Text>
             <ScrollView style={{ maxHeight: 360 }}>
@@ -874,27 +1014,27 @@ function GuardBar({
                   style={{
                     flexDirection: "row", alignItems: "center", gap: 10,
                     paddingVertical: 10, paddingHorizontal: 8, borderRadius: 8,
-                    borderBottomWidth: 1, borderBottomColor: "#F3F4F6",
-                    backgroundColor: isCurrent ? "#F0FDF4" : "transparent",
+                    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+                    backgroundColor: isCurrent ? (guardTheme === "dark" ? "#064E3B" : "#F0FDF4") : "transparent",
                     opacity: isCurrent ? 0.7 : 1,
                   }}
                 >
-                  <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: u.color || "#3B82F6", alignItems: "center", justifyContent: "center" }}>
+                  <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: u.color || COLORS.primary, alignItems: "center", justifyContent: "center" }}>
                     <Text style={{ fontSize: 13, fontWeight: "800", color: "#fff" }}>
                       {(u.name || u.email || "?").charAt(0).toUpperCase()}
                     </Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, fontWeight: "700", color: "#111" }} numberOfLines={1}>{u.name || u.email}</Text>
-                    <Text style={{ fontSize: 11, color: "#666" }} numberOfLines={1}>{u.email}</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: COLORS.text }} numberOfLines={1}>{u.name || u.email}</Text>
+                    <Text style={{ fontSize: 11, color: COLORS.textSecondary }} numberOfLines={1}>{u.email}</Text>
                   </View>
                   {isCurrent ? (
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-                      <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-                      <Text style={{ fontSize: 11, fontWeight: "700", color: "#10B981" }}>actual</Text>
+                      <Ionicons name="checkmark-circle" size={20} color={guardTheme === "dark" ? "#34D399" : "#10B981"} />
+                      <Text style={{ fontSize: 11, fontWeight: "700", color: guardTheme === "dark" ? "#34D399" : "#10B981" }}>actual</Text>
                     </View>
                   ) : (
-                    <Ionicons name="arrow-forward-circle" size={22} color="#3B82F6" />
+                    <Ionicons name="arrow-forward-circle" size={22} color={COLORS.primary} />
                   )}
                 </TouchableOpacity>
               );
@@ -911,16 +1051,16 @@ function GuardBar({
                     await onDeleteGuard(g.id);
                     setPickerDate(null);
                   }}
-                  style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: "#FEE2E2", alignItems: "center", borderWidth: 1, borderColor: "#FECACA" }}
+                  style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: COLORS.errorBg, alignItems: "center", borderWidth: 1, borderColor: guardTheme === "dark" ? "#7F1D1D" : "#FECACA" }}
                 >
-                  <Text style={{ fontSize: 14, fontWeight: "700", color: "#DC2626" }}>Quitar guardia</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: guardTheme === "dark" ? "#FCA5A5" : "#DC2626" }}>Quitar guardia</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity
                 onPress={() => setPickerDate(null)}
-                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: "#F3F4F6", alignItems: "center" }}
+                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: COLORS.statusAnuladoBg, alignItems: "center" }}
               >
-                <Text style={{ fontSize: 14, fontWeight: "700", color: "#444" }}>Cerrar</Text>
+                <Text style={{ fontSize: 14, fontWeight: "700", color: COLORS.textSecondary }}>Cerrar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1222,6 +1362,7 @@ function DayColumn({
   weekDays?: Date[]; colW?: number; dayIndex?: number;
 }) {
   const s = useThemedStyles(useS);
+  const { theme: dcTheme } = useTheme();
   const [dragRange, setDragRange] = useState<{ s: number; e: number } | null>(null);
   const startRef = useRef<number>(0);
   const [dragEvent, setDragEvent] = useState<{ id: string; top: number; height: number } | null>(null);
@@ -1261,7 +1402,7 @@ function DayColumn({
   const columnLayout = useMemo(() => layoutEventColumns(events), [events]);
 
   return (
-    <View style={{ flex: 1, height: HOURS * HOUR_H, position: "relative", borderLeftWidth: 1, borderLeftColor: COLORS.border, backgroundColor: isToday ? "rgba(59,130,246,0.04)" : "transparent" }}>
+    <View style={{ flex: 1, height: HOURS * HOUR_H, position: "relative", borderLeftWidth: 1, borderLeftColor: COLORS.border, backgroundColor: isToday ? (dcTheme === "dark" ? "rgba(59,130,246,0.04)" : "rgba(30,136,229,0.04)") : "transparent" }}>
       <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} {...pan.panHandlers} />
       {Array.from({ length: HOURS + 1 }).map((_, i) => (
         <View key={i} style={[s.hourLine, { top: i * HOUR_H }]} />
@@ -1616,11 +1757,11 @@ function DraggableEvent({
           flex: 1, borderRadius: 6, padding: 4, overflow: "hidden",
           borderLeftWidth: 3,
           backgroundColor: isCompleted ? COLORS.statusCompletedBg : bgTint,
-          borderLeftColor: isPending ? "#F59E0B" : baseColor,
+          borderLeftColor: isPending ? (theme === "dark" ? "#FBBF24" : "#F59E0B") : baseColor,
           opacity: mode === "move" ? 0.85 : (isCompleted ? 0.55 : 1),
           ...(isPending ? Platform.select<any>({
-            web: { boxShadow: "0 0 0 2px rgba(245,158,11,0.35), 0 4px 16px rgba(245,158,11,0.25)" },
-            default: { shadowColor: "#F59E0B", shadowOpacity: 0.45, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } },
+            web: { boxShadow: `0 0 0 2px ${theme === "dark" ? "rgba(251,191,36,0.35)" : "rgba(245,158,11,0.35)"}, 0 4px 16px ${theme === "dark" ? "rgba(251,191,36,0.25)" : "rgba(245,158,11,0.25)"}` },
+            default: { shadowColor: theme === "dark" ? "#FBBF24" : "#F59E0B", shadowOpacity: 0.45, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } },
           }) : {}),
           // @ts-ignore web-only cursor hint
           cursor: isAdmin ? (mode === "idle" ? "grab" : "grabbing") : "pointer",
@@ -1632,7 +1773,7 @@ function DraggableEvent({
         {(isCompleted || isPending) && (
           <View pointerEvents="none" style={[
             s.statusBadge,
-            { backgroundColor: isCompleted ? COLORS.statusCompletedFg : "#F59E0B" },
+            { backgroundColor: isCompleted ? COLORS.statusCompletedFg : (theme === "dark" ? "#FBBF24" : "#F59E0B") },
           ]}>
             <Ionicons
               name={isCompleted ? "checkmark-done" : "alert-circle"}
@@ -1737,9 +1878,9 @@ function DraggableEvent({
                 onPress={() => onCopy(event)}
                 style={{
                   width: btnSize, height: btnSize, borderRadius: 4,
-                  backgroundColor: "rgba(255,255,255,0.95)",
+                  backgroundColor: theme === "dark" ? "rgba(17,24,39,0.95)" : "rgba(255,255,255,0.95)",
                   alignItems: "center", justifyContent: "center",
-                  borderWidth: 1, borderColor: "rgba(0,0,0,0.15)",
+                  borderWidth: 1, borderColor: COLORS.border,
                 }}
                 hitSlop={{ top: 6, right: 6, bottom: 6, left: 6 }}
               >
@@ -1767,7 +1908,7 @@ function DraggableEvent({
               style={{
                 position: "absolute", top: 2, right: 2,
                 width: 24, height: 24, borderRadius: 4,
-                backgroundColor: "rgba(255,255,255,0.9)",
+                backgroundColor: theme === "dark" ? "rgba(17,24,39,0.9)" : "rgba(255,255,255,0.9)",
                 alignItems: "center", justifyContent: "center", zIndex: 30,
               }}
               hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
@@ -2162,6 +2303,7 @@ function EventDetailsModal({
   event, isAdmin, onClose, onChanged, onCopy,
 }: { event: EventT; isAdmin: boolean; onClose: () => void; onChanged: () => void; onCopy: (e: EventT) => void }) {
   const s = useThemedStyles(useS);
+  const { theme: edTheme } = useTheme();
   const router = useRouter();
   const [start, setStart] = useState<Date>(new Date(event.start_at));
   const [end, setEnd] = useState<Date>(new Date(event.end_at));
@@ -2170,6 +2312,18 @@ function EventDetailsModal({
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
   const [attachments, setAttachments] = useState<any[]>(event.attachments || []);
+  const [linkedPlans, setLinkedPlans] = useState<any[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.listPlans().then((plans: any) => {
+      if (cancelled) return;
+      const arr = Array.isArray(plans) ? plans : [];
+      setLinkedPlans(arr.filter((p: any) => p && p.source_event_id === event.id));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [event.id]);
+
   const [uploading, setUploading] = useState(false);
   const [managerId, setManagerId] = useState<string | null>(event.manager_id || null);
   const [managers, setManagers] = useState<Technician[]>([]);
@@ -2365,18 +2519,7 @@ function EventDetailsModal({
     try {
       const data = await api.getEventAttachment(event.id, aid);
       if (Platform.OS === "web") {
-        // Preview: open in a new tab without forcing download.
-        const win = window.open();
-        if (win) {
-          win.document.write(`<iframe src="data:${data.mime_type};base64,${data.base64}" style="border:0;width:100%;height:100%"></iframe>`);
-          win.document.title = data.filename || "archivo";
-        } else {
-          // Popup blocked — fall back to download
-          const a = document.createElement("a");
-          a.href = `data:${data.mime_type};base64,${data.base64}`;
-          a.download = data.filename || "archivo";
-          document.body.appendChild(a); a.click(); document.body.removeChild(a);
-        }
+        window.location.href = `data:${data.mime_type};base64,${data.base64}`;
       } else {
         const ext = (data.filename || "").split(".").pop() || (data.mime_type.includes("pdf") ? "pdf" : "jpg");
         const path = `${FileSystem.cacheDirectory}${aid}.${ext}`;
@@ -2553,7 +2696,12 @@ function EventDetailsModal({
                   <Text style={s.mLabel}>PROYECTO</Text>
                   <Text style={s.matCode}>{m.materiales || "—"}</Text>
                   <Text style={s.matCliente}>{m.cliente || "Sin cliente"}</Text>
-                  {m.ubicacion && <Text style={s.matUbic}>📍 {m.ubicacion}</Text>}
+                  {m.ubicacion ? (
+                    <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 }} onPress={() => openMaps(`${m.ubicacion}, ${m.cliente || ""}`)}>
+                      <Text style={s.matUbic}>📍 {m.ubicacion}</Text>
+                      <Ionicons name="navigate-outline" size={14} color={COLORS.primary} />
+                    </TouchableOpacity>
+                  ) : null}
                   {m.horas_prev && <Text style={s.matMeta}>⏱️ {m.horas_prev}h previstas</Text>}
                   {m.tecnico && <Text style={s.matMeta}>🔧 Técnico: {m.tecnico}</Text>}
                 </View>
@@ -2647,7 +2795,7 @@ function EventDetailsModal({
                     try {
                       const blob = await api.getBudgetPdfBlob(budgetObj.id);
                       const url = URL.createObjectURL(blob);
-                      window.open(url, "_blank");
+                      window.location.href = url;
                       setTimeout(() => URL.revokeObjectURL(url), 60000);
                     } catch (e: any) { Alert.alert("Error", e.message || "No se pudo abrir el PDF"); }
                   }}
@@ -2917,24 +3065,21 @@ function EventDetailsModal({
                 testID="status-completed"
                 style={[
                   s.statusChip,
-                  status === "completed" && { backgroundColor: "#10B981", borderColor: "#10B981" },
+                  status === "completed" && { backgroundColor: edTheme === "dark" ? "#065F46" : "#10B981", borderColor: edTheme === "dark" ? "#065F46" : "#10B981" },
                 ]}
                 onPress={() => saveStatus("completed")}
                 disabled={saving}
               >
-                <Ionicons name="checkmark-done" size={14} color={status === "completed" ? "#fff" : "#10B981"} />
+                <Ionicons name="checkmark-done" size={14} color={status === "completed" ? "#fff" : (edTheme === "dark" ? "#34D399" : "#10B981")} />
                 <Text style={[s.statusChipText, status === "completed" && { color: "#fff" }]}>Proyecto terminado</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 testID="status-pending"
                 style={[
                   s.statusChip,
-                  status === "pending_completion" && { backgroundColor: "#F59E0B", borderColor: "#F59E0B" },
+                  status === "pending_completion" && { backgroundColor: edTheme === "dark" ? "#92400E" : "#F59E0B", borderColor: edTheme === "dark" ? "#92400E" : "#F59E0B" },
                 ]}
                 onPress={() => {
-                  // Pendiente requires a seguimiento. If the technician hasn't
-                  // typed anything yet we enter edit mode so they see the
-                  // textarea and can submit afterwards.
                   if (!seguimiento.trim()) {
                     setEditing(true);
                     setStatus("pending_completion");
@@ -2948,10 +3093,25 @@ function EventDetailsModal({
                 }}
                 disabled={saving}
               >
-                <Ionicons name="alert-circle-outline" size={14} color={status === "pending_completion" ? "#fff" : "#F59E0B"} />
+                <Ionicons name="alert-circle-outline" size={14} color={status === "pending_completion" ? "#fff" : (edTheme === "dark" ? "#FBBF24" : "#F59E0B")} />
                 <Text style={[s.statusChipText, status === "pending_completion" && { color: "#fff" }]}>Pendiente de terminar</Text>
               </TouchableOpacity>
             </View>
+
+            {/* Planos vinculados */}
+            {linkedPlans.length > 0 && (
+              <>
+                <Text style={s.mLabel}>Planos vinculados</Text>
+                <View style={{ gap: 4 }}>
+                  {linkedPlans.map((plan: any) => (
+                    <TouchableOpacity key={plan.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 8, backgroundColor: COLORS.bg, borderRadius: 8 }} onPress={() => router.push(`/planos/${plan.id}`)}>
+                      <Ionicons name="map" size={18} color={COLORS.primary} />
+                      <Text style={{ flex: 1, fontSize: 12, fontWeight: "600", color: COLORS.text }} numberOfLines={1}>{plan.title}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
 
             {/* Attachments */}
             <Text style={s.mLabel}>Archivos adjuntos</Text>
@@ -3064,6 +3224,9 @@ function EventDetailsModal({
     </Modal>
   );
 }
+
+const alpha = (c: string, a: number) =>
+  `rgba(${parseInt(c.slice(1,3),16)},${parseInt(c.slice(3,5),16)},${parseInt(c.slice(5,7),16)},${a})`;
 
 const useS = () =>
   StyleSheet.create({
@@ -3233,7 +3396,7 @@ const useS = () =>
   },
   resizeBar: { width: 28, height: 4, borderRadius: 2, backgroundColor: COLORS.primary, opacity: 0.6 },
   dragPreview: {
-    position: "absolute", left: 2, right: 2, backgroundColor: "rgba(30,136,229,0.3)",
+    position: "absolute", left: 2, right: 2, backgroundColor: alpha(COLORS.primary, 0.3),
     borderWidth: 2, borderColor: COLORS.primary, borderRadius: 6,
     alignItems: "center", justifyContent: "center",
   },

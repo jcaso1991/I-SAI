@@ -421,6 +421,31 @@ export default function MaterialDetail() {
               multiline
               textAlignVertical="top"
             />
+            {/* Adjuntos del proyecto (presupuestos, PDFs) */}
+            {m.attachments?.length > 0 && (
+              <View style={{ marginTop: 12 }}>
+                <Text style={s.fieldLabel}>Adjuntos ({m.attachments.length})</Text>
+                {m.attachments.map((a: any) => (
+                  <TouchableOpacity
+                    key={a.id}
+                    style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 8, backgroundColor: COLORS.bg, borderRadius: 8, marginBottom: 4 }}
+                    onPress={() => {
+                      if (a.base64) {
+                        const byteChars = atob(a.base64);
+                        const byteNums = new Array(byteChars.length);
+                        for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
+                        const blob = new Blob([new Uint8Array(byteNums)], { type: a.mime_type || "application/pdf" });
+                        window.open(URL.createObjectURL(blob), "_blank");
+                      }
+                    }}
+                  >
+                    <Ionicons name="document-text-outline" size={18} color={COLORS.primary} />
+                    <Text style={{ flex: 1, fontSize: 12, color: COLORS.text }} numberOfLines={1}>{a.filename}</Text>
+                    <Ionicons name="download-outline" size={16} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
           </View>
         </ScrollView>
 

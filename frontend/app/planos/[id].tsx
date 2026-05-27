@@ -790,7 +790,7 @@ export default function PlanEditor() {
       // 2) Save current shapes state to the plan
       try {
         await api.updatePlan(id, { data: { shapes, ...(background ? { background } : {}), rotation: canvasRotation } } as any);
-      } catch {}
+      } catch (err) { console.warn("saveBackToEvent: updatePlan failed", err); }
 
       // 3) Upload new attachment FIRST (to avoid losing data if delete succeeds but upload fails)
       const newAtt = await api.uploadEventAttachment(sourceEventId, {
@@ -809,7 +809,7 @@ export default function PlanEditor() {
       // 5) Update plan source_attachment_id so subsequent saves replace the new one
       try {
         await api.updatePlan(id, { source_attachment_id: newAtt.id } as any);
-      } catch {}
+      } catch (err) { console.warn("saveBackToEvent: updatePlan source_attachment_id failed", err); }
       setSourceAttachmentId(newAtt.id);
 
       if (andGoBack) {
@@ -840,8 +840,12 @@ export default function PlanEditor() {
     <SafeAreaView style={s.root} edges={["top"]}>
       <View style={s.header}>
         <TouchableOpacity style={s.iconBtn} onPress={() => {
-          try { if (router.canGoBack && router.canGoBack()) { router.back(); return; } } catch {}
-          router.replace("/planos");
+          if (sourceEventId) {
+            router.replace({ pathname: "/calendario", params: { openEvent: sourceEventId } });
+          } else {
+            try { if (router.canGoBack && router.canGoBack()) { router.back(); return; } } catch {}
+            router.replace("/planos");
+          }
         }}>
           <Ionicons name="chevron-back" size={26} color={COLORS.navy} />
         </TouchableOpacity>

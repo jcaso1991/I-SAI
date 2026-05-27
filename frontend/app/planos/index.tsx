@@ -26,6 +26,10 @@ export default function PlansList() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [me, setMe] = useState<any>(null);
+  const [linkPlan, setLinkPlan] = useState<Plan | null>(null);
+  const [linkType, setLinkType] = useState<"evento" | "proyecto" | null>(null);
+  const [linkSearch, setLinkSearch] = useState("");
+  const [linkItems, setLinkItems] = useState<any[]>([]);
 
   const s = useThemedStyles(useS);
 
@@ -78,6 +82,33 @@ export default function PlansList() {
     router.push({ pathname: `/planos/${p.id}`, params: { export: format } } as any);
   };
 
+  const openLinkSearch = async (type: "evento" | "proyecto") => {
+    setLinkType(type);
+    setLinkSearch("");
+    try {
+      if (type === "evento") {
+        const evs = await api.listEvents(new Date(2020, 0, 1).toISOString(), new Date(2030, 0, 1).toISOString());
+        setLinkItems(evs || []);
+      } else {
+        const mats = await api.listMateriales();
+        setLinkItems(mats || []);
+      }
+    } catch { setLinkItems([]); }
+  };
+
+  const doLink = async (targetId: string) => {
+    if (!linkPlan || !linkType) return;
+    try {
+      if (linkType === "evento") {
+        await api.updatePlan(linkPlan.id, { source_event_id: targetId } as any);
+      } else {
+        await api.updatePlan(linkPlan.id, { material_id: targetId } as any);
+      }
+      setLinkPlan(null);
+      load();
+    } catch (e: any) { Alert.alert("Error", e.message); }
+  };
+
   const showExportSheet = (p: Plan) => {
     if (Platform.OS === "web") {
       // Simple chooser via confirm; PDF is the primary action.
@@ -95,6 +126,7 @@ export default function PlansList() {
   };
 
   return (
+    <>
     <ResponsiveLayout active="planos" isAdmin={me?.role === "admin"} userName={me?.name}>
       <SafeAreaView style={s.root} edges={["top"]}>
       <View style={s.header}>
@@ -127,7 +159,7 @@ export default function PlansList() {
         </View>
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
-          {plans.map((p) => (
+          {plans.filter((p: any) => !p.material_id && !p.source_event_id).map((p) => (
             <View key={p.id} style={s.planCard} testID={`plan-card-${p.id}`}>
               <TouchableOpacity
                 style={s.planCardBody}
@@ -162,6 +194,14 @@ export default function PlansList() {
                   <Ionicons name="download-outline" size={20} color={COLORS.primary} />
                 </TouchableOpacity>
                 <TouchableOpacity
+                  testID={`btn-link-plan-${p.id}`}
+                  hitSlop={8}
+                  style={s.actionBtn}
+                  onPress={() => { setLinkPlan(p); setLinkType(null); setLinkSearch(""); }}
+                >
+                  <Ionicons name="link-outline" size={20} color={COLORS.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity
                   testID={`btn-delete-plan-${p.id}`}
                   hitSlop={8}
                   style={s.actionBtn}
@@ -182,6 +222,45 @@ export default function PlansList() {
       />
       </SafeAreaView>
     </ResponsiveLayout>
+    {linkPlan && (
+      <Modal visible={!!linkPlan} transparent animationType="fade" onRequestClose={() => setLinkPlan(null)}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", alignItems: "center" }}>
+          <View style={{ backgroundColor: COLORS.surface, borderRadius: 14, width: 400, maxHeight: "70%", overflow: "hidden" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", padding: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
+              <Text style={{ fontSize: 16, fontWeight: "900", color: COLORS.text, flex: 1 }}>Vincular "{linkPlan.title}"</Text>
+              <TouchableOpacity onPress={() => setLinkPlan(null)}><Ionicons name="close" size={22} color={COLORS.textSecondary} /></TouchableOpacity>
+            </View>
+            {linkType ? (
+              <>
+                <TextInput style={{ margin: 14, fontSize: 13, color: COLORS.text, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 8, backgroundColor: COLORS.bg }} value={linkSearch} onChangeText={setLinkSearch} placeholder="Buscar..." placeholderTextColor={COLORS.textDisabled} />
+                <FlatList
+                  data={linkSearch ? linkItems.filter((i: any) => (i.title || i.materiales || i.cliente || "").toLowerCase().includes(linkSearch.toLowerCase())) : linkItems}
+                  keyExtractor={(i: any) => i.id}
+                  style={{ maxHeight: 300 }}
+                  renderItem={({ item }: any) => (
+                    <TouchableOpacity style={{ padding: 12, paddingHorizontal: 14 }} onPress={() => doLink(item.id)}>
+                      <Text style={{ fontSize: 13, fontWeight: "600", color: COLORS.text }} numberOfLines={1}>{item.title || item.materiales || item.cliente || "—"}</Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              </>
+            ) : (
+              <View style={{ padding: 14, gap: 8 }}>
+                <TouchableOpacity style={{ padding: 14, borderRadius: 10, backgroundColor: COLORS.bg, flexDirection: "row", alignItems: "center", gap: 10 }} onPress={() => openLinkSearch("evento")}>
+                  <Ionicons name="calendar" size={22} color={COLORS.primary} />
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: COLORS.text }}>Vincular a evento</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={{ padding: 14, borderRadius: 10, backgroundColor: COLORS.bg, flexDirection: "row", alignItems: "center", gap: 10 }} onPress={() => openLinkSearch("proyecto")}>
+                  <Ionicons name="cube" size={22} color={COLORS.primary} />
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: COLORS.text }}>Vincular a proyecto</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+    )}
+    </>
   );
 }
 

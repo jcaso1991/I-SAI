@@ -40,14 +40,17 @@ export default function Materiales() {
   const [yearFilter, setYearFilter] = useState(params.year || "todos");
   const [monthFilter, setMonthFilter] = useState(params.month || "");
 
+  const s = useThemedStyles(useS);
+  const { theme } = useTheme();
+
   const PROJECT_STATUSES = [
-    { key: "pendiente", label: "Pendiente", color: "#F59E0B" },
-    { key: "planificado", label: "Planificado", color: "#3B82F6" },
-    { key: "a_facturar", label: "A facturar", color: "#8B5CF6" },
-    { key: "facturado", label: "Facturado", color: "#10B981" },
-    { key: "terminado", label: "Terminado", color: "#6366F1" },
-    { key: "bloqueado", label: "Bloqueado", color: "#EF4444" },
-    { key: "anulado", label: "Anulado", color: "#6B7280" },
+    { key: "pendiente", label: "Pendiente", color: theme === "dark" ? "#FBBF24" : "#F59E0B" },
+    { key: "planificado", label: "Planificado", color: theme === "dark" ? "#60A5FA" : "#3B82F6" },
+    { key: "a_facturar", label: "A facturar", color: theme === "dark" ? "#A78BFA" : "#8B5CF6" },
+    { key: "facturado", label: "Facturado", color: theme === "dark" ? "#34D399" : "#10B981" },
+    { key: "terminado", label: "Terminado", color: theme === "dark" ? "#818CF8" : "#6366F1" },
+    { key: "bloqueado", label: "Bloqueado", color: theme === "dark" ? "#F87171" : "#EF4444" },
+    { key: "anulado", label: "Anulado", color: theme === "dark" ? "#9CA3AF" : "#6B7280" },
   ];
 
   // Persist manager and status filters (only if no URL params passed)
@@ -129,8 +132,6 @@ export default function Materiales() {
 
   const { has } = usePermissions();
   const esEditorCompleto = has("proyectos.edit");
-  const s = useThemedStyles(useS);
-  const { theme } = useTheme();
   const darkText = theme === "dark" ? "#E2E8F0" : COLORS.navy;
   const darkTextSecondary = theme === "dark" ? "#CBD5E1" : COLORS.textSecondary;
 
@@ -138,15 +139,15 @@ export default function Materiales() {
     const pending = item.sync_status === "pending";
     const projectStatus = item.project_status || "pendiente";
     const statusBarColors: Record<string, string> = {
-      pendiente: "#F59E0B",
-      planificado: "#3B82F6",
-      a_facturar: "#8B5CF6",
-      facturado: "#10B981",
-      terminado: "#6366F1",
-      bloqueado: "#EF4444",
-      anulado: "#6B7280",
+      pendiente: theme === "dark" ? "#FBBF24" : "#F59E0B",
+      planificado: theme === "dark" ? "#60A5FA" : "#3B82F6",
+      a_facturar: theme === "dark" ? "#A78BFA" : "#8B5CF6",
+      facturado: theme === "dark" ? "#34D399" : "#10B981",
+      terminado: theme === "dark" ? "#818CF8" : "#6366F1",
+      bloqueado: theme === "dark" ? "#F87171" : "#EF4444",
+      anulado: theme === "dark" ? "#9CA3AF" : "#6B7280",
     };
-    const statusBarColor = esEditorCompleto ? (statusBarColors[projectStatus] || "#F59E0B") : "#F59E0B";
+    const statusBarColor = esEditorCompleto ? (statusBarColors[projectStatus] || (theme === "dark" ? "#FBBF24" : "#F59E0B")) : (theme === "dark" ? "#FBBF24" : "#F59E0B");
     const statusBadgeStyles: Record<string, { bg: string; fg: string; label: string }> = {
       a_facturar: { bg: COLORS.statusFacturarBg, fg: COLORS.statusFacturarFg, label: "Facturar" },
       planificado: { bg: COLORS.statusPlanifBg, fg: COLORS.statusPlanifFg, label: "Planif." },
@@ -275,8 +276,8 @@ export default function Materiales() {
                   facturado: "Fact.", terminado: "Term.", bloqueado: "Bloq.", anulado: "Anul.",
                 };
                 const STATUS_COLORS: Record<string, string> = {
-                  pendiente: "#F59E0B", planificado: "#3B82F6", a_facturar: "#8B5CF6",
-                  facturado: "#10B981", terminado: "#6366F1", bloqueado: "#EF4444", anulado: "#6B7280",
+                  pendiente: theme === "dark" ? "#FBBF24" : "#F59E0B", planificado: theme === "dark" ? "#60A5FA" : "#3B82F6", a_facturar: theme === "dark" ? "#A78BFA" : "#8B5CF6",
+                  facturado: theme === "dark" ? "#34D399" : "#10B981", terminado: theme === "dark" ? "#818CF8" : "#6366F1", bloqueado: theme === "dark" ? "#F87171" : "#EF4444", anulado: theme === "dark" ? "#9CA3AF" : "#6B7280",
                 };
                 return (
                   <TouchableOpacity
@@ -397,7 +398,7 @@ export default function Materiales() {
             <Text style={[s.statLbl, { color: darkTextSecondary }]}>Total</Text>
           </View>
           <TouchableOpacity
-            style={[s.statCard, pendingOnly && { borderColor: "#F59E0B", backgroundColor: "#F59E0B1A" }]}
+            style={[s.statCard, pendingOnly && { borderColor: theme === "dark" ? "#FBBF24" : "#F59E0B", backgroundColor: theme === "dark" ? "#FBBF241A" : "#F59E0B1A" }]}
             onPress={() => {
               LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
               setPendingOnly(!pendingOnly);
@@ -405,12 +406,12 @@ export default function Materiales() {
             testID="stat-pending"
             activeOpacity={0.75}
           >
-            <Ionicons name="time" size={14} color="#F59E0B" />
+            <Ionicons name="time" size={14} color={theme === "dark" ? "#FBBF24" : "#F59E0B"} />
             <Text style={[s.statVal, { color: darkText }]}>{stats.pending}</Text>
             <Text style={[s.statLbl, { color: darkTextSecondary }]}>Pendientes</Text>
           </TouchableOpacity>
           <View style={s.statCard}>
-            <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+            <Ionicons name="checkmark-circle" size={14} color={theme === "dark" ? "#34D399" : "#10B981"} />
             <Text style={[s.statVal, { color: darkText }]}>{stats.synced}</Text>
             <Text style={[s.statLbl, { color: darkTextSecondary }]}>Sincronizados</Text>
           </View>
@@ -471,6 +472,12 @@ export default function Materiales() {
           onPress={() => router.push("/mapa")}
         >
           <Ionicons name="map-outline" size={14} color={COLORS.primary} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[s.filterBtn, { backgroundColor: COLORS.pillOrangeBg, borderColor: "#92400E", borderWidth: 1 }]}
+          onPress={() => router.push("/archivos")}
+        >
+          <Ionicons name="folder-open-outline" size={14} color="#92400E" />
         </TouchableOpacity>
         {(managerFilterIds.length > 0 || statusFilterIds.length > 0) && (
           <TouchableOpacity

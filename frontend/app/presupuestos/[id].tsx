@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   View, Text, TouchableOpacity, TextInput, StyleSheet, ScrollView,
-  ActivityIndicator, Alert, Platform,
+  ActivityIndicator, Alert, Platform, Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
@@ -129,6 +129,7 @@ export default function BudgetEditor() {
   const [saving, setSaving] = useState(false);
   const [budgetId, setBudgetId] = useState<string | null>(isNew ? null : String(params.id));
   const [defaultEquipos, setDefaultEquipos] = useState<string[]>([]);
+  const [attachments, setAttachments] = useState<any[]>([]);
   // Track which equipo row has its combo dropdown open, so we can lift
   // its zIndex above the following rows and it doesn't get hidden.
   const [openEqIdx, setOpenEqIdx] = useState<number | null>(null);
@@ -206,6 +207,37 @@ export default function BudgetEditor() {
   };
   const addEq = () => setF((p: any) => ({ ...p, equipos: [...p.equipos, { elemento: "", cantidad: "", ubicacion: "", observaciones: "" }] }));
   const delEq = (idx: number) => setF((p: any) => ({ ...p, equipos: p.equipos.filter((_: any, i: number) => i !== idx) }));
+
+  const pickAttachment = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/jpeg,image/jpg,application/pdf";
+    input.onchange = async (e: any) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const b64 = (reader.result as string).split(",")[1];
+        const name = file.name;
+        const mime = file.type === "application/pdf" ? "application/pdf" : "image/jpeg";
+        if (budgetId) {
+          try {
+            await api.uploadBudgetAttachment(budgetId, { name, data: b64, mime });
+          } catch (err: any) { Alert.alert("Error", err.message); }
+        }
+        setAttachments((prev) => [...prev, { id: Date.now().toString(), name, mime }]);
+      };
+      reader.readAsDataURL(file);
+    };
+    input.click();
+  };
+
+  const removeAttachment = async (attId: string) => {
+    if (budgetId) {
+      try { await api.deleteBudgetAttachment(budgetId, attId); } catch {}
+    }
+    setAttachments((prev) => prev.filter((a) => a.id !== attId));
+  };
 
   const saveBudget = async (): Promise<string | null> => {
     setSaving(true);
@@ -377,6 +409,22 @@ export default function BudgetEditor() {
             <Ionicons name="add" size={18} color={COLORS.primary} />
             <Text style={s.addRowTxt}>Añadir fila</Text>
           </TouchableOpacity>
+        </Section>
+
+        <Section title="ADJUNTOS">
+          <View style={{ gap: 6 }}>
+            {attachments.map((att: any) => (
+              <View key={att.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.surface, borderRadius: 8, padding: 8, borderWidth: 1, borderColor: COLORS.border }}>
+                <Ionicons name={att.mime?.startsWith("image/") ? "image-outline" : "document-text-outline"} size={20} color={COLORS.primary} />
+                <Text style={{ flex: 1, fontSize: 12, color: COLORS.text }} numberOfLines={1}>{att.name}</Text>
+                <TouchableOpacity onPress={() => removeAttachment(att.id)}><Ionicons name="close-circle" size={18} color={COLORS.errorText} /></TouchableOpacity>
+              </View>
+            ))}
+            <TouchableOpacity style={s.addRow} onPress={pickAttachment}>
+              <Ionicons name="attach-outline" size={18} color={COLORS.primary} />
+              <Text style={s.addRowTxt}>Adjuntar archivo (JPG, PDF)</Text>
+            </TouchableOpacity>
+          </View>
         </Section>
 
         <Section title="ENTREGAS">

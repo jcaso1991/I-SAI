@@ -167,6 +167,8 @@ class Material(BaseModel):
     lat: Optional[float] = None
     lng: Optional[float] = None
     direccion: Optional[str] = None
+    # attachments (PDFs, presupuestos)
+    attachments: Optional[List[dict]] = None
     # meta
     sync_status: str = "synced"  # synced | pending | error
     updated_at: Optional[str] = None
@@ -607,11 +609,16 @@ async def _rate_limit(request: Request, max_req: int = _rate_max):
 async def rate_limit_middleware(request: Request, call_next):
     await _rate_limit(request, 200)
     return await call_next(request)
-import asyncio as _asyncio
+import asyncio
+_sync_lock = asyncio.Lock()
+_push_task: Optional[asyncio.Task] = None
+_import_task: Optional[asyncio.Task] = None
 
-_sync_lock = _asyncio.Lock()
-_push_task: Optional[_asyncio.Task] = None
-_import_task: Optional[_asyncio.Task] = None
+def _fire_and_forget(coro):
+    """Lanza una corrutina en background con logging de errores."""
+    task = asyncio.create_task(coro)
+    task.add_done_callback(lambda t: logging.getLogger(__name__).error(f"Background task failed: {t.exception()}", exc_info=t.exception()) if t.exception() else None)
+    return task
 
 async def _has_onedrive_link() -> bool:
     return await db.onedrive_tokens.find_one({"_id": "admin"}) is not None
@@ -645,12 +652,18 @@ async def _do_import() -> int:
         if not docs:
             raise HTTPException(400, "El Excel de OneDrive no contiene filas para importar; no se modificaron los materiales actuales.")
 
+        # Sincronizar carpetas con concurrencia limitada
+        _sync_sem = asyncio.Semaphore(5)
+        async def _sync_one(doc):
+            async with _sync_sem:
+                await _sync_project_folder(doc)
         for doc in docs:
             await db.materiales.update_one(
                 {"row_index": doc["row_index"]},
                 {"$set": doc},
                 upsert=True,
             )
+            _fire_and_forget(_sync_one(doc))
         await db.materiales.delete_many({"row_index": {"$nin": imported_row_indexes}})
         await db.sync_meta.update_one(
             {"_id": "meta"},
@@ -685,7 +698,7 @@ async def _do_push() -> int:
 
 async def _delayed_push():
     try:
-        await _asyncio.sleep(AUTO_PUSH_DELAY_SEC)
+        await asyncio.sleep(AUTO_PUSH_DELAY_SEC)
         if not await _has_onedrive_link():
             return
         logger = logging.getLogger(__name__)
@@ -694,14 +707,14 @@ async def _delayed_push():
             logger.info(f"Auto-push: {n} filas sincronizadas con OneDrive")
         except Exception as e:
             logger.error(f"Auto-push falló: {e}")
-    except _asyncio.CancelledError:
+    except asyncio.CancelledError:
         pass
 
 def schedule_auto_push():
     global _push_task
     if _push_task and not _push_task.done():
         _push_task.cancel()
-    _push_task = _asyncio.create_task(_delayed_push())
+    _push_task = _fire_and_forget(_delayed_push())
 
 async def maybe_auto_import():
     """If OneDrive linked and last import older than AUTO_IMPORT_INTERVAL_SEC, import in background."""
@@ -726,7 +739,7 @@ async def maybe_auto_import():
             logging.getLogger(__name__).info(f"Auto-import: {n} filas traídas de OneDrive")
         except Exception as e:
             logging.getLogger(__name__).error(f"Auto-import falló: {e}")
-    _import_task = _asyncio.create_task(_runner())
+    _import_task = _fire_and_forget(_runner())
 
 # ---------------- Auth routes ----------------
 @api_router.post("/auth/register", response_model=TokenOut)
@@ -1074,6 +1087,8 @@ class PlanPatch(BaseModel):
     title: Optional[str] = None
     data: Optional[dict] = None
     source_attachment_id: Optional[str] = None
+    material_id: Optional[str] = None
+    source_event_id: Optional[str] = None
 
 class PlanOut(BaseModel):
     id: str
@@ -1094,6 +1109,8 @@ class PlanListItem(BaseModel):
     created_by: str
     shape_count: int = 0
     thumbnail: Optional[str] = None
+    material_id: Optional[str] = None
+    source_event_id: Optional[str] = None
 
 class StampCreate(BaseModel):
     name: str
@@ -1153,21 +1170,19 @@ async def list_plans(user: dict = Depends(require_permission("planos.view"))):
     plans = await db.plans.find({}, {"_id": 0, "data": 0}).to_list(2000)
     all_data = await db.plans.find({}, {"_id": 0, "id": 1, "data": 1}).to_list(2000)
     counts = {p["id"]: len((p.get("data") or {}).get("shapes", [])) for p in all_data}
-    # Generar thumbnails desde background
-    thumbs: dict = {}
-    for p in all_data:
-        bg = (p.get("data") or {}).get("background")
+    # Generar thumbnails desde background (en thread pool para no bloquear)
+    async def _gen_thumbnail(pl: dict) -> Optional[tuple]:
+        bg = (pl.get("data") or {}).get("background")
         if not bg:
-            continue
-        # bg puede ser string (legacy) o dict {type, data_uri, width, height}
+            return None
         b64_data = bg if isinstance(bg, str) else bg.get("data_uri", "")
         if not b64_data:
-            continue
-        try:
-            if "," in b64_data:
-                b64 = b64_data.split(",", 1)[1]
-            else:
-                b64 = b64_data
+            return None
+        if "," in b64_data:
+            b64 = b64_data.split(",", 1)[1]
+        else:
+            b64 = b64_data
+        def _process():
             raw = base64.b64decode(b64)
             img = Image.open(io.BytesIO(raw))
             img.thumbnail((200, 200), Image.LANCZOS)
@@ -1175,10 +1190,16 @@ async def list_plans(user: dict = Depends(require_permission("planos.view"))):
                 img = img.convert("RGB")
             buf = io.BytesIO()
             img.save(buf, format="JPEG", quality=70)
-            thumb_b64 = base64.b64encode(buf.getvalue()).decode()
-            thumbs[p["id"]] = "data:image/jpeg;base64," + thumb_b64
+            return base64.b64encode(buf.getvalue()).decode()
+        try:
+            thumb_b64 = await asyncio.to_thread(_process)
+            return (pl["id"], "data:image/jpeg;base64," + thumb_b64)
         except Exception:
-            pass
+            return None
+
+    tasks = [_gen_thumbnail(p) for p in all_data]
+    results = await asyncio.gather(*tasks)
+    thumbs = {tid: thumb for r in results if r for tid, thumb in [r]}
     plans.sort(key=lambda p: p.get("updated_at", ""), reverse=True)
     out: List[PlanListItem] = []
     for p in plans:
@@ -1188,6 +1209,8 @@ async def list_plans(user: dict = Depends(require_permission("planos.view"))):
             created_by=p.get("created_by", ""),
             shape_count=counts.get(p["id"], 0),
             thumbnail=thumbs.get(p["id"]),
+            material_id=p.get("material_id"),
+            source_event_id=p.get("source_event_id"),
         ))
     return out
 
@@ -1552,7 +1575,7 @@ async def _sync_material_hours(material_id: str):
     total = round(sum(_safe_float(e.get("hours")) for e in events), 1)
     await db.materiales.update_one(
         {"id": material_id},
-        {"$set": {"horas_imputadas": str(total)}},
+        {"$set": {"horas_imputadas": total}},
     )
 
 @api_router.post("/events", response_model=EventOut)
@@ -1635,10 +1658,14 @@ async def update_event(eid: str, payload: EventPatch, user: dict = Depends(curre
         notif_type = f"event_{new_status}"
         if await should_notify_user(ev_current["manager_id"], notif_type):
             title = ev_current.get("title") or "Evento"
+            mid = ev_current.get("material_id")
+            project_status_opts = None
             if new_status == "completed":
                 notif_title = f"Proyecto terminado: {title}"
                 notif_msg = f"{user.get('name') or user.get('email')} marcó el evento como completado."
-                # If a budget is linked, generate PDF and attach to event
+                if mid:
+                    project_status_opts = ["planificado", "a_facturar", "facturado", "terminado", "bloqueado", "anulado"]
+                # Generar PDF del presupuesto y adjuntarlo al evento y al proyecto
                 budget_id = ev_current.get("budget_id") or upd.get("budget_id")
                 if budget_id:
                     budget = await db.budgets.find_one({"id": budget_id})
@@ -1657,8 +1684,45 @@ async def update_event(eid: str, payload: EventPatch, user: dict = Depends(curre
                             }
                             await db.events.update_one({"id": real_id}, {"$push": {"attachments": att}})
                             notif_msg += f"\n📎 Presupuesto adjunto: {att['filename']}"
+                            # Adjuntar también al proyecto vinculado
+                            if mid:
+                                await db.materiales.update_one(
+                                    {"id": mid},
+                                    {"$push": {"attachments": att}},
+                                )
+                                mat = await db.materiales.find_one({"id": mid})
+                                if mat:
+                                    _fire_and_forget(_sync_project_folder(mat))
                         except Exception as e:
                             logging.getLogger(__name__).error(f"Failed to attach budget PDF: {e}")
+                    # Copiar adjuntos de planos vinculados al proyecto
+                    if mid:
+                        try:
+                            linked_plans = await db.plans.find(
+                                {"source_event_id": real_id, "source_attachment_id": {"$exists": True, "$ne": None}}
+                            ).to_list(length=200)
+                            existing_att_ids = {att.get("id") for att in ev_current.get("attachments", [])}
+                            for plan in linked_plans:
+                                plan_att_id = plan.get("source_attachment_id")
+                                if not plan_att_id or plan_att_id not in existing_att_ids:
+                                    continue
+                                plan_att = next((att for att in ev_current.get("attachments", []) if att.get("id") == plan_att_id), None)
+                                if not plan_att:
+                                    continue
+                                project = await db.materiales.find_one({"id": mid}, {"attachments": 1})
+                                if any(att.get("id") == plan_att_id for att in (project.get("attachments") or [])):
+                                    continue
+                                await db.materiales.update_one(
+                                    {"id": mid},
+                                    {"$push": {"attachments": plan_att}},
+                                )
+                                notif_msg += f"\n📎 Plano «{plan.get('title','')}» → {plan_att['filename']}"
+                            # Sincronizar carpeta del proyecto
+                            mat = await db.materiales.find_one({"id": mid})
+                            if mat:
+                                _fire_and_forget(_sync_project_folder(mat))
+                        except Exception as e:
+                            logging.getLogger(__name__).error(f"Failed to copy plan attachments to project: {e}")
             elif new_status == "pending_completion":
                 notif_title = f"Pendiente de terminar: {title}"
                 seg = upd.get("seguimiento") or ev_current.get("seguimiento") or ""
@@ -1666,10 +1730,12 @@ async def update_event(eid: str, payload: EventPatch, user: dict = Depends(curre
                     f"{user.get('name') or user.get('email')} dejó el evento pendiente de terminar."
                     + (f"\nObservaciones: {seg}" if seg else "")
                 )
+                if mid:
+                    project_status_opts = ["pendiente", "planificado", "a_facturar", "bloqueado", "anulado"]
             else:
                 notif_title = f"Estado actualizado: {title}"
                 notif_msg = f"El estado del evento pasó a '{new_status}'."
-            await db.notifications.insert_one({
+            notif_doc = {
                 "id": str(uuid.uuid4()),
                 "user_id": ev_current["manager_id"],
                 "event_id": real_id,
@@ -1680,7 +1746,12 @@ async def update_event(eid: str, payload: EventPatch, user: dict = Depends(curre
                 "created_at": datetime.utcnow().isoformat(),
                 "from_user_id": user["id"],
                 "from_user_name": user.get("name") or user.get("email"),
-            })
+            }
+            if mid:
+                notif_doc["material_id"] = mid
+            if project_status_opts:
+                notif_doc["project_status_opts"] = project_status_opts
+            await db.notifications.insert_one(notif_doc)
 
     # If status changed and event has a project linked, cascade to all
     # events that share the same project (material_id).
@@ -1857,6 +1928,64 @@ async def delete_all_notifications(
         q["read"] = True
     res = await db.notifications.delete_many(q)
     return {"ok": True, "deleted": res.deleted_count}
+
+class ProjectStatusBody(BaseModel):
+    notification_id: str
+    project_status: str
+
+class EventGestorBody(BaseModel):
+    gestor_list: str  # "general", "archivados", "pendiente_reagendar", "pendiente_revisar"
+
+@api_router.patch("/events/{eid}/gestor-list")
+async def set_event_gestor_list(
+    eid: str,
+    body: EventGestorBody,
+    user: dict = Depends(current_user),
+):
+    """Mueve un evento entre las listas del gestor."""
+    valid = {"general", "archivados", "pendiente_reagendar", "pendiente_revisar"}
+    if body.gestor_list not in valid:
+        raise HTTPException(400, f"Lista no válida. Opciones: {valid}")
+    real_id = eid.split(":")[0]
+    # Si mueve a Terminados, actualizar también el proyecto vinculado
+    if body.gestor_list == "archivados":
+        ev = await db.events.find_one({"id": real_id}, {"material_id": 1})
+        if ev and ev.get("material_id"):
+            await db.materiales.update_one(
+                {"id": ev["material_id"]},
+                {"$set": {"project_status": "terminado", "sync_status": "pending", "updated_at": datetime.now(timezone.utc).isoformat()}},
+            )
+    res = await db.events.update_one({"id": real_id}, {"$set": {"gestor_list": body.gestor_list}})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Evento no encontrado")
+    return {"ok": True}
+
+@api_router.post("/notifications/project-status")
+async def set_project_status_from_notification(
+    body: ProjectStatusBody,
+    user: dict = Depends(current_user),
+):
+    """Cambia el estado del proyecto vinculado a la notificación."""
+    notif = await db.notifications.find_one({"id": body.notification_id, "user_id": user["id"]})
+    if not notif:
+        raise HTTPException(404, "Notificación no encontrada")
+    mid = notif.get("material_id")
+    if not mid:
+        raise HTTPException(400, "La notificación no tiene proyecto vinculado")
+    valid_statuses = notif.get("project_status_opts", [])
+    if body.project_status not in valid_statuses:
+        raise HTTPException(400, f"Estado no permitido. Opciones: {valid_statuses}")
+    await db.materiales.update_one(
+        {"id": mid},
+        {"$set": {"project_status": body.project_status, "sync_status": "pending", "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    # Marcar notificación como leída
+    await db.notifications.update_one({"id": body.notification_id}, {"$set": {"read": True}})
+    # Sincronizar carpeta del proyecto
+    mat = await db.materiales.find_one({"id": mid}, {"_id": 0})
+    if mat:
+        _fire_and_forget(_sync_project_folder(mat))
+    return {"ok": True, "project_status": body.project_status}
 
 # ---------------- Event attachments ----------------
 @api_router.post("/events/{eid}/attachments")
@@ -2623,6 +2752,8 @@ async def update_material(mid: str, payload: MaterialUpdate, user: dict = Depend
     doc = await db.materiales.find_one({"id": mid}, {"_id": 0})
     if await _has_onedrive_link():
         schedule_auto_push()
+    # Sincronizar carpeta del proyecto
+    _fire_and_forget(_sync_project_folder(doc))
     return doc
 
 @api_router.get("/materiales/{mid}/history")
@@ -2690,13 +2821,15 @@ async def dashboard(user: dict = Depends(current_user)):
     perms = await get_user_permissions(user)
     if "dashboard.view" not in perms:
         raise HTTPException(403, "No tienes permiso para ver el panel de datos")
-    # Projects by status
-    statuses = ["pendiente", "planificado", "a_facturar", "facturado", "terminado", "bloqueado", "anulado"]
-    projects_by_status = {}
+    # Projects by status — una sola agregación en vez de 7 count_documents
+    projects_by_status = {st: 0 for st in ["pendiente", "planificado", "a_facturar", "facturado", "terminado", "bloqueado", "anulado"]}
+    async for row in db.materiales.aggregate([
+        {"$group": {"_id": "$project_status", "count": {"$sum": 1}}}
+    ]):
+        st = row["_id"] or "pendiente"
+        if st in projects_by_status:
+            projects_by_status[st] = row["count"]
     total_hours = 0
-    for st in statuses:
-        count = await db.materiales.count_documents({"project_status": st})
-        projects_by_status[st] = count
 
     # Hours by manager
     manager_hours = []
@@ -2762,10 +2895,31 @@ async def dashboard(user: dict = Depends(current_user)):
         completed = await db.materiales.find({
             "project_status": {"$in": ["terminado", "facturado"]},
             "updated_at": {"$gte": month_start.isoformat(), "$lt": month_end.isoformat()},
-        }, {"horas_prev": 1}).to_list(5000)
+        }, {"horas_prev": 1, "manager_id": 1}).to_list(5000)
         total_hours_month = sum(_safe_float(c.get("horas_prev")) for c in completed)
+        # Desglose por gestor
+        by_manager: dict = {}
+        for c in completed:
+            mgr = c.get("manager_id") or "sin_gestor"
+            if mgr not in by_manager:
+                by_manager[mgr] = {"count": 0, "hours": 0}
+            by_manager[mgr]["count"] += 1
+            by_manager[mgr]["hours"] = round(by_manager[mgr]["hours"] + _safe_float(c.get("horas_prev")), 1)
         mes = month_start.strftime("%b").capitalize()
-        projects_by_month.append({"month": mes, "count": proj_count, "hours": round(total_hours_month, 1), "year": str(month_start.year), "month_num": f"{month_start.month:02d}"})
+        projects_by_month.append({"month": mes, "count": proj_count, "hours": round(total_hours_month, 1), "year": str(month_start.year), "month_num": f"{month_start.month:02d}", "by_manager": by_manager})
+
+    # Resolver nombres de gestores para el desglose
+    all_mgr_ids = set()
+    for entry in projects_by_month:
+        all_mgr_ids.update(entry["by_manager"].keys())
+    all_mgr_ids.discard("sin_gestor")
+    mgr_names: dict = {}
+    if all_mgr_ids:
+        mgrs = await db.users.find({"id": {"$in": list(all_mgr_ids)}}, {"_id": 0, "id": 1, "name": 1, "email": 1}).to_list(100)
+        mgr_names = {m["id"]: m.get("name") or m.get("email", m["id"]) for m in mgrs}
+    mgr_names["sin_gestor"] = "Sin gestor"
+    for entry in projects_by_month:
+        entry["by_manager"] = {mgr_names.get(k, k): v for k, v in entry["by_manager"].items()}
 
     # Total hours for all pending/active projects
     active_projects = await db.materiales.find({"project_status": {"$in": ["pendiente", "planificado", "a_facturar"]}}, {"horas_prev": 1}).to_list(10000)
@@ -2890,52 +3044,65 @@ async def dashboard(user: dict = Depends(current_user)):
         {"_id": 0, "id": 1, "name": 1, "email": 1, "role": 1, "color": 1}
     ).to_list(500)
     # Solo consideramos usuarios "operativos" (excluir admin principal si quieres puro)
-    operative_users = [u for u in all_users_full if (u.get("role") or "").lower() in ("user", "tecnico", "technician", "manager", "admin")]
+    operative_users = [u for u in all_users_full if (u.get("role") or "").lower() in ("tecnico", "technician", "user")]
 
-    # Mapa técnico_id -> set(YYYY-MM-DD) días con eventos NO cancelados
-    busy_days_by_user: dict[str, set] = {u["id"]: set() for u in operative_users}
+    # Mapa técnico_id -> { day_key: total_hours } con horas acumuladas por día
+    busy_hours_by_user: dict[str, dict[str, float]] = {u["id"]: {} for u in operative_users}
     for e in three_w_events:
         if (e.get("status") or "") == "cancelled":
             continue
         st = e.get("start_at")
-        if not st:
+        et = e.get("end_at")
+        if not st or not et:
             continue
         try:
-            d = datetime.fromisoformat(st.replace("Z", "+00:00"))
+            sd = datetime.fromisoformat(st.replace("Z", "+00:00"))
+            ed = datetime.fromisoformat(et.replace("Z", "+00:00"))
         except Exception:
             continue
-        day_key = d.strftime("%Y-%m-%d")
+        hours = max(0.0, (ed - sd).total_seconds() / 3600.0)
+        day_key = sd.strftime("%Y-%m-%d")
         for uid in (e.get("assigned_user_ids") or []):
-            if uid in busy_days_by_user:
-                busy_days_by_user[uid].add(day_key)
+            if uid in busy_hours_by_user:
+                busy_hours_by_user[uid][day_key] = busy_hours_by_user[uid].get(day_key, 0.0) + hours
 
     # Construir respuesta por técnico
     tech_availability: list[dict] = []
     for u in operative_users:
         uid = u["id"]
-        busy_keys = busy_days_by_user.get(uid, set())
+        hours_map = busy_hours_by_user.get(uid, {})
         days_detail = []
         free_count = 0
+        half_count = 0
         for d in work_days:
             key = d.strftime("%Y-%m-%d")
-            is_free = key not in busy_keys
-            if is_free:
+            h = hours_map.get(key, 0.0)
+            if h <= 0:
+                status = "free"
                 free_count += 1
+            elif h <= 4:
+                status = "half"
+                half_count += 1
+            else:
+                status = "busy"
             days_detail.append({
                 "date": key,
-                "weekday": d.weekday(),  # 0..4
-                "free": is_free,
+                "weekday": d.weekday(),
+                "free": status == "free",
+                "status": status,
+                "hours": round(h, 1),
             })
         tech_availability.append({
             "id": uid,
             "name": u.get("name") or u.get("email", "Sin nombre"),
             "color": u.get("color") or "#3B82F6",
             "free_days": free_count,
+            "half_days": half_count,
             "total_days": len(work_days),
             "days": days_detail,
         })
     # Ordenar: técnicos con MÁS días libres primero (los que están "menos ocupados")
-    tech_availability.sort(key=lambda x: -x["free_days"])
+    tech_availability.sort(key=lambda x: -(x["free_days"] + x["half_days"] * 0.5))
 
     # Metadatos del rango
     tech_three_weeks = {
@@ -4894,30 +5061,48 @@ async def get_preciario_productos(
 ):
     user_perms = await get_user_permissions(user)
     puede_ver_precios = "preciario.ver_precios" in user_perms or "preciario.edit" in user_perms
-    wb = load_workbook(ROOT_DIR / "Tarifas2025 para isai.xlsx", data_only=True)
-    try:
-        ws = wb["tar2025"]
-        items = []
-        for row in ws.iter_rows(min_row=2, max_col=3, values_only=True):
-            ref_raw, descripcion_raw, precio_raw = row[0], row[1], row[2]
-            if ref_raw is None and descripcion_raw is None and precio_raw is None:
-                continue
-            ref = str(ref_raw).strip() if ref_raw is not None else ""
-            descripcion = str(descripcion_raw).strip() if descripcion_raw is not None else ""
-            precio_str = str(precio_raw).strip() if precio_raw is not None else ""
-            try:
-                # El Excel puede tener coma como separador decimal y punto como miles: 1.234,56
-                precio_str = precio_str.replace(".", "").replace(",", ".")
-                precio_unitario = float(precio_str)
-            except (ValueError, TypeError):
-                precio_unitario = 0.0
-            items.append({
-                "ref": ref,
-                "descripcion": descripcion,
-                "precio_unitario": precio_unitario if puede_ver_precios else 0.0,
-            })
-    finally:
-        wb.close()
+    # Cache del Excel: evitar leer y parsear 56k filas en cada request
+    if not hasattr(get_preciario_productos, "_cache"):
+        get_preciario_productos._cache = {"at": 0, "items": []}
+    cache = get_preciario_productos._cache
+    now_ts = time.time()
+    if now_ts - cache["at"] < 300 and cache["items"]:
+        items = list(cache["items"])  # copia para no mutar
+    else:
+        wb = load_workbook(ROOT_DIR / "Tarifas2025 para isai.xlsx", data_only=True)
+        try:
+            ws = wb["tar2025"]
+            items = []
+            for row in ws.iter_rows(min_row=2, max_col=3, values_only=True):
+                ref_raw, descripcion_raw, precio_raw = row[0], row[1], row[2]
+                if ref_raw is None and descripcion_raw is None and precio_raw is None:
+                    continue
+                ref = str(ref_raw).strip() if ref_raw is not None else ""
+                descripcion = str(descripcion_raw).strip() if descripcion_raw is not None else ""
+                precio_str = str(precio_raw).strip() if precio_raw is not None else ""
+                try:
+                    # El Excel puede tener coma como separador decimal y punto como miles: 1.234,56
+                    precio_str = precio_str.replace(".", "").replace(",", ".")
+                    precio_unitario = float(precio_str)
+                except (ValueError, TypeError):
+                    precio_unitario = 0.0
+                items.append({
+                    "ref": ref,
+                    "descripcion": descripcion,
+                    "precio_unitario": precio_unitario,
+                })
+            cache["at"] = now_ts
+            cache["items"] = items
+        finally:
+            wb.close()
+    # Aplicar visibilidad de precios (si no tiene permiso, ocultar en la copia de respuesta)
+    items_out = []
+    for it in items:
+        items_out.append({
+            **it,
+            "precio_unitario": it["precio_unitario"] if puede_ver_precios else 0.0,
+        })
+    items = items_out
 
     # Cargar descuentos y stock guardados
     docs = await db.preciario_descuentos.find({}, {"_id": 0}).to_list(length=None)
@@ -5081,6 +5266,134 @@ async def delete_nota(
 
 DOCUMENTOS_DIR = ROOT_DIR / "uploads" / "documentos"
 DOCUMENTOS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Archivos ordenados por proyecto (interno)
+ARCHIVOS_DIR = ROOT_DIR / "Archivos ordenados"
+ARCHIVOS_DIR.mkdir(parents=True, exist_ok=True)
+
+async def _sync_project_folder(material: dict):
+    """Genera/actualiza la carpeta del proyecto con PDF resumen y adjuntos."""
+    try:
+        code = (material.get("materiales") or "").strip()
+        name = (material.get("cliente") or "Sin cliente").strip()
+        # Limpiar saltos de línea y tabulaciones que romperían el nombre de carpeta
+        code = re.sub(r'[\r\n\t]+', ' ', code).strip()
+        name = re.sub(r'[\r\n\t]+', ' ', name).strip()
+        pid = (material.get("id") or "")[:8]
+        # Extraer año de la fecha del proyecto
+        fecha = material.get("fecha") or material.get("created_at") or ""
+        year = fecha[:4] if len(fecha) >= 4 and fecha[:4].isdigit() else "Sin año"
+        folder_name = f"{code} - {name} ({pid})" if code else f"{name} ({pid})"
+        # Sanitizar nombre de carpeta
+        folder_name = re.sub(r'[<>:"/\\|?*\r\n\t]', '_', folder_name)[:200]
+        proj_dir = ARCHIVOS_DIR / year / folder_name
+        proj_dir.mkdir(parents=True, exist_ok=True)
+        # Generar PDF resumen
+        buf = io.BytesIO()
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import mm
+        from reportlab.pdfgen import canvas as rl_canvas
+        c = rl_canvas.Canvas(buf, pagesize=A4)
+        w, h = A4
+        y = h - 20 * mm
+        # Helper para evitar errores de encoding con caracteres no-Latin-1 y saltos de línea
+        def _safe_text(s: str) -> str:
+            return re.sub(r'[\r\n\t]+', ' ', s).encode("latin-1", errors="replace").decode("latin-1")
+        c.setFont("Helvetica-Bold", 16)
+        c.drawString(15 * mm, y, _safe_text(f"Proyecto: {code or 'Sin código'}"))
+        y -= 10 * mm
+        c.setFont("Helvetica", 11)
+        campos = [
+            ("Código", material.get("materiales")),
+            ("Cliente", material.get("cliente")),
+            ("Ubicación", material.get("ubicacion")),
+            ("Horas previstas", material.get("horas_prev")),
+            ("Comercial", material.get("comercial")),
+            ("Gestor", material.get("gestor") or material.get("manager_name")),
+            ("Fecha", material.get("fecha")),
+            ("Entrega/Recogida", material.get("entrega_recogida")),
+            ("Total/Parcial", material.get("total_parcial")),
+            ("Técnico", material.get("tecnico")),
+            ("Comentarios", material.get("comentarios")),
+            ("Estado", material.get("project_status")),
+        ]
+        for label, value in campos:
+            if value:
+                c.drawString(15 * mm, y, _safe_text(f"{label}: {value}"))
+                y -= 7 * mm
+                if y < 25 * mm:
+                    c.showPage()
+                    y = h - 20 * mm
+        c.save()
+        buf.seek(0)
+        pdf_path = proj_dir / _safe_text(f"{folder_name}.pdf")
+        pdf_path.write_bytes(buf.read())
+
+        # Copiar adjuntos del proyecto
+        for att in (material.get("attachments") or []):
+            try:
+                att_data = att.get("base64") or att.get("data")
+                if att_data:
+                    raw = base64.b64decode(att_data)
+                    att_path = proj_dir / (att.get("filename") or f"adjunto_{att.get('id','')}")
+                    att_path.write_bytes(raw)
+            except Exception:
+                pass
+    except Exception as e:
+        logging.warning(f"sync_project_folder error for {material.get('id','')}: {e}")
+
+
+@api_router.get("/archivos")
+async def browse_archivos(
+    request: Request,
+    path: str = Query("", description="Ruta relativa dentro de Archivos ordenados"),
+    token: Optional[str] = Query(None, description="Token JWT para descarga directa de archivos"),
+):
+    """Devuelve la lista de carpetas/archivos o descarga un archivo."""
+    # Autenticación: por cabecera Bearer o por query param ?token=
+    user = None
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        try:
+            payload = pyjwt.decode(auth_header[7:], JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            user = await db.users.find_one({"id": payload["sub"]})
+        except Exception:
+            pass
+    if not user and token:
+        try:
+            payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            user = await db.users.find_one({"id": payload["sub"]})
+        except Exception:
+            pass
+    if not user:
+        raise HTTPException(401, "Autenticación requerida")
+    perms = await get_user_permissions(user)
+    if "proyectos.view" not in perms:
+        raise HTTPException(403, "No tienes permiso")
+    base = ARCHIVOS_DIR
+    # Normalizar el path: quitar saltos de línea que pueden venir por nombre de carpeta corrupto
+    clean_path = re.sub(r'[\r\n\t]+', ' ', path or "")
+    target = (base / clean_path).resolve()
+    if not str(target).startswith(str(base.resolve())) or not target.exists():
+        raise HTTPException(404, "Ruta no encontrada")
+    if target.is_file():
+        # Descargar archivo
+        mt = "application/pdf" if target.suffix == ".pdf" else "application/octet-stream"
+        return StreamingResponse(open(target, "rb"), media_type=mt, headers={"Content-Disposition": f'inline; filename="{target.name}"'})
+    items = []
+    for child in sorted(target.iterdir(), key=lambda x: (not x.is_dir(), x.name)):
+        safe_name = re.sub(r'[\r\n\t]+', ' ', child.name)
+        safe_path = re.sub(r'[\r\n\t]+', ' ', str(child.relative_to(base)))
+        item = {
+            "name": safe_name,
+            "type": "folder" if child.is_dir() else "file",
+            "path": safe_path,
+            "size": child.stat().st_size if child.is_file() else None,
+        }
+        if child.is_dir():
+            item["count"] = len(list(child.iterdir()))
+        items.append(item)
+    return {"path": path or "", "items": items}
 
 class DocumentoUpload(BaseModel):
     titulo: str

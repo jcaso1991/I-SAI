@@ -176,6 +176,12 @@ export const api = {
   deleteAllNotifications: (onlyRead = false) =>
     request(`/notifications${onlyRead ? "?only_read=true" : ""}`, { method: "DELETE" }),
 
+  setProjectStatusFromNotification: (notificationId: string, projectStatus: string) =>
+    request("/notifications/project-status", { method: "POST", body: JSON.stringify({ notification_id: notificationId, project_status: projectStatus }) }),
+
+  setEventGestorList: (eventId: string, gestorList: string) =>
+    request(`/events/${encodeURIComponent(eventId)}/gestor-list`, { method: "PATCH", body: JSON.stringify({ gestor_list: gestorList }) }),
+
   // CRM SAT — customer-facing public form + internal management
   satCreatePublic: (body: {
     cliente: string; direccion?: string; telefono?: string; observaciones: string;
@@ -277,6 +283,9 @@ export const api = {
     request("/documentos", { method: "POST", body: JSON.stringify(body) }),
   getDocumento: (id: string) => request(`/documentos/${id}`),
   deleteDocumento: (id: string) => request(`/documentos/${id}`, { method: "DELETE" }),
+
+  // Archivos ordenados
+  getArchivos: (path?: string) => request(`/archivos${path ? "?path=" + encodeURIComponent(path) : ""}`),
 
   satClientImport: async (file: { uri: string; name: string; mimeType?: string } | File, replace = false) => {
     const form = new FormData();

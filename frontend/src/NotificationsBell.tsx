@@ -386,6 +386,36 @@ export default function NotificationsBell({
                       <View style={{ flex: 1 }}>
                         <Text style={s.itemTitle}>{n.title}</Text>
                         <Text style={s.itemMsg} numberOfLines={3}>{n.message}</Text>
+                        {(n as any).project_status_opts && (
+                          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                            {(n as any).project_status_opts.map((st: string) => {
+                              const STATUS_COLORS: Record<string, string> = {
+                                pendiente: "#F59E0B", planificado: "#3B82F6", a_facturar: "#8B5CF6",
+                                facturado: "#10B981", terminado: "#6366F1", bloqueado: "#EF4444", anulado: "#6B7280",
+                              };
+                              const LABELS: Record<string, string> = {
+                                pendiente: "Pend.", planificado: "Plan.", a_facturar: "Facturar",
+                                facturado: "Fact.", terminado: "Terminado", bloqueado: "Bloq.", anulado: "Anular",
+                              };
+                              return (
+                                <TouchableOpacity
+                                  key={st}
+                                  style={{ backgroundColor: (STATUS_COLORS[st] || "#999") + "22", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 5, borderWidth: 1, borderColor: STATUS_COLORS[st] || "#999" }}
+                                  onPress={async (e: any) => {
+                                    e?.stopPropagation?.();
+                                    try {
+                                      await api.setProjectStatusFromNotification(n.id, st);
+                                      n.project_status_opts = null;
+                                      fetchNotifs();
+                                    } catch (err: any) { Alert.alert("Error", err.message); }
+                                  }}
+                                >
+                                  <Text style={{ fontSize: 10, fontWeight: "700", color: STATUS_COLORS[st] || "#999" }}>{LABELS[st] || st}</Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        )}
                         <Text style={s.itemDate}>
                           {new Date(n.created_at).toLocaleString("es-ES", {
                             day: "2-digit", month: "short",

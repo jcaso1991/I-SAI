@@ -135,14 +135,14 @@ export default function DashboardData() {
 
   useFocusEffect(useCallback(() => {
     let alive = true;
+    setLoading(true);
     (async () => {
       try {
-        const d = await api.getDashboard().catch(() => null);
+        const d = await api.getDashboard();
         if (!alive) return;
         setDash(d);
-      } finally {
-        if (alive) setLoading(false);
-      }
+      } catch { if (alive) setDash(null); }
+      finally { if (alive) setLoading(false); }
     })();
     return () => { alive = false; };
   }, []));
@@ -452,6 +452,24 @@ function ProjectsByMonth({ dash }: { dash: any }) {
           );
         })}
       </View>
+      {/* Desglose por gestor del mes actual */}
+      {dash.projects_by_month?.length > 0 && (() => {
+        const latest = dash.projects_by_month[dash.projects_by_month.length - 1];
+        const bm = latest?.by_manager;
+        if (!bm || typeof bm !== "object" || Object.keys(bm).length === 0) return null;
+        return (
+          <View style={{ marginTop: 8 }} key={latest.month}>
+            <Text style={{ fontSize: 11, fontWeight: "800", color: COLORS.textSecondary, marginBottom: 4 }}>Por gestor ({latest.month})</Text>
+            {Object.entries(bm).map(([name, info]: any) => (
+              <View key={name} style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 4 }}>
+                <Text style={{ fontSize: 11, color: COLORS.text, flex: 1 }} numberOfLines={1}>{name}</Text>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.primary }}>{info.count} proy.</Text>
+                <Text style={{ fontSize: 11, color: COLORS.textSecondary }}>{info.hours}h</Text>
+              </View>
+            ))}
+          </View>
+        );
+      })()}
     </View>
   );
 }
@@ -1185,6 +1203,10 @@ function TechAvailability3W({ dash, router }: { dash: any; router: any }) {
           <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>Libre</Text>
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          <View style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: "#FED7AA", borderWidth: 1, borderColor: "#F97316" }} />
+          <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>½ día</Text>
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
           <View style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: "#FEE2E2", borderWidth: 1, borderColor: "#EF4444" }} />
           <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>Ocupado</Text>
         </View>
@@ -1218,7 +1240,8 @@ function TechAvailability3W({ dash, router }: { dash: any; router: any }) {
       {/* Filas por técnico */}
       {techs.map((tech, i) => {
         const isOpen = expandedId === tech.id;
-        const pct = Math.round((tech.free_days / tech.total_days) * 100);
+        const available = (tech.free_days || 0) + (tech.half_days || 0) * 0.5;
+        const pct = Math.round((available / tech.total_days) * 100);
         const ringColor = pct >= 60 ? "#10B981" : pct >= 30 ? "#F59E0B" : "#EF4444";
         const techWeeks = groupByWeeks(tech.days);
         return (
@@ -1233,26 +1256,39 @@ function TechAvailability3W({ dash, router }: { dash: any; router: any }) {
               </View>
               <View style={{ width: isWide ? 80 : 58 }}>
                 <Text style={{ fontSize: isWide ? 12 : 11, fontWeight: "700", color: COLORS.text }} numberOfLines={1}>{tech.name}</Text>
-                <Text style={{ fontSize: 10, color: ringColor, fontWeight: "800" }}>{tech.free_days}/{tech.total_days}</Text>
+                <Text style={{ fontSize: 10, color: ringColor, fontWeight: "800" }}>{tech.free_days}{tech.half_days ? `+${tech.half_days}` : ""}/{tech.total_days}</Text>
               </View>
               {/* Cuadrícula: semanas visibles */}
               {visibleWeekIndices.map((wi: number) => (
                 <View key={wi} style={{ flex: 1, flexDirection: "row", justifyContent: "center", gap: 2, marginHorizontal: 2 }}>
-                  {(techWeeks[wi] || []).map((d, di) => (
-                    <View
+                  {(techWeeks[wi] || []).map((d, di) => {
+                    const st = d.status || (d.free ? "free" : "busy");
+                    const isHalf = st === "half";
+                    const isFree = st === "free";
+                    const isBusy = st === "busy";
+                    const bg = isFree ? "#D1FAE5" : isHalf ? "#FED7AA" : "#FEE2E2";
+                    const bc = isFree ? "#10B981" : isHalf ? "#F97316" : "#EF4444";
+                    const canTap = !isBusy;
+                    return (
+                    <TouchableOpacity
                       key={di}
+                      onPress={canTap ? () => router.push(`/calendario?date=${d.date}` as any) : undefined}
+                      activeOpacity={canTap ? 0.6 : 1}
+                      disabled={!canTap}
                       style={{
                         width: isWide ? 20 : 30, height: isWide ? 18 : 26, borderRadius: 4,
-                        backgroundColor: d.free ? "#D1FAE5" : "#FEE2E2",
+                        backgroundColor: bg,
                         borderWidth: 1,
-                        borderColor: d.free ? "#10B981" : "#EF4444",
+                        borderColor: bc,
                         alignItems: "center", justifyContent: "center",
                       }}
                     >
-                      {!d.free && <Ionicons name="close" size={isWide ? 11 : 14} color="#EF4444" />}
-                      {d.free && <Ionicons name="checkmark" size={isWide ? 11 : 14} color="#10B981" />}
-                    </View>
-                  ))}
+                      {isBusy && <Ionicons name="close" size={isWide ? 11 : 14} color="#EF4444" />}
+                      {isFree && <Ionicons name="checkmark" size={isWide ? 11 : 14} color="#10B981" />}
+                      {isHalf && <Text style={{ fontSize: isWide ? 9 : 12, fontWeight: "800", color: "#C2410C" }}>½</Text>}
+                    </TouchableOpacity>
+                    );
+                  })}
                 </View>
               ))}
               <Ionicons name={isOpen ? "chevron-up" : "chevron-down"} size={16} color={COLORS.textSecondary} />
@@ -1262,31 +1298,35 @@ function TechAvailability3W({ dash, router }: { dash: any; router: any }) {
             {isOpen && (
               <View style={{ marginTop: 8, marginLeft: 30, padding: 10, backgroundColor: COLORS.primarySoft || "#F0F9FF", borderRadius: 8 }}>
                 <Text style={{ fontSize: 11, fontWeight: "800", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 6 }}>
-                  Días libres del mes ({tech.free_days})
+                  Días del mes (libres: {tech.free_days}{tech.half_days ? `, ½: ${tech.half_days}` : ""})
                 </Text>
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                  {tech.days.filter((d: any) => d.free).map((d: any, k: number) => (
+                  {tech.days.filter((d: any) => d.free || (d.status === "half")).map((d: any, k: number) => {
+                    const isHalf = d.status === "half";
+                    return (
                     <TouchableOpacity
                       key={k}
                       onPress={() => router.push(`/calendario?date=${d.date}` as any)}
                       style={{
-                        backgroundColor: "#D1FAE5",
-                        borderWidth: 1, borderColor: "#10B981",
+                        backgroundColor: isHalf ? "#FED7AA" : "#D1FAE5",
+                        borderWidth: 1,
+                        borderColor: isHalf ? "#F97316" : "#10B981",
                         paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
                         flexDirection: "row", alignItems: "center", gap: 4,
                       }}
                     >
-                      <Ionicons name="calendar-outline" size={11} color="#065F46" />
-                      <Text style={{ fontSize: 11, fontWeight: "700", color: "#065F46" }}>{DAY_LETTERS[d.weekday]} {fmtDayLabel(d.date)}</Text>
+                      <Ionicons name="calendar-outline" size={11} color={isHalf ? "#C2410C" : "#065F46"} />
+                      <Text style={{ fontSize: 11, fontWeight: "700", color: isHalf ? "#C2410C" : "#065F46" }}>{DAY_LETTERS[d.weekday]} {fmtDayLabel(d.date)} {isHalf ? "½" : ""}</Text>
                     </TouchableOpacity>
-                  ))}
-                  {tech.free_days === 0 && (
+                    );
+                  })}
+                  {tech.free_days === 0 && !tech.half_days && (
                     <Text style={{ fontSize: 12, color: COLORS.textSecondary, fontStyle: "italic" }}>
-                      Sin días libres en este rango
+                      Sin disponibilidad en este rango
                     </Text>
                   )}
                 </View>
-                {tech.free_days > 0 && (
+                {(tech.free_days > 0 || tech.half_days > 0) && (
                   <Text style={{ fontSize: 10, color: COLORS.textSecondary, marginTop: 6, fontStyle: "italic" }}>
                     Toca un día para ir al calendario
                   </Text>

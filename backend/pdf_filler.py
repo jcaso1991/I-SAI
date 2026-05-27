@@ -15,10 +15,12 @@ from __future__ import annotations
 
 import base64
 import io
+import logging
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from PIL import Image
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import (
     ArrayObject,
@@ -479,6 +481,42 @@ def build_budget_pdf(budget: Dict[str, Any]) -> bytes:
         if not w:
             continue
         _set_checkbox_widget(writer, w, bool(budget.get(key)))
+
+    # ---- Adjuntos al final ----
+    attachments = budget.get("attachments") or []
+    for att in attachments:
+        mime = att.get("mime") or ""
+        try:
+            raw = base64.b64decode(att["data"])
+            if mime == "application/pdf":
+                # Adjuntar páginas del PDF directamente
+                att_reader = PdfReader(io.BytesIO(raw))
+                for page in att_reader.pages:
+                    writer.add_page(page)
+            elif mime.startswith("image/"):
+                img = Image.open(io.BytesIO(raw))
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+                a4_w, a4_h = 595, 842
+                margin = 40
+                max_w = a4_w - 2 * margin
+                max_h = a4_h - 2 * margin
+                img_w, img_h = img.size
+                ratio = min(max_w / img_w, max_h / img_h)
+                new_w = int(img_w * ratio)
+                new_h = int(img_h * ratio)
+                img = img.resize((new_w, new_h), Image.LANCZOS)
+                canvas = Image.new("RGB", (a4_w, a4_h), (255, 255, 255))
+                x = (a4_w - new_w) // 2
+                y = (a4_h - new_h) // 2
+                canvas.paste(img, (x, y))
+                buf_att = io.BytesIO()
+                canvas.save(buf_att, format="PDF")
+                buf_att.seek(0)
+                att_reader = PdfReader(buf_att)
+                writer.add_page(att_reader.pages[0])
+        except Exception as e:
+            logging.warning(f"Error añadiendo adjunto al PDF: {e}")
 
     out = io.BytesIO()
     writer.write(out)

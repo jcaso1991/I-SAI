@@ -77,6 +77,9 @@ agenthub/agents/youtube/db
 .cache/
 frontend/.metro-cache/
 
+# Archivos generados automáticamente
+backend/Archivos ordenados/
+
 memory/test_credentials.md
 
 # Mobile development

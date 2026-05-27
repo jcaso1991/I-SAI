@@ -39,8 +39,11 @@ export default function PresupuestosIndex() {
 
   const toggleStatus = async (id: string) => {
     try {
-      const res = await api.toggleBudgetStatus(id);
-      setBudgets((arr) => arr.map((b) => b.id === id ? { ...b, status: res.status } : b));
+      const b = budgets.find((x) => x.id === id);
+      if (!b) return;
+      const newStatus = (b.status || "pendiente") === "pendiente" ? "aceptado" : "pendiente";
+      const res = await api.setBudgetStatus(id, newStatus);
+      setBudgets((arr) => arr.map((x) => x.id === id ? { ...x, status: res.status || newStatus } : x));
     } catch (e: any) {
       Alert.alert("Error", e.message);
     }
