@@ -1,4 +1,4 @@
-import { useCallback, useState, lazy, Suspense } from "react";
+import { useCallback, useMemo, useState, lazy, Suspense } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Platform, ScrollView, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -8,14 +8,17 @@ import { useBreakpoint } from "../src/useBreakpoint";
 import { useThemedStyles } from "../src/theme";
 import IOSHeader from "../src/ui/IOSHeader";
 import { api, COLORS } from "../src/api";
+import { ios, fontStyle } from "../src/ui/iosTheme";
 
 const STATUS_COLORS: Record<string, string> = {
   pendiente: "#F59E0B", planificado: "#3B82F6", a_facturar: "#8B5CF6",
   facturado: "#10B981", terminado: "#6366F1", bloqueado: "#EF4444", anulado: "#6B7280",
+  en_curso: "#06B6D4", completado: "#22C55E", cancelado: "#DC2626",
 };
 const STATUS_LABELS: Record<string, string> = {
   pendiente: "Pendiente", planificado: "Planif.", a_facturar: "A facturar",
   facturado: "Facturado", terminado: "Terminado", bloqueado: "Bloqueado", anulado: "Anulado",
+  en_curso: "En curso", completado: "Completado", cancelado: "Cancelado",
 };
 
 // Lazy-load Leaflet map (solo web)
@@ -60,39 +63,35 @@ export default function MapaScreen() {
     });
   };
 
-  const markers: { pos: [number, number]; color: string; title: string }[] = [];
-  const allPoints: [number, number][] = [];
-
-  proyectos.forEach((p) => {
-    if (!p.ubicacion) return;
-    const st = p.project_status || "pendiente";
-    if (hiddenStatuses.has(st)) return;
-    // Filtro por año
-    if (yearFilter.size > 0) {
-      const fy = (p.fecha || "").slice(0, 4);
-      if (fy && !yearFilter.has(fy)) return;
-    }
-    // Filtro por gestor
-    if (managerFilter === "sin_gestor" && p.manager_id) return;
-    if (managerFilter !== "todos" && managerFilter !== "sin_gestor" && p.manager_id !== managerFilter) return;
-    const lat = Number(p.lat ?? p._lat);
-    const lng = Number(p.lng ?? p._lng);
-    // Excluir si no son números válidos O si caen en (0,0) — esto pasa
-    // cuando lat/lng vienen como null y Number(null)===0, lo que mete a
-    // todos los proyectos sin coordenadas en mitad del Atlántico y
-    // fitBounds hace zoom máximo a la nada.
-    if (isNaN(lat) || isNaN(lng)) return;
-    if (lat === 0 && lng === 0) return;
-    if (Math.abs(lat) < 0.1 && Math.abs(lng) < 0.1) return;
-    const color = STATUS_COLORS[st] || "#999";
-    const label = STATUS_LABELS[st] || st;
-    markers.push({
-      pos: [lat, lng],
-      color,
-      title: `${p.materiales || "—"} — ${p.cliente || ""}<br/>${p.ubicacion || ""} [${label}]`,
+  const markers = useMemo(() => {
+    const result: { pos: [number, number]; color: string; title: string }[] = [];
+    const allPts: [number, number][] = [];
+    proyectos.forEach((p) => {
+      if (!p.ubicacion) return;
+      const st = p.project_status || "pendiente";
+      if (hiddenStatuses.has(st)) return;
+      if (yearFilter.size > 0) {
+        const fy = (p.fecha || "").slice(0, 4);
+        if (fy && !yearFilter.has(fy)) return;
+      }
+      if (managerFilter === "sin_gestor" && p.manager_id) return;
+      if (managerFilter !== "todos" && managerFilter !== "sin_gestor" && p.manager_id !== managerFilter) return;
+      const lat = Number(p.lat ?? p._lat);
+      const lng = Number(p.lng ?? p._lng);
+      if (isNaN(lat) || isNaN(lng)) return;
+      if (lat === 0 && lng === 0) return;
+      if (Math.abs(lat) < 0.1 && Math.abs(lng) < 0.1) return;
+      const color = STATUS_COLORS[st] || "#999";
+      const label = STATUS_LABELS[st] || st;
+      result.push({
+        pos: [lat, lng],
+        color,
+        title: `${p.materiales || "—"} — ${p.cliente || ""}<br/>${p.ubicacion || ""} [${label}]`,
+      });
+      allPts.push([lat, lng]);
     });
-    allPoints.push([lat, lng]);
-  });
+    return { markers: result, allPoints: allPts };
+  }, [proyectos, hiddenStatuses, yearFilter, managerFilter]);
 
   const content = (
     <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
@@ -114,8 +113,8 @@ export default function MapaScreen() {
         </ScrollView>
 
         {/* Filtro por año y gestor */}
-        <View style={{ flexDirection: "row", gap: 8, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <Text style={{ fontSize: 11, fontWeight: "600", color: COLORS.textSecondary }}>Año:</Text>
+        <View style={{ flexDirection: "row", gap: ios.spacing.sm, marginBottom: ios.spacing.sm, flexWrap: "wrap", alignItems: "center" }}>
+          <Text style={{ ...fontStyle("section"), color: COLORS.textSecondary }}>Año:</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
             <View style={{ flexDirection: "row", gap: 4 }}>
               {Array.from({ length: new Date().getFullYear() - 2021 }, (_, i) => String(2022 + i)).map((y) => (
@@ -126,21 +125,21 @@ export default function MapaScreen() {
             </View>
           </ScrollView>
         </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <Text style={{ fontSize: 11, fontWeight: "600", color: COLORS.textSecondary }}>Gestor:</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.sm, marginBottom: ios.spacing.sm }}>
+          <Text style={{ ...fontStyle("section"), color: COLORS.textSecondary }}>Gestor:</Text>
           {Platform.OS === "web" ? (
-            <select value={managerFilter} onChange={(e: any) => setManagerFilter(e.target.value)} style={{ fontSize: 11, fontWeight: "600", padding: 4, borderRadius: 6, borderColor: COLORS.border, backgroundColor: COLORS.surface, color: COLORS.text }}>
+            <select value={managerFilter} onChange={(e: any) => setManagerFilter(e.target.value)} style={{ ...fontStyle("subhead"), paddingVertical: 4, paddingHorizontal: ios.spacing.sm, borderRadius: ios.radius.sm, borderColor: COLORS.border, backgroundColor: COLORS.surface, color: COLORS.text, outline: "none" }}>
               <option value="todos">Todos</option>
               <option value="sin_gestor">Sin gestor</option>
               {managers.map((m: any) => <option key={m.id} value={m.id}>{m.name || m.email}</option>)}
             </select>
           ) : (
-            <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: COLORS.surface, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: COLORS.border }} onPress={() => {
+            <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.xs, backgroundColor: COLORS.surface, paddingHorizontal: ios.spacing.sm, paddingVertical: ios.spacing.xs, borderRadius: ios.radius.sm, borderWidth: 1, borderColor: COLORS.border }} onPress={() => {
               const opts = ["todos", "sin_gestor", ...managers.map(m => m.id)];
               const idx = opts.indexOf(managerFilter);
               setManagerFilter(opts[(idx + 1) % opts.length]);
             }}>
-              <Text style={{ fontSize: 11, color: COLORS.text }}>
+              <Text style={{ ...fontStyle("subhead"), color: COLORS.text }}>
                 {managerFilter === "todos" ? "Todos" : managerFilter === "sin_gestor" ? "Sin gestor" : managers.find(m => m.id === managerFilter)?.name || "Gestor"}
               </Text>
               <Ionicons name="chevron-down" size={12} color={COLORS.textSecondary} />
@@ -149,9 +148,9 @@ export default function MapaScreen() {
         </View>
 
         {Platform.OS === "web" ? (
-          <View style={{ flex: 1, borderRadius: 10, overflow: "hidden", minHeight: 500 }}>
+          <View style={{ flex: 1, borderRadius: ios.radius.lg, overflow: "hidden", minHeight: 500, ...ios.shadow.card }}>
             <Suspense fallback={<ActivityIndicator style={{ marginTop: 40 }} color={COLORS.primary} />}>
-              <LeafletMap markers={markers} allPoints={allPoints} />
+              <LeafletMap markers={markers.markers} allPoints={markers.allPoints} />
             </Suspense>
           </View>
         ) : (
@@ -169,19 +168,21 @@ export default function MapaScreen() {
 
 const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
-  body: { flex: 1, padding: 10 },
-  filtersRow: { maxHeight: 40, marginBottom: 8, flexGrow: 0 },
+  body: { flex: 1, padding: ios.spacing.sm },
+  filtersRow: { maxHeight: 44, marginBottom: ios.spacing.sm, flexGrow: 0 },
   filterChip: {
-    flexDirection: "row", alignItems: "center", gap: 4,
-    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6,
+    flexDirection: "row", alignItems: "center", gap: ios.spacing.xs,
+    paddingHorizontal: ios.spacing.md, paddingVertical: 7,
+    borderRadius: ios.radius.pill,
     borderWidth: 1, borderColor: COLORS.border, marginRight: 6,
     backgroundColor: COLORS.surface,
   },
-  filterDot: { width: 8, height: 8, borderRadius: 4 },
-  filterLabel: { fontSize: 11, fontWeight: "600", color: COLORS.text },
+  filterDot: { width: 10, height: 10, borderRadius: 5 },
+  filterLabel: { ...fontStyle("subhead"), fontWeight: "600", color: COLORS.text },
   yearChip: {
-    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5,
+    paddingHorizontal: ios.spacing.sm, paddingVertical: 4,
+    borderRadius: ios.radius.pill,
     borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface,
   },
-  yearChipText: { fontSize: 11, fontWeight: "600", color: COLORS.textSecondary },
+  yearChipText: { ...fontStyle("caption"), fontWeight: "600", color: COLORS.textSecondary },
 });

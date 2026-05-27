@@ -20,6 +20,7 @@ import { useThemedStyles } from "../src/theme";
 import IOSHeader from "../src/ui/IOSHeader";
 import { api, clearToken, COLORS } from "../src/api";
 import { usePermissions } from "../src/permissions";
+import { ios, fontStyle } from "../src/ui/iosTheme";
 
 interface Producto {
   ref: string;
@@ -194,7 +195,7 @@ export default function PreciarioScreen() {
                 backgroundColor: COLORS.surface,
                 borderWidth: 1,
                 borderColor: COLORS.border,
-                borderRadius: 8,
+                borderRadius: ios.radius.sm,
                 paddingVertical: 6,
                 paddingHorizontal: 10,
                 outline: "none",
@@ -218,10 +219,10 @@ export default function PreciarioScreen() {
                 backgroundColor: COLORS.surface,
                 borderWidth: 1,
                 borderColor: COLORS.border,
-                borderRadius: 8,
-                paddingVertical: 8,
-                paddingHorizontal: 12,
-                gap: 8,
+                borderRadius: ios.radius.sm,
+                paddingVertical: ios.spacing.sm,
+                paddingHorizontal: ios.spacing.md,
+                gap: ios.spacing.sm,
                 minWidth: 100,
               }}
               onPress={() => {
@@ -298,15 +299,9 @@ export default function PreciarioScreen() {
                               onChange={(e: any) => setDescuento(p.ref, Number(e.target.value))}
                               disabled={!puedeEditarDescuento}
                               style={{
-                                fontSize: 13,
+                                ...s.nativeSelect,
                                 color: puedeEditarDescuento ? COLORS.text : COLORS.textDisabled,
                                 backgroundColor: puedeEditarDescuento ? COLORS.surface : COLORS.readonly,
-                                borderWidth: 1,
-                                borderColor: COLORS.border,
-                                borderRadius: 8,
-                                paddingVertical: 4,
-                                paddingHorizontal: 6,
-                                outline: "none",
                                 cursor: puedeEditarDescuento ? "pointer" : "not-allowed",
                               } as any}
                             >
@@ -322,9 +317,9 @@ export default function PreciarioScreen() {
                                 backgroundColor: puedeEditarDescuento ? COLORS.surface : COLORS.readonly,
                                 borderWidth: 1,
                                 borderColor: COLORS.border,
-                                borderRadius: 8,
-                                paddingVertical: 4,
-                                paddingHorizontal: 8,
+                                borderRadius: ios.radius.sm,
+                                paddingVertical: 6,
+                                paddingHorizontal: ios.spacing.sm,
                                 gap: 4,
                                 minWidth: 60,
                                 opacity: puedeEditarDescuento ? 1 : 0.6,
@@ -332,7 +327,7 @@ export default function PreciarioScreen() {
                               onPress={puedeEditarDescuento ? () => openPicker(p.ref) : undefined}
                               disabled={!puedeEditarDescuento}
                             >
-                              <Text style={{ fontSize: 13, color: puedeEditarDescuento ? COLORS.text : COLORS.textDisabled }}>{dto}%</Text>
+                              <Text style={{ ...fontStyle("subhead"), color: puedeEditarDescuento ? COLORS.text : COLORS.textDisabled }}>{dto}%</Text>
                               <Ionicons name="chevron-down" size={12} color={COLORS.textDisabled} />
                             </TouchableOpacity>
                           )}
@@ -350,15 +345,9 @@ export default function PreciarioScreen() {
                             onChange={(e: any) => setStock(p.ref, Number(e.target.value))}
                             disabled={!puedeEditarDescuento}
                             style={{
-                              fontSize: 13,
+                              ...s.nativeSelect,
                               color: puedeEditarDescuento ? COLORS.text : COLORS.textDisabled,
                               backgroundColor: puedeEditarDescuento ? COLORS.surface : COLORS.readonly,
-                              borderWidth: 1,
-                              borderColor: COLORS.border,
-                              borderRadius: 8,
-                              paddingVertical: 4,
-                              paddingHorizontal: 6,
-                              outline: "none",
                               cursor: puedeEditarDescuento ? "pointer" : "not-allowed",
                             } as any}
                           >
@@ -375,9 +364,9 @@ export default function PreciarioScreen() {
                               backgroundColor: puedeEditarDescuento ? COLORS.surface : COLORS.readonly,
                               borderWidth: 1,
                               borderColor: COLORS.border,
-                              borderRadius: 8,
-                              paddingVertical: 4,
-                              paddingHorizontal: 8,
+                              borderRadius: ios.radius.sm,
+                              paddingVertical: 6,
+                              paddingHorizontal: ios.spacing.sm,
                               gap: 4,
                               minWidth: 60,
                               opacity: puedeEditarDescuento ? 1 : 0.6,
@@ -385,7 +374,7 @@ export default function PreciarioScreen() {
                             onPress={puedeEditarDescuento ? () => openStockPicker(p.ref) : undefined}
                             disabled={!puedeEditarDescuento}
                           >
-                            <Text style={{ fontSize: 13, color: puedeEditarDescuento ? COLORS.text : COLORS.textDisabled }}>{stock > 0 ? `${stock} uds.` : "-"}</Text>
+                            <Text style={{ ...fontStyle("subhead"), color: puedeEditarDescuento ? COLORS.text : COLORS.textDisabled }}>{stock > 0 ? `${stock} uds.` : "-"}</Text>
                             <Ionicons name="chevron-down" size={12} color={COLORS.textDisabled} />
                           </TouchableOpacity>
                         )}
@@ -443,19 +432,19 @@ export default function PreciarioScreen() {
             activeOpacity={1}
             onPress={closePicker}
           >
-            <View style={{ backgroundColor: COLORS.surface, borderRadius: 14, maxHeight: 300, width: 200, overflow: "hidden" }}>
-              <View style={{ paddingVertical: 10, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
-                <Text style={{ fontSize: 15, fontWeight: "800", color: COLORS.text }}>Descuento %</Text>
+            <View style={{ backgroundColor: COLORS.surface, borderRadius: ios.radius.lg, maxHeight: 300, width: 220, overflow: "hidden", ...ios.shadow.elevated }}>
+              <View style={{ paddingVertical: ios.spacing.sm, paddingHorizontal: ios.spacing.lg, borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border }}>
+                <Text style={{ ...fontStyle("callout"), fontWeight: "800", color: COLORS.text }}>Descuento %</Text>
               </View>
               <FlatList
                 data={DESCUENTOS}
                 keyExtractor={(item) => String(item)}
                 renderItem={({ item }) => (
                   <TouchableOpacity
-                    style={{ paddingVertical: 10, paddingHorizontal: 14, backgroundColor: item === descuentos[pickerOpen] ? COLORS.primarySoft : "transparent" }}
+                    style={{ paddingVertical: ios.spacing.sm, paddingHorizontal: ios.spacing.lg, backgroundColor: item === descuentos[pickerOpen] ? COLORS.primarySoft : "transparent" }}
                     onPress={() => { setDescuento(pickerOpen, item); closePicker(); }}
                   >
-                    <Text style={{ fontSize: 14, color: item === descuentos[pickerOpen] ? COLORS.primary : COLORS.text, fontWeight: item === descuentos[pickerOpen] ? "800" : "400" }}>
+                    <Text style={{ ...fontStyle("subhead"), color: item === descuentos[pickerOpen] ? COLORS.primary : COLORS.text, fontWeight: item === descuentos[pickerOpen] ? "800" : "400" }}>
                       {item}%
                     </Text>
                   </TouchableOpacity>
@@ -473,9 +462,9 @@ export default function PreciarioScreen() {
             activeOpacity={1}
             onPress={closeStockPicker}
           >
-            <View style={{ backgroundColor: COLORS.surface, borderRadius: 14, maxHeight: 300, width: 200, overflow: "hidden" }}>
-              <View style={{ paddingVertical: 10, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
-                <Text style={{ fontSize: 15, fontWeight: "800", color: COLORS.text }}>Stock (uds.)</Text>
+            <View style={{ backgroundColor: COLORS.surface, borderRadius: ios.radius.lg, maxHeight: 300, width: 220, overflow: "hidden", ...ios.shadow.elevated }}>
+              <View style={{ paddingVertical: ios.spacing.sm, paddingHorizontal: ios.spacing.lg, borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border }}>
+                <Text style={{ ...fontStyle("callout"), fontWeight: "800", color: COLORS.text }}>Stock (uds.)</Text>
               </View>
               <FlatList
                 data={STOCKS}
@@ -513,61 +502,59 @@ const useS = () =>
     root: { flex: 1, backgroundColor: COLORS.bg },
     body: { flex: 1, padding: 20, paddingTop: 12 },
     heading: {
-      fontSize: 26,
-      fontWeight: "900",
+      ...fontStyle("title1"),
       color: COLORS.text,
-      letterSpacing: 0.2,
-      marginBottom: 16,
+      marginBottom: ios.spacing.lg,
     },
     searchRow: {
       flexDirection: "row",
-      gap: 10,
-      marginBottom: 12,
+      gap: ios.spacing.sm,
+      marginBottom: ios.spacing.md,
     },
     searchInputWrap: {
       flex: 1,
       flexDirection: "row",
       alignItems: "center",
       backgroundColor: COLORS.surface,
-      borderRadius: 12,
+      borderRadius: ios.radius.md,
       borderWidth: 1,
       borderColor: COLORS.border,
-      paddingHorizontal: 14,
-      gap: 8,
-      height: 44,
+      paddingHorizontal: ios.spacing.lg,
+      gap: ios.spacing.sm,
+      height: 48,
     },
     searchInput: {
       flex: 1,
-      fontSize: 15,
+      ...fontStyle("subhead"),
       color: COLORS.text,
       paddingVertical: 0,
     },
     searchBtn: {
       backgroundColor: COLORS.primary,
-      borderRadius: 12,
-      paddingHorizontal: 18,
+      borderRadius: ios.radius.md,
+      paddingHorizontal: ios.spacing.xl,
       alignItems: "center",
       justifyContent: "center",
-      height: 44,
+      height: 48,
     },
     searchBtnText: {
       color: "#fff",
-      fontSize: 15,
+      ...fontStyle("callout"),
       fontWeight: "700",
     },
     resultInfo: {
-      fontSize: 12.5,
+      ...fontStyle("footnote"),
       color: COLORS.textSecondary,
-      marginBottom: 12,
+      marginBottom: ios.spacing.md,
     },
     filterRow: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 8,
-      marginBottom: 12,
+      gap: ios.spacing.sm,
+      marginBottom: ios.spacing.md,
     },
     filterLabel: {
-      fontSize: 13,
+      ...fontStyle("subhead"),
       fontWeight: "600",
       color: COLORS.textSecondary,
     },
@@ -578,29 +565,28 @@ const useS = () =>
     tableHeader: {
       flexDirection: "row",
       backgroundColor: COLORS.readonly,
-      borderRadius: 10,
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      marginBottom: 4,
+      borderRadius: ios.radius.md,
+      paddingVertical: ios.spacing.md,
+      paddingHorizontal: ios.spacing.md,
+      marginBottom: ios.spacing.xs,
     },
     th: {
-      fontSize: 11,
+      ...fontStyle("section"),
       fontWeight: "800",
       color: COLORS.textSecondary,
       textTransform: "uppercase",
-      letterSpacing: 0.5,
       paddingHorizontal: 6,
     },
     tableRow: {
       flexDirection: "row",
       alignItems: "center",
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      borderBottomWidth: 1,
+      paddingVertical: ios.spacing.md,
+      paddingHorizontal: ios.spacing.md,
+      borderBottomWidth: ios.hairline,
       borderBottomColor: COLORS.border,
     },
     td: {
-      fontSize: 13,
+      ...fontStyle("subhead"),
       color: COLORS.text,
       paddingHorizontal: 6,
     },
@@ -612,12 +598,12 @@ const useS = () =>
       justifyContent: "center",
     },
     nativeSelect: {
-      fontSize: 13,
+      ...fontStyle("subhead"),
       color: COLORS.text,
       backgroundColor: COLORS.surface,
       borderWidth: 1,
       borderColor: COLORS.border,
-      borderRadius: 8,
+      borderRadius: ios.radius.sm,
       paddingVertical: 4,
       paddingHorizontal: 6,
       outlineStyle: "none",
@@ -628,27 +614,27 @@ const useS = () =>
     },
     emptyRow: {
       alignItems: "center",
-      paddingVertical: 40,
-      gap: 8,
+      paddingVertical: ios.spacing.huge,
+      gap: ios.spacing.sm,
     },
     emptyText: {
-      fontSize: 14,
+      ...fontStyle("subhead"),
       color: COLORS.textDisabled,
     },
     pagination: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
-      gap: 14,
-      paddingVertical: 16,
-      borderTopWidth: 1,
+      gap: ios.spacing.lg,
+      paddingVertical: ios.spacing.lg,
+      borderTopWidth: ios.hairline,
       borderTopColor: COLORS.border,
-      marginTop: 8,
+      marginTop: ios.spacing.sm,
     },
     pageBtn: {
-      width: 38,
-      height: 38,
-      borderRadius: 10,
+      width: 40,
+      height: 40,
+      borderRadius: ios.radius.md,
       backgroundColor: COLORS.primarySoft,
       alignItems: "center",
       justifyContent: "center",
@@ -657,32 +643,32 @@ const useS = () =>
       backgroundColor: COLORS.readonly,
     },
     pageInfo: {
-      fontSize: 13,
+      ...fontStyle("subhead"),
       fontWeight: "700",
       color: COLORS.textSecondary,
     },
     errorBox: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 10,
+      gap: ios.spacing.sm,
       backgroundColor: COLORS.errorBg,
-      borderRadius: 12,
-      padding: 16,
+      borderRadius: ios.radius.md,
+      padding: ios.spacing.lg,
     },
     errorText: {
-      fontSize: 13,
+      ...fontStyle("subhead"),
       color: COLORS.errorText,
       flex: 1,
     },
     loadingBox: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 10,
-      paddingVertical: 40,
+      gap: ios.spacing.sm,
+      paddingVertical: ios.spacing.huge,
       justifyContent: "center",
     },
     loadingText: {
-      fontSize: 13,
+      ...fontStyle("subhead"),
       color: COLORS.textSecondary,
     },
   });

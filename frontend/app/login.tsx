@@ -9,6 +9,7 @@ import * as WebBrowser from "expo-web-browser";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api, setToken, COLORS, BACKEND_URL } from "../src/api";
 import { useThemedStyles } from "../src/theme";
+import { ios, fontStyle } from "../src/ui/iosTheme";
 
 const MS_STATE_KEY = "ms_login_state";
 
@@ -132,6 +133,7 @@ export default function Login() {
             Gestiona entregas y recogidas sincronizadas con OneDrive
           </Text>
 
+          <View style={s.card}>
           <View style={s.form}>
             <Text style={s.label}>Email</Text>
             <TextInput
@@ -189,6 +191,7 @@ export default function Login() {
               ¿No tienes cuenta? Pídele al administrador que te cree una.
             </Text>
           </View>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -198,42 +201,88 @@ export default function Login() {
 const useS = () =>
   StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
-  scroll: { flexGrow: 1, padding: 24, justifyContent: "center" },
+  scroll: { flexGrow: 1, padding: ios.spacing.xxl, justifyContent: "center" },
   logoContainer: {
     alignItems: "center",
-    marginBottom: 32,
-    paddingVertical: 8,
+    marginBottom: ios.spacing.xxxl,
+    paddingVertical: ios.spacing.lg,
   },
   logoImage: {
-    width: 220,
-    height: 110,
+    width: 260,
+    height: 130,
   },
-  title: { fontSize: 32, fontWeight: "900", color: COLORS.text, marginBottom: 8 },
-  subtitle: { fontSize: 15, color: COLORS.textSecondary, marginBottom: 32, lineHeight: 22 },
-  form: { gap: 8 },
+  title: {
+    ...fontStyle("largeTitle"),
+    color: COLORS.text,
+    marginBottom: ios.spacing.xs,
+    textAlign: "center",
+  },
+  subtitle: {
+    ...fontStyle("callout"),
+    color: COLORS.textSecondary,
+    marginBottom: ios.spacing.xxl,
+    textAlign: "center",
+  },
+  card: {
+    backgroundColor: COLORS.surface,
+    borderRadius: ios.radius.xl,
+    padding: ios.spacing.xxl,
+    ...ios.shadow.elevated,
+  },
+  form: { gap: ios.spacing.xs },
   label: {
-    fontSize: 11, fontWeight: "800", color: COLORS.textSecondary,
-    letterSpacing: 1.5, textTransform: "uppercase", marginTop: 12, marginBottom: 4,
+    ...fontStyle("section"),
+    fontWeight: "800",
+    color: COLORS.textSecondary,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    marginTop: ios.spacing.md,
+    marginBottom: ios.spacing.xs,
   },
   input: {
-    height: 56, backgroundColor: COLORS.surface,
-    borderWidth: 2, borderColor: COLORS.borderInput, borderRadius: 12,
-    paddingHorizontal: 16, fontSize: 17, color: COLORS.text,
+    height: 56,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1.5,
+    borderColor: COLORS.borderInput,
+    borderRadius: ios.radius.md,
+    paddingHorizontal: 20,
+    ...fontStyle("body"),
+    color: COLORS.text,
   },
   btnPrimary: {
-    height: 56, backgroundColor: COLORS.primary, borderRadius: 12,
-    alignItems: "center", justifyContent: "center", marginTop: 24,
+    height: 56,
+    backgroundColor: COLORS.primary,
+    borderRadius: ios.radius.card,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: ios.spacing.xxl,
   },
-  btnDisabled: { opacity: 0.7 },
-  btnPrimaryText: { color: "#fff", fontSize: 17, fontWeight: "800", letterSpacing: 1 },
+  btnDisabled: { opacity: 0.6 },
+  btnPrimaryText: {
+    color: "#fff",
+    ...fontStyle("callout"),
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
   btnMicrosoft: {
-    height: 56, backgroundColor: COLORS.surface,
-    borderWidth: 2, borderColor: COLORS.borderInput, borderRadius: 12,
-    alignItems: "center", justifyContent: "center", marginTop: 12,
+    height: 56,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    borderRadius: ios.radius.card,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: ios.spacing.sm,
   },
-  btnMicrosoftText: { fontSize: 16, fontWeight: "700", color: COLORS.text },
+  btnMicrosoftText: {
+    ...fontStyle("body"),
+    fontWeight: "700",
+    color: COLORS.text,
+  },
   helperText: {
-    textAlign: "center", color: COLORS.textSecondary,
-    fontSize: 13, marginTop: 20, lineHeight: 18,
+    textAlign: "center",
+    color: COLORS.textSecondary,
+    ...fontStyle("footnote"),
+    marginTop: ios.spacing.xl,
   },
 });

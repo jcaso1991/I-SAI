@@ -8,7 +8,6 @@ import { useBreakpoint } from "./useBreakpoint";
 import { useTheme, useThemedStyles } from "./theme";
 import { ios } from "./ui/iosTheme";
 
-// Build a 2-letter avatar string from a full name.
 function initials(name?: string): string {
   if (!name) return "US";
   const parts = name.trim().split(/\s+/);
@@ -61,8 +60,8 @@ export default function ResponsiveLayout({
   }: { active: boolean; label: string; icon: string; to: string; matIcon?: boolean; accent?: string }) {
     const router = useRouter();
     const acc = accent || COLORS.primary;
-    const iconColor = accent ? acc : (active ? COLORS.primary : COLORS.textSecondary);
-    const iconBg = accent ? (active ? acc : (acc + "18")) : (active ? COLORS.primarySoft : "transparent");
+    const iconColor = active ? acc : COLORS.textSecondary;
+    const iconBg = active ? (acc + "18") : "transparent";
     return (
       <TouchableOpacity
         style={[s.linkRow, active && s.linkRowActive]}
@@ -70,20 +69,19 @@ export default function ResponsiveLayout({
         activeOpacity={0.7}
       >
         <View style={[s.linkBar, active && { backgroundColor: acc }]} />
-        <View style={[s.linkIcon, active && s.linkIconActive, { backgroundColor: iconBg }]}>
+        <View style={[s.linkIcon, { backgroundColor: iconBg }]}>
           {matIcon ? (
             <MaterialCommunityIcons name={icon as any} size={18} color={iconColor} />
           ) : (
             <Ionicons name={icon as any} size={18} color={iconColor} />
           )}
         </View>
-        <Text style={[s.linkTxt, { color: accent ? acc : COLORS.textSecondary }, active && { color: acc, fontWeight: "800" as any }]}>{label}</Text>
+        <Text style={[s.linkTxt, { color: iconColor }, active && { fontWeight: "600" as any }]}>{label}</Text>
       </TouchableOpacity>
     );
   }
 
   if (!isWide) {
-    // Mobile: content fills screen, BottomNav at bottom
     return (
       <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
         <View style={{ flex: 1 }}>{children}</View>
@@ -92,11 +90,9 @@ export default function ResponsiveLayout({
     );
   }
 
-  // Desktop / tablet: side navigation
   return (
     <View style={s.root}>
       <View style={s.sidebar}>
-        {/* Brand — elegant mono-wordmark with a gradient square logo */}
         <View style={s.brand}>
           <View style={s.logoDot}>
             <Text style={s.logoText}>i</Text>
@@ -107,7 +103,6 @@ export default function ResponsiveLayout({
           </View>
         </View>
 
-        {/* User pill with colored initials avatar */}
         <View style={s.userCard}>
           <View style={s.avatar}>
             <Text style={s.avatarText}>{initials(userName)}</Text>
@@ -126,7 +121,7 @@ export default function ResponsiveLayout({
           )}
         </View>
 
-        <Text style={s.sectionLabel}>NAVEGACIÓN</Text>
+        <Text style={s.sectionLabel}>Navegación</Text>
         <SideLink active={active === "home"} label="Inicio" icon="home" to="/home" accent={ios.colors.brand} />
         <SideLink active={active === "dashboard"} label="Dashboard" icon="stats-chart" to="/dashboard" accent={ios.colors.brand} />
         {has("calendario.view") && (
@@ -151,7 +146,7 @@ export default function ResponsiveLayout({
           <SideLink active={active === "sat"} label="CRM SAT" icon="headset" to="/sat" accent={ios.colors.pink} />
         )}
 
-        <Text style={s.sectionLabel}>DOCUMENTOS INTERNOS</Text>
+        <Text style={s.sectionLabel}>Documentos internos</Text>
         {has("preciario.view") && (
           <SideLink active={active === "documentos"} label="Documentos Internos" icon="folder-open" to="/documentos" />
         )}
@@ -164,7 +159,7 @@ export default function ResponsiveLayout({
 
         {(canOnedrive || canManageUsers || canManageRoles) && (
           <>
-            <Text style={s.sectionLabel}>ADMINISTRACIÓN</Text>
+            <Text style={s.sectionLabel}>Administración</Text>
             {canOnedrive && (
               <SideLink active={active === "ajustes"} label="OneDrive" icon="cloud-outline" to="/admin" />
             )}
@@ -186,7 +181,7 @@ export default function ResponsiveLayout({
         <View style={{ flex: 1 }} />
 
         <TouchableOpacity style={s.themeToggle} onPress={toggleTheme}>
-          <Ionicons name={theme === "dark" ? "sunny" : "moon"} size={18} color={COLORS.textSecondary} />
+          <Ionicons name={theme === "dark" ? "sunny" : "moon"} size={16} color={COLORS.textSecondary} />
           <Text style={s.themeToggleTxt}>{theme === "dark" ? "Modo claro" : "Modo oscuro"}</Text>
         </TouchableOpacity>
 
@@ -200,13 +195,21 @@ const useS = () =>
   StyleSheet.create({
   root: { flex: 1, flexDirection: "row", backgroundColor: COLORS.bg },
   sidebar: {
-    width: 252, backgroundColor: COLORS.surface, borderRightWidth: 1,
-    borderRightColor: COLORS.border, paddingVertical: 22, paddingHorizontal: 14,
+    width: 240,
+    backgroundColor: COLORS.surface,
+    borderRightWidth: 1,
+    borderRightColor: COLORS.border,
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    ...Platform.select({
+      web: { boxShadow: "2px 0 24px rgba(0,0,0,0.02)" } as any,
+      default: { shadowColor: "#000", shadowOpacity: 0.02, shadowRadius: 24, shadowOffset: { width: 2, height: 0 } } as any,
+    }),
   },
 
   brand: {
     flexDirection: "row", alignItems: "center", gap: 10,
-    paddingHorizontal: 6, paddingBottom: 18,
+    paddingHorizontal: 6, paddingBottom: 20,
   },
   logoDot: {
     width: 34, height: 34, borderRadius: 10, backgroundColor: COLORS.primary,
@@ -216,63 +219,56 @@ const useS = () =>
       default: { shadowColor: COLORS.primary, shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
     }),
   },
-  logoText: { color: "#fff", fontSize: 20, fontWeight: "900", lineHeight: 22 },
-  brandTxt: { fontSize: 17, fontWeight: "900", color: COLORS.navy, letterSpacing: 0.3 },
-  brandSub: { fontSize: 10, fontWeight: "700", color: COLORS.textSecondary, letterSpacing: 0.5 },
+  logoText: { color: "#fff", fontSize: 18, fontWeight: "700", lineHeight: 20 },
+  brandTxt: { fontSize: 17, fontWeight: "700", color: COLORS.text, letterSpacing: -0.3 },
+  brandSub: { fontSize: 10, fontWeight: "500", color: COLORS.textDisabled, letterSpacing: 0.3, marginTop: 1 },
 
   userCard: {
-    flexDirection: "row", alignItems: "center", gap: 10, padding: 12,
-    backgroundColor: COLORS.bg, borderRadius: 14, marginBottom: 18,
-    borderWidth: 1, borderColor: COLORS.border,
+    flexDirection: "row", alignItems: "center", gap: 10, padding: 10,
+    borderRadius: 14, marginBottom: 20,
+    borderWidth: ios.hairline, borderColor: COLORS.border,
   },
   avatar: {
-    width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary,
+    width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.primary,
     alignItems: "center", justifyContent: "center",
   },
-  avatarText: { color: "#fff", fontSize: 14, fontWeight: "900", letterSpacing: 0.5 },
-  userName: { fontSize: 13.5, fontWeight: "800", color: COLORS.text },
+  avatarText: { color: "#fff", fontSize: 12, fontWeight: "700", letterSpacing: 0.3 },
+  userName: { fontSize: 13, fontWeight: "600", color: COLORS.text },
   roleChip: {
     flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2,
   },
   roleDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#10B981" },
-  userRole: { fontSize: 10.5, color: COLORS.textSecondary, fontWeight: "700", letterSpacing: 0.2 },
+  userRole: { fontSize: 10, color: COLORS.textDisabled, fontWeight: "500", letterSpacing: 0.2 },
 
   sectionLabel: {
-    fontSize: 10, fontWeight: "900", color: COLORS.textDisabled,
-    letterSpacing: 1.4, marginTop: 6, marginBottom: 6, marginLeft: 10,
+    fontSize: 11, fontWeight: "600", color: COLORS.textDisabled,
+    letterSpacing: 0.5, marginTop: 8, marginBottom: 6, marginLeft: 10,
   },
 
   linkRow: {
     flexDirection: "row", alignItems: "center", gap: 10,
-    paddingRight: 12, paddingVertical: 9, borderRadius: 10, marginBottom: 2,
-    position: "relative",
+    paddingRight: 12, paddingVertical: 10, paddingLeft: 8,
+    borderRadius: 10, marginBottom: 1,
   },
-  linkRowActive: { backgroundColor: COLORS.primarySoft },
+  linkRowActive: { backgroundColor: COLORS.primarySoft + "80" },
   linkBar: {
     width: 3, height: 20, borderRadius: 2, backgroundColor: "transparent",
     marginLeft: 0,
   },
-  linkBarActive: { backgroundColor: COLORS.primary },
   linkIcon: {
-    width: 28, height: 28, borderRadius: 8, alignItems: "center", justifyContent: "center",
-    backgroundColor: "transparent",
+    width: 28, height: 28, borderRadius: 8,
+    alignItems: "center", justifyContent: "center",
   },
-  linkIconActive: { backgroundColor: "transparent" },
-  linkTxt: { fontSize: 13.5, fontWeight: "600", color: COLORS.textSecondary, flex: 1 },
-  linkTxtActive: { color: COLORS.primary, fontWeight: "800" },
+  linkTxt: { fontSize: 13, fontWeight: "500", flex: 1 },
 
   themeToggle: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    paddingHorizontal: 14, paddingVertical: 10, marginHorizontal: 8, marginBottom: 4,
-    borderRadius: 10, backgroundColor: COLORS.bg,
+    flexDirection: "row", alignItems: "center", gap: 8, justifyContent: "center",
+    paddingHorizontal: 12, paddingVertical: 8,
+    borderRadius: ios.radius.pill,
+    borderWidth: 1, borderColor: COLORS.border,
+    marginHorizontal: 4, marginBottom: 4,
   },
-  themeToggleTxt: { fontSize: 13, color: COLORS.textSecondary, fontWeight: "600" },
+  themeToggleTxt: { fontSize: 11, color: COLORS.textSecondary, fontWeight: "500" },
 
-  logout: {
-    flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14,
-    paddingVertical: 10, borderRadius: 10,
-  },
-  logoutTxt: { fontSize: 13, fontWeight: "700", color: COLORS.errorText },
-
-  content: { flex: 1, backgroundColor: COLORS.bg },
+  content: { flex: 1, backgroundColor: '#0A0E1A' },
 });

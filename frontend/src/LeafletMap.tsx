@@ -33,6 +33,25 @@ function FitBounds({ points }: { points: [number, number][] }) {
   return null;
 }
 
+function MarkersLayer({ markers }: { markers: Props["markers"] }) {
+  return (
+    <>
+      {markers.map((m, i) => (
+        <CircleMarker
+          key={`m-${i}-${m.pos[0]}-${m.pos[1]}`}
+          center={m.pos}
+          radius={9}
+          pathOptions={{ fillColor: m.color, color: "#fff", weight: 2, fillOpacity: 0.9 }}
+        >
+          <Popup>
+            <div dangerouslySetInnerHTML={{ __html: m.title }} />
+          </Popup>
+        </CircleMarker>
+      ))}
+    </>
+  );
+}
+
 export default function LeafletMap({ markers, allPoints }: Props) {
   useLeafletCSS();
 
@@ -47,19 +66,8 @@ export default function LeafletMap({ markers, allPoints }: Props) {
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         maxZoom={19}
       />
-      {markers.map((m, i) => (
-        <CircleMarker
-          key={i}
-          center={m.pos}
-          radius={9}
-          pathOptions={{ fillColor: m.color, color: "#fff", weight: 2, fillOpacity: 0.9 }}
-        >
-          <Popup>
-            <div dangerouslySetInnerHTML={{ __html: m.title }} />
-          </Popup>
-        </CircleMarker>
-      ))}
-      <FitBounds points={allPoints} />
+      <MarkersLayer markers={markers} />
+      {allPoints.length > 0 && <FitBounds points={allPoints} />}
     </MapContainer>
   );
 }

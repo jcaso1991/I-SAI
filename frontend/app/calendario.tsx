@@ -8,8 +8,15 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS, BACKEND_URL } from "../src/api";
-import { useThemedStyles, useTheme } from "../src/theme";
+import { useThemedStyles } from "../src/theme";
+import { ios } from "../src/ui/iosTheme";
 import ResponsiveLayout from "../src/ResponsiveLayout";
+import { useBreakpoint } from "../src/useBreakpoint";
+import DateTimeField from "../src/DateTimeField";
+import NotificationsBell from "../src/NotificationsBell";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 function openMaps(address: string) {
   const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
@@ -38,12 +45,6 @@ async function shareWhatsApp(event: any) {
   }
   window.open(`https://wa.me/?text=${encodeURIComponent(lines.join("\n"))}`, "_blank");
 }
-import { useBreakpoint } from "../src/useBreakpoint";
-import DateTimeField from "../src/DateTimeField";
-import NotificationsBell from "../src/NotificationsBell";
-import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system/legacy";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const HOUR_START = 7;
 const HOUR_END = 20;
@@ -72,7 +73,7 @@ type EventT = {
   manager_id?: string | null;
   manager?: { id: string; name?: string; email: string; color?: string } | null;
   recurrence?: { type: RecurrenceType; until?: string | null } | null;
-  attachments?: Array<{ id: string; filename: string; mime_type: string; size: number; uploaded_at?: string; uploaded_by?: string }>;
+  attachments?: { id: string; filename: string; mime_type: string; size: number; uploaded_at?: string; uploaded_by?: string }[];
   base_event_id?: string | null;
   created_by: string;
   status?: string;          // in_progress | completed | pending_completion
@@ -135,7 +136,6 @@ export default function CalendarScreen() {
   const params = useLocalSearchParams<{ openEvent?: string; from?: string; date?: string }>();
   const [me, setMe] = useState<any>(null);
   const s = useThemedStyles(useS);
-  const { theme } = useTheme();
   const [view, setViewState] = useState<ViewMode>("week");
   const setView = (v: ViewMode) => {
     setViewState(v);
@@ -484,9 +484,9 @@ export default function CalendarScreen() {
             <Ionicons
               name={v === "day" ? "today-outline" : v === "week" ? "calendar-outline" : v === "multi" ? "people-outline" : v === "gestor" ? "list-outline" : "grid-outline"}
               size={16}
-              color={view === v ? "#fff" : COLORS.navy}
+              color={view === v ? COLORS.primary : COLORS.textSecondary}
             />
-            <Text style={[s.viewChipText, view === v && { color: "#fff" }]}>
+            <Text style={[s.viewChipText, view === v && { color: COLORS.primary }]}>
               {v === "day" ? "Día" : v === "week" ? "Semana" : v === "multi" ? "Equipo" : v === "gestor" ? "Gestor" : "Mes"}
             </Text>
           </TouchableOpacity>
@@ -585,7 +585,7 @@ export default function CalendarScreen() {
             ].map((tab) => (
               <TouchableOpacity
                 key={tab.key}
-                style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: gestorTab === tab.key ? COLORS.primary + "22" : "transparent", borderWidth: 1, borderColor: gestorTab === tab.key ? COLORS.primary : COLORS.border }}
+                style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: ios.radius.pill, backgroundColor: gestorTab === tab.key ? COLORS.primary + "22" : "transparent", borderWidth: 1, borderColor: gestorTab === tab.key ? COLORS.primary : COLORS.border }}
                 onPress={() => setGestorTab(tab.key)}
               >
                 <Text style={{ fontSize: 11, fontWeight: "700", color: gestorTab === tab.key ? COLORS.primary : COLORS.textSecondary }}>{tab.label}</Text>
@@ -597,13 +597,13 @@ export default function CalendarScreen() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <View style={{ flexDirection: "row", gap: 4, alignItems: "center" }}>
                 <Text style={{ fontSize: 10, fontWeight: "700", color: COLORS.textSecondary }}>Año:</Text>
-                <TouchableOpacity style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, backgroundColor: !gestorYear ? COLORS.primary + "22" : "transparent", borderWidth: 1, borderColor: !gestorYear ? COLORS.primary : COLORS.border }} onPress={() => { setGestorYear(""); setGestorMonth(""); }}>
+                <TouchableOpacity style={{ paddingHorizontal: ios.spacing.sm, paddingVertical: 3, borderRadius: ios.radius.sm, backgroundColor: !gestorYear ? COLORS.primary + "22" : "transparent", borderWidth: 1, borderColor: !gestorYear ? COLORS.primary : COLORS.border }} onPress={() => { setGestorYear(""); setGestorMonth(""); }}>
                   <Text style={{ fontSize: 10, fontWeight: "700", color: !gestorYear ? COLORS.primary : COLORS.textSecondary }}>Todos</Text>
                 </TouchableOpacity>
                 {Array.from({ length: new Date().getFullYear() - 2021 }, (_, i) => {
                   const y = String(2022 + i);
                   return (
-                    <TouchableOpacity key={y} style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, backgroundColor: gestorYear === y ? COLORS.primary + "22" : "transparent", borderWidth: 1, borderColor: gestorYear === y ? COLORS.primary : COLORS.border }} onPress={() => { setGestorYear(gestorYear === y ? "" : y); setGestorMonth(""); }}>
+                    <TouchableOpacity key={y} style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: ios.radius.sm, backgroundColor: gestorYear === y ? COLORS.primary + "22" : "transparent", borderWidth: 1, borderColor: gestorYear === y ? COLORS.primary : COLORS.border }} onPress={() => { setGestorYear(gestorYear === y ? "" : y); setGestorMonth(""); }}>
                       <Text style={{ fontSize: 10, fontWeight: "700", color: gestorYear === y ? COLORS.primary : COLORS.textSecondary }}>{y}</Text>
                     </TouchableOpacity>
                   );
@@ -614,14 +614,14 @@ export default function CalendarScreen() {
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={{ flexDirection: "row", gap: 4, alignItems: "center" }}>
                   <Text style={{ fontSize: 10, fontWeight: "700", color: COLORS.textSecondary }}>Mes:</Text>
-                  <TouchableOpacity style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, backgroundColor: !gestorMonth ? COLORS.primary + "22" : "transparent", borderWidth: 1, borderColor: !gestorMonth ? COLORS.primary : COLORS.border }} onPress={() => setGestorMonth("")}>
+                  <TouchableOpacity style={{ paddingHorizontal: ios.spacing.sm, paddingVertical: 3, borderRadius: ios.radius.sm, backgroundColor: !gestorMonth ? COLORS.primary + "22" : "transparent", borderWidth: 1, borderColor: !gestorMonth ? COLORS.primary : COLORS.border }} onPress={() => setGestorMonth("")}>
                     <Text style={{ fontSize: 10, fontWeight: "700", color: !gestorMonth ? COLORS.primary : COLORS.textSecondary }}>Todos</Text>
                   </TouchableOpacity>
                   {Array.from({ length: 12 }, (_, i) => {
                     const m = String(i + 1).padStart(2, "0");
                     const label = new Date(2024, i).toLocaleDateString("es-ES", { month: "short" });
                     return (
-                      <TouchableOpacity key={m} style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, backgroundColor: gestorMonth === m ? COLORS.primary + "22" : "transparent", borderWidth: 1, borderColor: gestorMonth === m ? COLORS.primary : COLORS.border }} onPress={() => setGestorMonth(gestorMonth === m ? "" : m)}>
+                      <TouchableOpacity key={m} style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: ios.radius.sm, backgroundColor: gestorMonth === m ? COLORS.primary + "22" : "transparent", borderWidth: 1, borderColor: gestorMonth === m ? COLORS.primary : COLORS.border }} onPress={() => setGestorMonth(gestorMonth === m ? "" : m)}>
                         <Text style={{ fontSize: 10, fontWeight: "700", color: gestorMonth === m ? COLORS.primary : COLORS.textSecondary }}>{label}</Text>
                       </TouchableOpacity>
                     );
@@ -644,32 +644,34 @@ export default function CalendarScreen() {
               const m = item.material;
               const isGestor = true;
               return (
-                <View style={{ flexDirection: "row", alignItems: "center", padding: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border, gap: 8 }}>
-                  <TouchableOpacity style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 8 }} onPress={() => openTappedEvent(item)}>
-                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: item.status === "completed" ? (theme === "dark" ? "#34D399" : "#10B981") : item.status === "pending_completion" ? (theme === "dark" ? "#FBBF24" : "#F59E0B") : COLORS.primary }} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 13, fontWeight: "700", color: COLORS.text }} numberOfLines={1}>{item.title}</Text>
-                      <Text style={{ fontSize: 11, color: COLORS.textSecondary }}>
+                <View style={{ flexDirection: "row", alignItems: "center", padding: ios.spacing.md, marginHorizontal: 8, marginBottom: 8, borderRadius: ios.radius.card, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, gap: 10, ...ios.shadow.card as any }}>
+                  <TouchableOpacity style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10 }} onPress={() => openTappedEvent(item)}>
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: item.status === "completed" ? COLORS.syncedText : item.status === "pending_completion" ? COLORS.pendingText : COLORS.primary }} />
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={{ fontSize: 14, fontWeight: "700", color: COLORS.text, letterSpacing: -0.2 }} numberOfLines={1}>{item.title}</Text>
+                      <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>
                         {new Date(item.start_at).toLocaleDateString("es-ES")} · {m ? `${m.materiales || ""} — ${m.cliente || ""}` : "Sin proyecto"}
                         {m?.project_status ? ` [${m.project_status}]` : ""}
                       </Text>
-                      {item.seguimiento ? <Text style={{ fontSize: 10, color: COLORS.textDisabled }} numberOfLines={1}>📝 {item.seguimiento}</Text> : null}
+                      {item.seguimiento ? <Text style={{ fontSize: 11, color: COLORS.textDisabled }} numberOfLines={1}>📝 {item.seguimiento}</Text> : null}
                     </View>
                   </TouchableOpacity>
-                  <View style={{ alignItems: "flex-end", gap: 2 }}>
+                  <View style={{ alignItems: "flex-end", gap: 4 }}>
                     <TouchableOpacity
-                      style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, minWidth: 110, flexDirection: "row", alignItems: "center", gap: 4 }}
+                      style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: ios.radius.sm, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, flexDirection: "row", alignItems: "center", gap: 4 }}
                       onPress={() => setGestorOpenFor(gestorOpenFor === item.id ? null : item.id)}
                     >
                       <Text style={{ fontSize: 11, fontWeight: "600", color: COLORS.text }}>
                         {(item as any).gestor_list === "pendiente_reagendar" ? "Pend. reag." : (item as any).gestor_list === "pendiente_revisar" ? "Pend. rev." : (item as any).gestor_list === "archivados" ? "Terminados" : "General"}
                       </Text>
-                      <Ionicons name={gestorOpenFor === item.id ? "chevron-up" : "chevron-down"} size={12} color={COLORS.textSecondary} />
+                      <Ionicons name={gestorOpenFor === item.id ? "chevron-up" : "chevron-down"} size={11} color={COLORS.textSecondary} />
                     </TouchableOpacity>
-                    <Text style={{ fontSize: 10, color: COLORS.textDisabled }}>{new Date(item.updated_at || item.start_at).toLocaleDateString("es-ES")}</Text>
-                    <Text style={{ fontSize: 10, fontWeight: "600", color: item.status === "completed" ? (theme === "dark" ? "#34D399" : "#10B981") : item.status === "pending_completion" ? (theme === "dark" ? "#FBBF24" : "#F59E0B") : COLORS.textSecondary }}>
-                      {item.status === "completed" ? "Terminado" : item.status === "pending_completion" ? "Pend. terminar" : "En curso"}
-                    </Text>
+                    <View style={{ alignItems: "flex-end", gap: 1 }}>
+                      <Text style={{ fontSize: 9, color: COLORS.textDisabled }}>{new Date(item.updated_at || item.start_at).toLocaleDateString("es-ES")}</Text>
+                      <Text style={{ fontSize: 10, fontWeight: "600", color: item.status === "completed" ? COLORS.syncedText : item.status === "pending_completion" ? COLORS.pendingText : COLORS.textSecondary }}>
+                        {item.status === "completed" ? "Terminado" : item.status === "pending_completion" ? "Pend. terminar" : "En curso"}
+                      </Text>
+                    </View>
                   </View>
                 </View>
               );
@@ -678,7 +680,7 @@ export default function CalendarScreen() {
           {/* Overlay del menú de cambio de lista */}
           {gestorOpenFor && (
             <TouchableOpacity style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 50 }} activeOpacity={1} onPress={() => setGestorOpenFor(null)}>
-              <View style={{ position: "absolute", top: "30%", left: "50%", transform: "translateX(-50%)" as any, backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, overflow: "hidden", ...(Platform.OS === "web" ? { boxShadow: "0 4px 16px rgba(0,0,0,0.2)" } as any : {}), zIndex: 60 }}>
+              <View style={{ position: "absolute", top: "30%", left: "50%", transform: "translateX(-50%)" as any, backgroundColor: COLORS.surface, borderRadius: ios.radius.lg, borderWidth: 1, borderColor: COLORS.border, overflow: "hidden", zIndex: 60, ...ios.shadow.elevated as any }}>
                 <Text style={{ padding: 10, fontSize: 12, fontWeight: "800", color: COLORS.textSecondary, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>Mover a...</Text>
                 {[
                   { key: "general", label: "General" },
@@ -708,6 +710,19 @@ export default function CalendarScreen() {
             </TouchableOpacity>
           )}
         </View>
+      ) : view === "multi" ? (
+        <MultiView
+          weekStart={mondayOf(anchor)}
+          events={filteredEvents}
+          isAdmin={isAdmin}
+          now={now}
+          onCreate={(day, startMin, endMin) => setCreateRange({ day, startMin, endMin })}
+          onTapEvent={openTappedEvent}
+          onMoveEvent={moveEvent}
+          onSelectDay={(d) => { setAnchor(d); setView("day"); }}
+          users={allUsers}
+          disabledUserIds={disabledUserIds}
+        />
       ) : (
         <WeekView
           weekStart={mondayOf(anchor)}
@@ -764,7 +779,7 @@ export default function CalendarScreen() {
                       loadNotifications();
                     }}
                   >
-                    <Text style={{ color: COLORS.primary, fontWeight: "800", fontSize: 12 }}>Marcar todas</Text>
+                    <Text style={{ color: COLORS.primary, fontWeight: "600", fontSize: 12 }}>Marcar todas</Text>
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity onPress={() => setShowNotifications(false)}>
@@ -782,7 +797,7 @@ export default function CalendarScreen() {
                 {notifications.map((n) => {
                   const isCompleted = n.type === "event_completed";
                   const isPending = n.type === "event_pending_completion";
-                  const accent = isPending ? (theme === "dark" ? "#FBBF24" : "#F59E0B") : isCompleted ? (theme === "dark" ? "#34D399" : "#10B981") : COLORS.primary;
+                  const accent = isPending ? COLORS.pendingText : isCompleted ? COLORS.syncedText : COLORS.primary;
                   return (
                     <TouchableOpacity
                       key={n.id}
@@ -867,7 +882,7 @@ function MonthView({
                 onPress={() => onSelectDay(date)}
                 activeOpacity={0.7}
               >
-                <Text style={[s.monthDayNum, isToday && { color: COLORS.primary, fontWeight: "900" }]}>
+                <Text style={[s.monthDayNum, isToday && { color: COLORS.primary, fontWeight: "700" }]}>
                   {date.getDate()}
                 </Text>
                 <View style={s.monthDots}>
@@ -902,7 +917,6 @@ function GuardBar({
   onDeleteGuard?: (id: string) => Promise<void>;
 }) {
   const [pickerDate, setPickerDate] = useState<string | null>(null);
-  const { theme: guardTheme } = useTheme();
   const guardsByDay: Record<string, any[]> = useMemo(() => {
     const map: Record<string, any[]> = {};
     for (const g of guards || []) {
@@ -918,8 +932,8 @@ function GuardBar({
       style={{
         flexDirection: "row",
         backgroundColor: COLORS.pillOrangeBg,
-        borderTopWidth: 1, borderBottomWidth: 1,
-        borderColor: guardTheme === "dark" ? "#78350F" : "#FED7AA",
+        borderTopWidth: ios.hairline, borderBottomWidth: ios.hairline,
+        borderColor: COLORS.border,
         paddingVertical: 4,
         minHeight: 40,
       }}
@@ -952,8 +966,8 @@ function GuardBar({
             style={{
               flex: 1, marginHorizontal: 1, paddingHorizontal: 4, paddingVertical: 2,
               borderRadius: 6,
-              borderWidth: 1, borderColor: current ? (current.user_color || COLORS.accent) : (guardTheme === "dark" ? "#78350F" : "#FED7AA"),
-              backgroundColor: current ? (current.user_color || COLORS.accent) : (guardTheme === "dark" ? "rgba(17,24,39,0.6)" : "rgba(255,255,255,0.6)"),
+              borderWidth: 1, borderColor: current ? (current.user_color || COLORS.accent) : COLORS.border,
+              backgroundColor: current ? (current.user_color || COLORS.accent) : "transparent",
               flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4,
               minHeight: 28,
             }}
@@ -989,9 +1003,9 @@ function GuardBar({
               Asignar técnico de guardia
             </Text>
             {pickerDate && guardsByDay[pickerDate]?.[0] && (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8, padding: 8, backgroundColor: COLORS.pillOrangeBg, borderRadius: 8, borderWidth: 1, borderColor: guardTheme === "dark" ? "#78350F" : "#FED7AA" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8, padding: 8, backgroundColor: COLORS.pillOrangeBg, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border }}>
                 <Ionicons name="information-circle" size={16} color={COLORS.accent} />
-                <Text style={{ fontSize: 12, color: guardTheme === "dark" ? "#FDE68A" : "#9A3412", flex: 1 }} numberOfLines={2}>
+                <Text style={{ fontSize: 12, color: COLORS.pillOrangeText, flex: 1 }} numberOfLines={2}>
                   Actualmente: <Text style={{ fontWeight: "800" }}>{guardsByDay[pickerDate][0].user_name}</Text>. Selecciona otro para reemplazar.
                 </Text>
               </View>
@@ -1015,7 +1029,7 @@ function GuardBar({
                     flexDirection: "row", alignItems: "center", gap: 10,
                     paddingVertical: 10, paddingHorizontal: 8, borderRadius: 8,
                     borderBottomWidth: 1, borderBottomColor: COLORS.border,
-                    backgroundColor: isCurrent ? (guardTheme === "dark" ? "#064E3B" : "#F0FDF4") : "transparent",
+                    backgroundColor: isCurrent ? COLORS.syncedBg : "transparent",
                     opacity: isCurrent ? 0.7 : 1,
                   }}
                 >
@@ -1030,8 +1044,8 @@ function GuardBar({
                   </View>
                   {isCurrent ? (
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-                      <Ionicons name="checkmark-circle" size={20} color={guardTheme === "dark" ? "#34D399" : "#10B981"} />
-                      <Text style={{ fontSize: 11, fontWeight: "700", color: guardTheme === "dark" ? "#34D399" : "#10B981" }}>actual</Text>
+                      <Ionicons name="checkmark-circle" size={20} color={COLORS.syncedText} />
+                      <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.syncedText }}>actual</Text>
                     </View>
                   ) : (
                     <Ionicons name="arrow-forward-circle" size={22} color={COLORS.primary} />
@@ -1051,9 +1065,9 @@ function GuardBar({
                     await onDeleteGuard(g.id);
                     setPickerDate(null);
                   }}
-                  style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: COLORS.errorBg, alignItems: "center", borderWidth: 1, borderColor: guardTheme === "dark" ? "#7F1D1D" : "#FECACA" }}
+                  style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: COLORS.errorBg, alignItems: "center", borderWidth: 1, borderColor: COLORS.border }}
                 >
-                  <Text style={{ fontSize: 14, fontWeight: "700", color: guardTheme === "dark" ? "#FCA5A5" : "#DC2626" }}>Quitar guardia</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: COLORS.errorText }}>Quitar guardia</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity
@@ -1105,7 +1119,7 @@ function WeekView({
               onPress={() => onSelectDay && onSelectDay(d)}
             >
               <Text style={[s.dayLabel, isToday && { color: COLORS.primary }]}>{DAY_LABELS[i]}</Text>
-              <Text style={[s.dayNum, isToday && { color: COLORS.primary, fontWeight: "900" }]}>{d.getDate()}</Text>
+              <Text style={[s.dayNum, isToday && { color: COLORS.primary, fontWeight: "700" }]}>{d.getDate()}</Text>
             </TouchableOpacity>
           );
         })}
@@ -1190,12 +1204,14 @@ function MultiView({
         ) : visibleUsers.map((user) => {
           const thisUserEvents = events.filter((ev) => (ev.assigned_user_ids || []).includes(user.id));
           return (
-            <View key={user.id} style={{ width: 320, borderRightWidth: 1, borderRightColor: COLORS.border }}>
+            <View key={user.id} style={{ width: 340, borderRightWidth: 1, borderRightColor: COLORS.border }}>
               {/* User header */}
-              <View style={{ paddingHorizontal: 8, paddingVertical: 6, backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: user.color || COLORS.primary }} />
-                  <Text style={{ fontSize: 13, fontWeight: "700", color: COLORS.text }} numberOfLines={1}>{user.name || user.email}</Text>
+              <View style={{ paddingHorizontal: ios.spacing.md, paddingVertical: ios.spacing.sm, backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border, borderRightWidth: 0 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: (user.color || COLORS.primary) + "22", alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: user.color || COLORS.primary }}>{(user.name || user.email || "?").charAt(0).toUpperCase()}</Text>
+                  </View>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: COLORS.text }} numberOfLines={1}>{user.name || user.email}</Text>
                 </View>
               </View>
               {/* Week column for this user */}
@@ -1362,7 +1378,6 @@ function DayColumn({
   weekDays?: Date[]; colW?: number; dayIndex?: number;
 }) {
   const s = useThemedStyles(useS);
-  const { theme: dcTheme } = useTheme();
   const [dragRange, setDragRange] = useState<{ s: number; e: number } | null>(null);
   const startRef = useRef<number>(0);
   const [dragEvent, setDragEvent] = useState<{ id: string; top: number; height: number } | null>(null);
@@ -1402,7 +1417,7 @@ function DayColumn({
   const columnLayout = useMemo(() => layoutEventColumns(events), [events]);
 
   return (
-    <View style={{ flex: 1, height: HOURS * HOUR_H, position: "relative", borderLeftWidth: 1, borderLeftColor: COLORS.border, backgroundColor: isToday ? (dcTheme === "dark" ? "rgba(59,130,246,0.04)" : "rgba(30,136,229,0.04)") : "transparent" }}>
+    <View style={{ flex: 1, height: HOURS * HOUR_H, position: "relative", borderLeftWidth: ios.hairline, borderLeftColor: COLORS.border, backgroundColor: isToday ? COLORS.primarySoft : "transparent" }}>
       <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} {...pan.panHandlers} />
       {Array.from({ length: HOURS + 1 }).map((_, i) => (
         <View key={i} style={[s.hourLine, { top: i * HOUR_H }]} />
@@ -1458,8 +1473,6 @@ function DraggableEvent({
   layout?: { col: number; total: number; span: number };
 }) {
   const s = useThemedStyles(useS);
-  const { theme } = useTheme();
-  const eventTextColor = theme === "dark" ? "#FFFFFF" : COLORS.text;
   const start = new Date(event.start_at);
   const end = new Date(event.end_at);
   const initTop = yFromDate(start);
@@ -1715,8 +1728,7 @@ function DraggableEvent({
     ? event.assigned_users[0].color
     : null;
   const baseColor = userColor || (hasMaterial ? COLORS.primary : "#6366F1");
-  // Compute a light tint from the user color (use 22 alpha hex = ~13% opacity)
-  const bgTint = baseColor + "CC";
+  const bgTint = baseColor + "18";
   // Horizontal overlap layout (side-by-side + expand-to-fill + right gap).
   // Leave ~22% empty on the right of the RIGHTMOST event of each cluster so
   // the user can easily click&drag there to create a new overlapping event.
@@ -1754,14 +1766,15 @@ function DraggableEvent({
       <View
         onLayout={(e) => setBoxWidth(e.nativeEvent.layout.width)}
         style={{
-          flex: 1, borderRadius: 6, padding: 4, overflow: "hidden",
+          flex: 1, borderRadius: ios.radius.sm, padding: 6, overflow: "hidden",
           borderLeftWidth: 3,
           backgroundColor: isCompleted ? COLORS.statusCompletedBg : bgTint,
-          borderLeftColor: isPending ? (theme === "dark" ? "#FBBF24" : "#F59E0B") : baseColor,
+          borderLeftColor: isPending ? COLORS.pendingText : baseColor,
+          borderWidth: ios.hairline, borderColor: COLORS.border,
           opacity: mode === "move" ? 0.85 : (isCompleted ? 0.55 : 1),
           ...(isPending ? Platform.select<any>({
-            web: { boxShadow: `0 0 0 2px ${theme === "dark" ? "rgba(251,191,36,0.35)" : "rgba(245,158,11,0.35)"}, 0 4px 16px ${theme === "dark" ? "rgba(251,191,36,0.25)" : "rgba(245,158,11,0.25)"}` },
-            default: { shadowColor: theme === "dark" ? "#FBBF24" : "#F59E0B", shadowOpacity: 0.45, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } },
+            web: { boxShadow: `0 0 0 1px ${COLORS.pendingText}33, 0 2px 8px ${COLORS.pendingText}22` },
+            default: { shadowColor: COLORS.pendingText, shadowOpacity: 0.25, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
           }) : {}),
           // @ts-ignore web-only cursor hint
           cursor: isAdmin ? (mode === "idle" ? "grab" : "grabbing") : "pointer",
@@ -1773,7 +1786,7 @@ function DraggableEvent({
         {(isCompleted || isPending) && (
           <View pointerEvents="none" style={[
             s.statusBadge,
-            { backgroundColor: isCompleted ? COLORS.statusCompletedFg : (theme === "dark" ? "#FBBF24" : "#F59E0B") },
+            { backgroundColor: isCompleted ? COLORS.statusCompletedFg : COLORS.pendingText },
           ]}>
             <Ionicons
               name={isCompleted ? "checkmark-done" : "alert-circle"}
@@ -1785,13 +1798,13 @@ function DraggableEvent({
           <View pointerEvents="none" style={{ padding: 2, paddingRight: (onCopy && boxWidth >= 90) ? 56 : 2 }}>
           {/* Top: assigned user(s) */}
           {event.assigned_users && event.assigned_users.length > 0 && (
-            <Text style={[s.eventAssignee, { color: eventTextColor }]} numberOfLines={1}>
+            <Text style={[s.eventAssignee, { color: COLORS.text }]} numberOfLines={1}>
               👤 {event.assigned_users.map((u) => u.name || u.email.split("@")[0]).join(", ")}
             </Text>
           )}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
             {isRecurring && <Ionicons name="repeat" size={10} color={COLORS.text} />}
-            <Text style={[s.eventTitle, { color: eventTextColor }]} numberOfLines={compact ? 1 : 2}>{event.title}</Text>
+            <Text style={[s.eventTitle, { color: COLORS.text }]} numberOfLines={compact ? 1 : 2}>{event.title}</Text>
           </View>
           <Text style={s.eventTime}>{fmtTime(new Date(event.start_at))} - {fmtTime(new Date(event.end_at))}</Text>
           {!compact && event.material && event.material.ubicacion ? (
@@ -1810,13 +1823,13 @@ function DraggableEvent({
       ) : (
         <TouchableOpacity onPress={onTap} activeOpacity={0.8} style={{ padding: 2 }}>
           {event.assigned_users && event.assigned_users.length > 0 && (
-            <Text style={[s.eventAssignee, { color: eventTextColor }]} numberOfLines={1}>
+            <Text style={[s.eventAssignee, { color: COLORS.text }]} numberOfLines={1}>
               👤 {event.assigned_users.map((u) => u.name || u.email.split("@")[0]).join(", ")}
             </Text>
           )}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
             {isRecurring && <Ionicons name="repeat" size={10} color={COLORS.text} />}
-            <Text style={[s.eventTitle, { color: eventTextColor }]} numberOfLines={compact ? 1 : 2}>{event.title}</Text>
+            <Text style={[s.eventTitle, { color: COLORS.text }]} numberOfLines={compact ? 1 : 2}>{event.title}</Text>
           </View>
           <Text style={s.eventTime}>{fmtTime(new Date(event.start_at))} - {fmtTime(new Date(event.end_at))}</Text>
           {!compact && event.material && event.material.ubicacion ? (
@@ -1866,7 +1879,7 @@ function DraggableEvent({
               <TouchableOpacity
                 onPress={() => shareWhatsApp(event)}
                 style={{
-                  width: btnSize, height: btnSize, borderRadius: 4,
+                  width: btnSize, height: btnSize, borderRadius: 6,
                   backgroundColor: "#25D366",
                   alignItems: "center", justifyContent: "center",
                 }}
@@ -1877,14 +1890,14 @@ function DraggableEvent({
               <TouchableOpacity
                 onPress={() => onCopy(event)}
                 style={{
-                  width: btnSize, height: btnSize, borderRadius: 4,
-                  backgroundColor: theme === "dark" ? "rgba(17,24,39,0.95)" : "rgba(255,255,255,0.95)",
+                  width: btnSize, height: btnSize, borderRadius: 6,
+                  backgroundColor: COLORS.surface,
                   alignItems: "center", justifyContent: "center",
                   borderWidth: 1, borderColor: COLORS.border,
                 }}
                 hitSlop={{ top: 6, right: 6, bottom: 6, left: 6 }}
               >
-                <Ionicons name="copy-outline" size={iconSize} color={eventTextColor} />
+                <Ionicons name="copy-outline" size={iconSize} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
           );
@@ -1895,25 +1908,26 @@ function DraggableEvent({
               onPress={() => shareWhatsApp(event)}
               style={{
                 position: "absolute", top: 2, right: 30,
-                width: 24, height: 24, borderRadius: 4,
+                width: 22, height: 22, borderRadius: 6,
                 backgroundColor: "#25D366",
                 alignItems: "center", justifyContent: "center", zIndex: 30,
               }}
               hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
             >
-              <Ionicons name="logo-whatsapp" size={14} color="#fff" />
+              <Ionicons name="logo-whatsapp" size={12} color="#fff" />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => onCopy(event)}
               style={{
                 position: "absolute", top: 2, right: 2,
-                width: 24, height: 24, borderRadius: 4,
-                backgroundColor: theme === "dark" ? "rgba(17,24,39,0.9)" : "rgba(255,255,255,0.9)",
+                width: 22, height: 22, borderRadius: 6,
+                backgroundColor: COLORS.surface,
                 alignItems: "center", justifyContent: "center", zIndex: 30,
+                borderWidth: 1, borderColor: COLORS.border,
               }}
               hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
             >
-              <Ionicons name="copy-outline" size={14} color={eventTextColor} />
+              <Ionicons name="copy-outline" size={12} color={COLORS.textSecondary} />
             </TouchableOpacity>
           </>
         );
@@ -2080,12 +2094,12 @@ function CreateEventModal({
               </View>
               <View style={s.modeRow}>
                 <TouchableOpacity testID="mode-texto" style={[s.modeChip, mode === "texto" && s.modeChipActive]} onPress={() => setMode("texto")}>
-                  <Ionicons name="create-outline" size={18} color={mode === "texto" ? "#fff" : COLORS.navy} />
-                  <Text style={[s.modeChipText, mode === "texto" && { color: "#fff" }]}>Texto libre</Text>
+                  <Ionicons name="create-outline" size={16} color={mode === "texto" ? COLORS.primary : COLORS.textSecondary} />
+                  <Text style={[s.modeChipText, mode === "texto" && { color: COLORS.primary }]}>Texto libre</Text>
                 </TouchableOpacity>
                 <TouchableOpacity testID="mode-proyecto" style={[s.modeChip, mode === "proyecto" && s.modeChipActive]} onPress={() => { setMode("proyecto"); loadMateriales(); }}>
-                  <Ionicons name="briefcase-outline" size={18} color={mode === "proyecto" ? "#fff" : COLORS.navy} />
-                  <Text style={[s.modeChipText, mode === "proyecto" && { color: "#fff" }]}>Desde proyecto</Text>
+                  <Ionicons name="briefcase-outline" size={16} color={mode === "proyecto" ? COLORS.primary : COLORS.textSecondary} />
+                  <Text style={[s.modeChipText, mode === "proyecto" && { color: COLORS.primary }]}>Desde proyecto</Text>
                 </TouchableOpacity>
               </View>
               {mode === "texto" ? (
@@ -2199,10 +2213,10 @@ function CreateEventModal({
                   {[0.5,1,1.5,2,2.5,3,3.5,4,4.5,5,5.5,6,6.5,7,7.5,8].map((h) => (
                     <TouchableOpacity
                       key={h}
-                      style={[s.recChip, hours === String(h) && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}
+                      style={[s.recChip, hours === String(h) && s.recChipActive]}
                       onPress={() => { setHours(String(h)); setShowHours(false); }}
                     >
-                      <Text style={[s.recChipText, hours === String(h) && { color: "#fff" }]}>{h}h</Text>
+                      <Text style={[s.recChipText, hours === String(h) && { color: COLORS.primary }]}>{h}h</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -2269,7 +2283,7 @@ function CreateEventModal({
                     style={[s.recChip, recurrence === v && s.recChipActive]}
                     onPress={() => setRecurrence(v)}
                   >
-                    <Text style={[s.recChipText, recurrence === v && { color: "#fff" }]}>{l}</Text>
+                    <Text style={[s.recChipText, recurrence === v && { color: COLORS.primary }]}>{l}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -2303,7 +2317,6 @@ function EventDetailsModal({
   event, isAdmin, onClose, onChanged, onCopy,
 }: { event: EventT; isAdmin: boolean; onClose: () => void; onChanged: () => void; onCopy: (e: EventT) => void }) {
   const s = useThemedStyles(useS);
-  const { theme: edTheme } = useTheme();
   const router = useRouter();
   const [start, setStart] = useState<Date>(new Date(event.start_at));
   const [end, setEnd] = useState<Date>(new Date(event.end_at));
@@ -2577,7 +2590,8 @@ function EventDetailsModal({
         file_base64: data.base64,
         mime_type: data.mime_type,
       });
-      // Navigate to the plan editor
+      // Cerrar el modal antes de navegar al editor de planos
+      onClose();
       // @ts-ignore
       const router = require("expo-router").router;
       router.push(`/planos/${plan.id}`);
@@ -3011,10 +3025,10 @@ function EventDetailsModal({
                     {[0.5,1,1.5,2,2.5,3,3.5,4,4.5,5,5.5,6,6.5,7,7.5,8].map((h) => (
                       <TouchableOpacity
                         key={h}
-                        style={[s.recChip, eventHours === String(h) && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}
-                        onPress={() => { saveHours(String(h)); setShowEventHours(false); }}
+                      style={[s.recChip, eventHours === String(h) && s.recChipActive]}
+                      onPress={() => { saveHours(String(h)); setShowEventHours(false); }}
                       >
-                        <Text style={[s.recChipText, eventHours === String(h) && { color: "#fff" }]}>{h}h</Text>
+                        <Text style={[s.recChipText, eventHours === String(h) && { color: COLORS.primary }]}>{h}h</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -3065,19 +3079,19 @@ function EventDetailsModal({
                 testID="status-completed"
                 style={[
                   s.statusChip,
-                  status === "completed" && { backgroundColor: edTheme === "dark" ? "#065F46" : "#10B981", borderColor: edTheme === "dark" ? "#065F46" : "#10B981" },
+                  status === "completed" && { backgroundColor: COLORS.syncedText, borderColor: COLORS.syncedText },
                 ]}
                 onPress={() => saveStatus("completed")}
                 disabled={saving}
               >
-                <Ionicons name="checkmark-done" size={14} color={status === "completed" ? "#fff" : (edTheme === "dark" ? "#34D399" : "#10B981")} />
+                <Ionicons name="checkmark-done" size={14} color={status === "completed" ? "#fff" : COLORS.syncedText} />
                 <Text style={[s.statusChipText, status === "completed" && { color: "#fff" }]}>Proyecto terminado</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 testID="status-pending"
                 style={[
                   s.statusChip,
-                  status === "pending_completion" && { backgroundColor: edTheme === "dark" ? "#92400E" : "#F59E0B", borderColor: edTheme === "dark" ? "#92400E" : "#F59E0B" },
+                  status === "pending_completion" && { backgroundColor: COLORS.pendingText, borderColor: COLORS.pendingText },
                 ]}
                 onPress={() => {
                   if (!seguimiento.trim()) {
@@ -3093,7 +3107,7 @@ function EventDetailsModal({
                 }}
                 disabled={saving}
               >
-                <Ionicons name="alert-circle-outline" size={14} color={status === "pending_completion" ? "#fff" : (edTheme === "dark" ? "#FBBF24" : "#F59E0B")} />
+                <Ionicons name="alert-circle-outline" size={14} color={status === "pending_completion" ? "#fff" : COLORS.pendingText} />
                 <Text style={[s.statusChipText, status === "pending_completion" && { color: "#fff" }]}>Pendiente de terminar</Text>
               </TouchableOpacity>
             </View>
@@ -3104,7 +3118,7 @@ function EventDetailsModal({
                 <Text style={s.mLabel}>Planos vinculados</Text>
                 <View style={{ gap: 4 }}>
                   {linkedPlans.map((plan: any) => (
-                    <TouchableOpacity key={plan.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 8, backgroundColor: COLORS.bg, borderRadius: 8 }} onPress={() => router.push(`/planos/${plan.id}`)}>
+                    <TouchableOpacity key={plan.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 8, backgroundColor: COLORS.bg, borderRadius: 8 }} onPress={() => { onClose(); router.push(`/planos/${plan.id}`); }}>
                       <Ionicons name="map" size={18} color={COLORS.primary} />
                       <Text style={{ flex: 1, fontSize: 12, fontWeight: "600", color: COLORS.text }} numberOfLines={1}>{plan.title}</Text>
                     </TouchableOpacity>
@@ -3191,7 +3205,7 @@ function EventDetailsModal({
                   <>
                     <TouchableOpacity
                       testID="btn-cancel-edit"
-                      style={[s.primary, { flex: 1, backgroundColor: COLORS.bg, borderWidth: 2, borderColor: COLORS.borderInput }]}
+                      style={[s.primary, { flex: 1, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border }]}
                       onPress={() => {
                         setEditing(false);
                         setTitle(event.title); setDescription(event.description || "");
@@ -3233,59 +3247,56 @@ const useS = () =>
   root: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: "row", alignItems: "center",
-    paddingHorizontal: 4, paddingVertical: 8, backgroundColor: COLORS.surface,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    paddingHorizontal: ios.spacing.md, paddingVertical: ios.spacing.sm, backgroundColor: COLORS.surface,
+    borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border,
   },
   iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-  headerTitle: { fontSize: 18, fontWeight: "800", color: COLORS.text },
-  headerSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2, textTransform: "capitalize" },
+  headerTitle: { fontSize: 18, fontWeight: "700", color: COLORS.text, letterSpacing: -0.3 },
+  headerSub: { fontSize: 12, color: COLORS.textDisabled, marginTop: 2, textTransform: "capitalize" },
   viewSelector: {
-    flexDirection: "row", gap: 6, padding: 8, backgroundColor: COLORS.surface,
+    flexDirection: "row", gap: 6, paddingHorizontal: ios.spacing.md, paddingVertical: ios.spacing.xs, backgroundColor: COLORS.surface,
+    borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border,
   },
   viewChip: {
-    flex: 1, height: 40, borderRadius: 10, backgroundColor: COLORS.bg,
+    flex: 1, height: 40, borderRadius: ios.radius.pill, backgroundColor: COLORS.bg,
     alignItems: "center", justifyContent: "center",
-    flexDirection: "row", gap: 6,
+    flexDirection: "row", gap: 6, paddingHorizontal: ios.spacing.sm,
   },
-  viewChipActive: { backgroundColor: COLORS.primary },
-  viewChipText: { fontSize: 13, fontWeight: "800", color: COLORS.navy, letterSpacing: 0.3 },
+  viewChipActive: { backgroundColor: COLORS.primarySoft },
+  viewChipText: { fontSize: 13, fontWeight: "600", color: COLORS.textSecondary, letterSpacing: 0.3 },
   navRow: {
-    flexDirection: "row", gap: 8, paddingHorizontal: 8, paddingBottom: 8, backgroundColor: COLORS.surface,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border, position: "relative", zIndex: 100,
+    flexDirection: "row", gap: 8, paddingHorizontal: ios.spacing.sm, paddingBottom: 8, backgroundColor: COLORS.surface,
+    borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border, position: "relative", zIndex: 100,
   },
   navBtn: {
-    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-    backgroundColor: COLORS.bg, borderRadius: 8, paddingVertical: 8, gap: 4,
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    backgroundColor: COLORS.bg, borderRadius: ios.radius.pill, paddingVertical: ios.spacing.sm, paddingHorizontal: ios.spacing.md, gap: 4,
     borderWidth: 1, borderColor: COLORS.border,
   },
   userFilterDropdown: {
     position: "fixed" as any,
     top: 220,
-    right: 16,
+    right: ios.spacing.lg,
     minWidth: 260,
     backgroundColor: COLORS.surface,
-    borderRadius: 10,
+    borderRadius: ios.radius.md,
     borderWidth: 1,
     borderColor: COLORS.border,
-    padding: 8,
+    padding: ios.spacing.sm,
     zIndex: 9999,
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
+    ...ios.shadow.elevated,
   },
   userFilterRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingVertical: 7,
-    paddingHorizontal: 6,
-    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: ios.radius.sm,
   },
   checkSmall: {
     width: 18, height: 18, borderRadius: 4,
-    borderWidth: 2, borderColor: COLORS.borderInput,
+    borderWidth: 1.5, borderColor: COLORS.border,
     alignItems: "center", justifyContent: "center",
     backgroundColor: COLORS.surface,
   },
@@ -3293,41 +3304,41 @@ const useS = () =>
     flex: 1,
     paddingVertical: 6,
     backgroundColor: COLORS.bg,
-    borderRadius: 6,
+    borderRadius: ios.radius.pill,
     alignItems: "center",
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  filterMiniBtnTxt: { fontSize: 12, fontWeight: "700", color: COLORS.primary },
+  filterMiniBtnTxt: { fontSize: 12, fontWeight: "600", color: COLORS.primary },
   dayHeaderRow: {
     flexDirection: "row", backgroundColor: COLORS.surface,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border,
   },
   dayHeader: {
-    flex: 1, alignItems: "center", paddingVertical: 8,
-    borderLeftWidth: 1, borderLeftColor: COLORS.border,
+    flex: 1, alignItems: "center", paddingVertical: ios.spacing.sm,
+    borderLeftWidth: ios.hairline, borderLeftColor: COLORS.border,
   },
-  dayHeaderToday: { backgroundColor: COLORS.highlightBg },
-  dayLabel: { fontSize: 11, color: COLORS.textSecondary, fontWeight: "800", letterSpacing: 1 },
-  dayNum: { fontSize: 18, fontWeight: "700", color: COLORS.text, marginTop: 2 },
-  dayNumBig: { fontSize: 34, fontWeight: "900", color: COLORS.text, marginTop: 2 },
+  dayHeaderToday: { backgroundColor: COLORS.primarySoft },
+  dayLabel: { fontSize: 10, color: COLORS.textDisabled, fontWeight: "600", letterSpacing: 0.8 },
+  dayNum: { fontSize: 18, fontWeight: "600", color: COLORS.text, marginTop: 2 },
+  dayNumBig: { fontSize: 34, fontWeight: "700", color: COLORS.text, marginTop: 2 },
   dayFullHeader: {
-    alignItems: "center", paddingVertical: 14, backgroundColor: COLORS.surface,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    alignItems: "center", paddingVertical: ios.spacing.md, backgroundColor: COLORS.surface,
+    borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border,
   },
   gridRow: { flexDirection: "row" },
-  hourLabel: { fontSize: 11, color: COLORS.textSecondary, fontWeight: "600", paddingRight: 6, textAlign: "right", marginTop: -6, marginLeft: 4 },
-  hourLine: { position: "absolute", left: 0, right: 0, height: 1, backgroundColor: COLORS.border },
-  halfHourLine: { position: "absolute", left: 0, right: 0, height: 1, backgroundColor: COLORS.border, opacity: 0.4 },
-  nowLine: { position: "absolute", left: 0, right: 0, height: 2, backgroundColor: "#EF4444", zIndex: 5 },
-  nowDot: { position: "absolute", left: -4, top: -4, width: 10, height: 10, borderRadius: 5, backgroundColor: "#EF4444" },
+  hourLabel: { fontSize: 10, color: COLORS.textDisabled, fontWeight: "500", paddingRight: 6, textAlign: "right", marginTop: -5, marginLeft: 4 },
+  hourLine: { position: "absolute", left: 0, right: 0, height: ios.hairline, backgroundColor: COLORS.border, opacity: 0.6 },
+  halfHourLine: { position: "absolute", left: 0, right: 0, height: ios.hairline, backgroundColor: COLORS.border, opacity: 0.25 },
+  nowLine: { position: "absolute", left: 0, right: 0, height: 1, backgroundColor: COLORS.primary, zIndex: 5, opacity: 0.7 },
+  nowDot: { position: "absolute", left: -3, top: -3, width: 7, height: 7, borderRadius: 3.5, backgroundColor: COLORS.primary },
   eventBox: {
-    position: "absolute", left: 2, right: 2, borderRadius: 6,
+    position: "absolute", left: 2, right: 2, borderRadius: ios.radius.sm,
     padding: 4, borderLeftWidth: 3, overflow: "hidden",
   },
   statusBadge: {
     position: "absolute", top: 3, right: 3,
-    width: 18, height: 18, borderRadius: 9,
+    width: 20, height: 20, borderRadius: 10,
     alignItems: "center", justifyContent: "center",
     zIndex: 5,
   },
@@ -3335,16 +3346,16 @@ const useS = () =>
   statusRow: { flexDirection: "row", gap: 6, flexWrap: "wrap", marginTop: 4, marginBottom: 4 },
   statusChip: {
     flexDirection: "row", alignItems: "center", gap: 5,
-    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: ios.radius.pill,
     backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
   },
-  statusChipText: { fontSize: 12, fontWeight: "800", color: COLORS.text },
+  statusChipText: { fontSize: 12, fontWeight: "600", color: COLORS.text },
   // --- Notifications bell + sheet ---
   bellBadge: {
     position: "absolute", top: 4, right: 4,
     minWidth: 16, height: 16, borderRadius: 8,
     paddingHorizontal: 4,
-    backgroundColor: "#EF4444",
+    backgroundColor: COLORS.errorText,
     borderWidth: 1.5, borderColor: COLORS.surface,
     alignItems: "center", justifyContent: "center",
   },
@@ -3354,34 +3365,35 @@ const useS = () =>
     justifyContent: "flex-end",
   },
   notifSheet: {
-    backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    backgroundColor: COLORS.surface, borderTopLeftRadius: ios.radius.xl, borderTopRightRadius: ios.radius.xl,
     maxHeight: "80%",
+    ...ios.shadow.modal,
   },
   notifHeader: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 18, paddingVertical: 16,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    paddingHorizontal: 18, paddingVertical: ios.spacing.lg,
+    borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border,
   },
-  notifTitle: { fontSize: 18, fontWeight: "900", color: COLORS.text, letterSpacing: -0.3 },
-  notifSub: { fontSize: 12, color: COLORS.textSecondary, fontWeight: "700", marginTop: 2 },
+  notifTitle: { fontSize: 18, fontWeight: "700", color: COLORS.text, letterSpacing: -0.3 },
+  notifSub: { fontSize: 12, color: COLORS.textSecondary, fontWeight: "600", marginTop: 2 },
   notifHdrBtn: {
-    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: ios.radius.pill,
     backgroundColor: COLORS.primarySoft,
   },
   notifItem: {
     flexDirection: "row", alignItems: "flex-start", gap: 10,
-    padding: 12, backgroundColor: COLORS.bg, borderRadius: 10,
+    padding: ios.spacing.md, backgroundColor: COLORS.bg, borderRadius: ios.radius.row,
     borderWidth: 1, borderColor: COLORS.border,
   },
   notifDot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
-  notifItemTitle: { fontSize: 13.5, fontWeight: "800", color: COLORS.text },
+  notifItemTitle: { fontSize: 13, fontWeight: "600", color: COLORS.text },
   notifItemMsg: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2, lineHeight: 17 },
-  notifItemDate: { fontSize: 10.5, color: COLORS.textDisabled, marginTop: 4, fontWeight: "700" },
-  eventTitle: { fontSize: 11, fontWeight: "800", color: COLORS.navy },
-  eventTime: { fontSize: 10, color: COLORS.textSecondary, marginTop: 1 },
-  eventMeta: { fontSize: 10, color: COLORS.textSecondary, marginTop: 1 },
-  eventAssignee: { fontSize: 10, fontWeight: "700", marginBottom: 1 },
-  eventManager: { fontSize: 10, fontWeight: "600", color: COLORS.textSecondary, marginTop: 2, fontStyle: "italic" },
+  notifItemDate: { fontSize: 10, color: COLORS.textDisabled, marginTop: 4, fontWeight: "600" },
+  eventTitle: { fontSize: 11, fontWeight: "600", color: COLORS.text, lineHeight: 14 },
+  eventTime: { fontSize: 9, color: COLORS.textDisabled, marginTop: 1, fontWeight: "500" },
+  eventMeta: { fontSize: 9, color: COLORS.textSecondary, marginTop: 1 },
+  eventAssignee: { fontSize: 9, fontWeight: "600", marginBottom: 1, lineHeight: 12, color: COLORS.textSecondary },
+  eventManager: { fontSize: 9, fontWeight: "500", color: COLORS.textDisabled, marginTop: 2, fontStyle: "italic" },
   resizeHandle: {
     position: "absolute", bottom: 0, left: 0, right: 0, height: 14,
     alignItems: "center", justifyContent: "center",
@@ -3394,49 +3406,49 @@ const useS = () =>
     // @ts-ignore web cursor
     cursor: "ns-resize",
   },
-  resizeBar: { width: 28, height: 4, borderRadius: 2, backgroundColor: COLORS.primary, opacity: 0.6 },
+  resizeBar: { width: 24, height: 3, borderRadius: 1.5, backgroundColor: COLORS.primary, opacity: 0.4 },
   dragPreview: {
-    position: "absolute", left: 2, right: 2, backgroundColor: alpha(COLORS.primary, 0.3),
-    borderWidth: 2, borderColor: COLORS.primary, borderRadius: 6,
+    position: "absolute", left: 2, right: 2, backgroundColor: alpha(COLORS.primary, 0.12),
+    borderWidth: 1, borderColor: COLORS.primary, borderRadius: ios.radius.sm,
     alignItems: "center", justifyContent: "center",
   },
-  dragPreviewText: { fontSize: 11, fontWeight: "800", color: COLORS.primary },
+  dragPreviewText: { fontSize: 10, fontWeight: "600", color: COLORS.primary },
   // month
   monthHeader: { flexDirection: "row", marginBottom: 4 },
   monthHeaderCell: { flex: 1, alignItems: "center", paddingVertical: 6 },
-  monthHeaderText: { fontSize: 11, fontWeight: "800", color: COLORS.textSecondary, letterSpacing: 1 },
-  monthRow: { flexDirection: "row", marginBottom: 6 },
+  monthHeaderText: { fontSize: 11, fontWeight: "600", color: COLORS.textDisabled, letterSpacing: 1 },
+  monthRow: { flexDirection: "row", borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border, paddingBottom: 6, marginBottom: 0 },
   monthCell: {
-    flex: 1, minHeight: 70, margin: 2, padding: 6,
-    backgroundColor: COLORS.surface, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border,
+    flex: 1, minHeight: 88, margin: 2, padding: ios.spacing.sm, paddingTop: 8,
+    backgroundColor: "transparent", borderRadius: ios.radius.sm,
   },
-  monthCellToday: { borderColor: COLORS.primary, borderWidth: 2 },
-  monthDayNum: { fontSize: 14, fontWeight: "700", color: COLORS.text },
-  monthDots: { flexDirection: "row", flexWrap: "wrap", gap: 3, marginTop: 4, alignItems: "center" },
-  monthDot: { width: 7, height: 7, borderRadius: 3.5 },
-  monthMoreText: { fontSize: 9, color: COLORS.textSecondary, fontWeight: "700", marginLeft: 2 },
+  monthCellToday: { backgroundColor: COLORS.primarySoft, borderWidth: 1.5, borderColor: COLORS.primary },
+  monthDayNum: { fontSize: 15, fontWeight: "600", color: COLORS.text, textAlign: "center" },
+  monthDots: { flexDirection: "row", flexWrap: "wrap", gap: 3, marginTop: 6, alignItems: "center", justifyContent: "center" },
+  monthDot: { width: 6, height: 6, borderRadius: 3 },
+  monthMoreText: { fontSize: 9, color: COLORS.textSecondary, fontWeight: "600", marginLeft: 1 },
   // modal
   modalRoot: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" },
-  modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32, maxHeight: "85%" },
-  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
-  modalTitle: { fontSize: 20, fontWeight: "900", color: COLORS.text, flex: 1, marginRight: 12 },
-  timeBox: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, backgroundColor: COLORS.bg, borderRadius: 10, marginVertical: 8 },
-  timeText: { fontSize: 13, fontWeight: "700", color: COLORS.text, textTransform: "capitalize" },
+  modalCard: { backgroundColor: COLORS.surface, borderTopLeftRadius: ios.radius.xl, borderTopRightRadius: ios.radius.xl, padding: ios.spacing.xl, paddingBottom: 32, maxHeight: "85%" },
+  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: ios.spacing.sm },
+  modalTitle: { fontSize: 20, fontWeight: "700", color: COLORS.text, flex: 1, marginRight: ios.spacing.md },
+  timeBox: { flexDirection: "row", alignItems: "center", gap: 8, padding: ios.spacing.md, backgroundColor: COLORS.bg, borderRadius: ios.radius.row, marginVertical: ios.spacing.sm },
+  timeText: { fontSize: 13, fontWeight: "600", color: COLORS.text, textTransform: "capitalize" },
   modeRow: { flexDirection: "row", gap: 8, marginTop: 8 },
-  modeChip: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 48, borderRadius: 10, backgroundColor: COLORS.bg, borderWidth: 2, borderColor: COLORS.borderInput },
-  modeChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  modeChipText: { fontSize: 13, fontWeight: "800", color: COLORS.navy },
-  mLabel: { fontSize: 11, fontWeight: "800", color: COLORS.textSecondary, letterSpacing: 1.2, marginTop: 14, marginBottom: 6 },
-  mInput: { height: 50, backgroundColor: COLORS.bg, borderWidth: 2, borderColor: COLORS.borderInput, borderRadius: 10, paddingHorizontal: 14, fontSize: 15, color: COLORS.text },
-  primary: { flexDirection: "row", height: 52, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: "center", justifyContent: "center", marginTop: 20 },
-  primaryText: { color: "#fff", fontSize: 15, fontWeight: "800", letterSpacing: 1 },
-  pickMatBtn: { flexDirection: "row", alignItems: "center", gap: 8, justifyContent: "center", height: 52, borderRadius: 10, borderWidth: 2, borderColor: COLORS.primary, borderStyle: "dashed", backgroundColor: COLORS.bg },
+  modeChip: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 44, borderRadius: ios.radius.sm, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 4 },
+  modeChipActive: { backgroundColor: COLORS.primarySoft, borderColor: COLORS.primary },
+  modeChipText: { fontSize: 12, fontWeight: "600", color: COLORS.textSecondary },
+  mLabel: { fontSize: 10, fontWeight: "600", color: COLORS.textDisabled, letterSpacing: 0.8, marginTop: ios.spacing.lg, marginBottom: 6 },
+  mInput: { height: 48, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, borderRadius: ios.radius.row, paddingHorizontal: ios.spacing.lg, fontSize: 15, color: COLORS.text },
+  primary: { flexDirection: "row", height: 50, borderRadius: ios.radius.md, backgroundColor: COLORS.primary, alignItems: "center", justifyContent: "center", marginTop: ios.spacing.xl },
+  primaryText: { color: "#fff", fontSize: 14, fontWeight: "700", letterSpacing: 0.8 },
+  pickMatBtn: { flexDirection: "row", alignItems: "center", gap: 8, justifyContent: "center", height: 48, borderRadius: ios.radius.row, borderWidth: 1, borderColor: COLORS.primary, borderStyle: "dashed", backgroundColor: COLORS.bg },
   backRow: { flexDirection: "row", alignItems: "center", gap: 4, padding: 6, marginBottom: 4 },
   backRowText: { color: COLORS.navy, fontWeight: "700", fontSize: 14 },
-  searchBox: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.bg, borderRadius: 10, paddingHorizontal: 12, height: 44, marginBottom: 6 },
+  searchBox: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.bg, borderRadius: ios.radius.row, paddingHorizontal: 12, height: 44, marginBottom: 6 },
   searchInput: { flex: 1, fontSize: 15, color: COLORS.text },
-  matRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 10, backgroundColor: COLORS.bg, borderRadius: 10, marginBottom: 6 },
-  matPreview: { flexDirection: "row", alignItems: "flex-start", gap: 10, padding: 12, backgroundColor: COLORS.bg, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, marginTop: 6 },
+  matRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, backgroundColor: COLORS.bg, borderRadius: ios.radius.row, marginBottom: 6, borderWidth: 1, borderColor: COLORS.border },
+  matPreview: { flexDirection: "row", alignItems: "flex-start", gap: 10, padding: ios.spacing.md, backgroundColor: COLORS.bg, borderRadius: ios.radius.row, borderWidth: 1, borderColor: COLORS.border, marginTop: 6 },
   matCode: { fontSize: 12, fontWeight: "800", color: COLORS.primary, letterSpacing: 0.3, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }) },
   matCliente: { fontSize: 14, fontWeight: "700", color: COLORS.text, marginTop: 2 },
   matUbic: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
@@ -3444,29 +3456,29 @@ const useS = () =>
   descText: { fontSize: 14, color: COLORS.text, lineHeight: 20, marginTop: 4 },
   techRow: {
     flexDirection: "row", alignItems: "center", gap: 10,
-    padding: 10, borderRadius: 10, backgroundColor: COLORS.bg,
+    padding: 12, borderRadius: ios.radius.row, backgroundColor: COLORS.bg,
     borderWidth: 1, borderColor: COLORS.border,
   },
   checkBox: {
-    width: 22, height: 22, borderRadius: 6, borderWidth: 2,
-    borderColor: COLORS.borderInput, alignItems: "center", justifyContent: "center",
+    width: 22, height: 22, borderRadius: 6, borderWidth: 1.5,
+    borderColor: COLORS.border, alignItems: "center", justifyContent: "center",
   },
-  techName: { fontSize: 14, fontWeight: "700", color: COLORS.text },
+  techName: { fontSize: 14, fontWeight: "600", color: COLORS.text },
   techEmail: { fontSize: 11, color: COLORS.textSecondary },
   recChip: {
-    paddingHorizontal: 14, height: 40, borderRadius: 8, backgroundColor: COLORS.bg,
+    paddingHorizontal: ios.spacing.md, height: 36, borderRadius: ios.radius.pill, backgroundColor: COLORS.bg,
     alignItems: "center", justifyContent: "center",
-    borderWidth: 2, borderColor: COLORS.borderInput,
+    borderWidth: 1, borderColor: COLORS.border,
   },
-  recChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  recChipText: { fontSize: 13, fontWeight: "800", color: COLORS.navy },
+  recChipActive: { backgroundColor: COLORS.primarySoft, borderColor: COLORS.primary },
+  recChipText: { fontSize: 12, fontWeight: "600", color: COLORS.textSecondary },
   assignedRow: {
     flexDirection: "row", alignItems: "center", gap: 8,
-    padding: 8, backgroundColor: COLORS.bg, borderRadius: 8,
+    padding: 8, backgroundColor: COLORS.bg, borderRadius: ios.radius.sm,
   },
   techChip: {
     flexDirection: "row", alignItems: "center", gap: 6,
-    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: ios.radius.pill,
     backgroundColor: COLORS.primarySoft,
     borderWidth: 1, borderColor: COLORS.primary,
   },
@@ -3474,14 +3486,14 @@ const useS = () =>
   dtRow: { marginTop: 8 },
   dtDouble: { flexDirection: "row", gap: 8 },
   dtBtn: {
-    flexDirection: "row", alignItems: "center", gap: 8, height: 46,
-    borderRadius: 10, backgroundColor: COLORS.bg, borderWidth: 2,
-    borderColor: COLORS.borderInput, paddingHorizontal: 12,
+    flexDirection: "row", alignItems: "center", gap: 8, height: 44,
+    borderRadius: ios.radius.row, backgroundColor: COLORS.bg, borderWidth: 1,
+    borderColor: COLORS.border, paddingHorizontal: 12,
   },
-  dtBtnText: { fontSize: 14, fontWeight: "700", color: COLORS.text },
+  dtBtnText: { fontSize: 14, fontWeight: "600", color: COLORS.text },
   attRow: {
     flexDirection: "row", alignItems: "center", gap: 10, padding: 10,
-    borderRadius: 10, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: ios.radius.row, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
   },
   attName: { fontSize: 14, fontWeight: "700", color: COLORS.text },
   attMeta: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },

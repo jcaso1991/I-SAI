@@ -8,6 +8,7 @@ import { useBreakpoint } from "../../src/useBreakpoint";
 import { useThemedStyles } from "../../src/theme";
 import IOSHeader from "../../src/ui/IOSHeader";
 import { api, COLORS } from "../../src/api";
+import { ios, fontStyle } from "../../src/ui/iosTheme";
 
 interface Nota {
   id: string;
@@ -161,34 +162,34 @@ export default function CalendarioNotasScreen() {
 const useS = () =>
   StyleSheet.create({
     root: { flex: 1, backgroundColor: COLORS.bg },
-    body: { flex: 1, padding: 12 },
-    nav: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
-    monthTitle: { fontSize: 18, fontWeight: "800", color: COLORS.text },
-    weekRow: { flexDirection: "row", marginBottom: 4 },
-    weekDay: { flex: 1, textAlign: "center", fontSize: 11, fontWeight: "700", color: COLORS.textSecondary, paddingVertical: 4 },
+    body: { flex: 1, padding: ios.spacing.md },
+    nav: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: ios.spacing.sm, ...ios.shadow.card },
+    monthTitle: { ...fontStyle("title3"), fontWeight: "800", color: COLORS.text },
+    weekRow: { flexDirection: "row", marginBottom: ios.spacing.xs },
+    weekDay: { flex: 1, textAlign: "center", ...fontStyle("section"), fontWeight: "700", color: COLORS.textSecondary, paddingVertical: ios.spacing.xs },
     grid: { flexDirection: "row", flexWrap: "wrap" },
     dayCell: {
       width: "14.28%", aspectRatio: 1, alignItems: "center", justifyContent: "center",
-      borderRadius: 8, marginBottom: 2,
+      borderRadius: ios.radius.sm, marginBottom: 2,
     },
     daySelected: { backgroundColor: COLORS.primarySoft, borderWidth: 1.5, borderColor: COLORS.primary },
-    dayToday: { borderWidth: 1, borderColor: COLORS.primary, borderRadius: 8 },
-    dayNum: { fontSize: 13, color: COLORS.text, fontWeight: "600" },
-    fechaLabel: { fontSize: 14, fontWeight: "800", color: COLORS.primary, marginBottom: 8 },
-    editor: { backgroundColor: COLORS.surface, borderRadius: 12, padding: 14, gap: 10, marginBottom: 10, borderWidth: 1, borderColor: COLORS.border },
-    inputTitulo: { fontSize: 16, fontWeight: "700", color: COLORS.text, paddingVertical: 4 },
-    inputContenido: { fontSize: 14, color: COLORS.text, minHeight: 100, lineHeight: 20 },
-    btnGuardar: { backgroundColor: COLORS.primary, paddingHorizontal: 18, paddingVertical: 8, borderRadius: 8, alignItems: "center" },
-    btnCancelar: { backgroundColor: COLORS.readonly, paddingHorizontal: 18, paddingVertical: 8, borderRadius: 8, alignItems: "center" },
+    dayToday: { borderWidth: 1, borderColor: COLORS.primary, borderRadius: ios.radius.sm },
+    dayNum: { ...fontStyle("subhead"), fontWeight: "600", color: COLORS.text },
+    fechaLabel: { ...fontStyle("callout"), fontWeight: "800", color: COLORS.primary, marginBottom: ios.spacing.sm },
+    editor: { backgroundColor: COLORS.surface, borderRadius: ios.radius.card, padding: ios.spacing.rowV, gap: ios.spacing.sm, marginBottom: ios.spacing.sm, borderWidth: 1, borderColor: COLORS.border, ...ios.shadow.card },
+    inputTitulo: { ...fontStyle("title3"), fontWeight: "700", color: COLORS.text, paddingVertical: ios.spacing.xs },
+    inputContenido: { ...fontStyle("callout"), color: COLORS.text, minHeight: 100 },
+    btnGuardar: { backgroundColor: COLORS.primary, paddingHorizontal: ios.spacing.xl, paddingVertical: ios.spacing.sm, borderRadius: ios.radius.sm, alignItems: "center" },
+    btnCancelar: { backgroundColor: COLORS.readonly, paddingHorizontal: ios.spacing.xl, paddingVertical: ios.spacing.sm, borderRadius: ios.radius.sm, alignItems: "center" },
     btnNueva: {
-      flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
-      backgroundColor: COLORS.primary, paddingVertical: 10, borderRadius: 8, marginBottom: 8,
+      flexDirection: "row", alignItems: "center", justifyContent: "center", gap: ios.spacing.sm,
+      backgroundColor: COLORS.primary, paddingVertical: ios.spacing.sm, borderRadius: ios.radius.sm, marginBottom: ios.spacing.sm,
     },
-    btnText: { fontSize: 13, fontWeight: "700", color: "#fff" },
+    btnText: { ...fontStyle("subhead"), fontWeight: "700", color: "#fff" },
     notaCard: {
       flexDirection: "row", alignItems: "flex-start", backgroundColor: COLORS.surface,
-      borderRadius: 8, padding: 10, gap: 8, marginBottom: 6, borderWidth: 1, borderColor: COLORS.border,
+      borderRadius: ios.radius.sm, padding: ios.spacing.sm, gap: ios.spacing.sm, marginBottom: 6, borderWidth: 1, borderColor: COLORS.border, ...ios.shadow.card,
     },
-    notaTitulo: { fontSize: 13, fontWeight: "800", color: COLORS.text },
-    notaPreview: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2, lineHeight: 17 },
+    notaTitulo: { ...fontStyle("subhead"), fontWeight: "800", color: COLORS.text },
+    notaPreview: { ...fontStyle("footnote"), color: COLORS.textSecondary, marginTop: 2, lineHeight: 17 },
   });

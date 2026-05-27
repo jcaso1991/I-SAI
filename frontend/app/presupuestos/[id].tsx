@@ -12,6 +12,7 @@ import ResponsiveLayout from "../../src/ResponsiveLayout";
 import { useBreakpoint } from "../../src/useBreakpoint";
 import { useThemedStyles } from "../../src/theme";
 import SignaturePad from "../../src/SignaturePad";
+import { ios, fontStyle } from "../../src/ui/iosTheme";
 
 type Equipo = { elemento: string; cantidad?: string; ubicacion?: string; observaciones?: string };
 
@@ -399,8 +400,8 @@ export default function BudgetEditor() {
                 <TextInput value={e.cantidad} onChangeText={(v) => setEq(i, "cantidad", v)} style={[s.eqInp, { flex: 0.6 }]} placeholder="0" placeholderTextColor={COLORS.textDisabled} keyboardType="number-pad" />
                 <TextInput value={e.ubicacion} onChangeText={(v) => setEq(i, "ubicacion", v)} style={[s.eqInp, { flex: 1.2 }]} placeholder="—" placeholderTextColor={COLORS.textDisabled} />
                 <TextInput value={e.observaciones} onChangeText={(v) => setEq(i, "observaciones", v)} style={[s.eqInp, { flex: 1.5 }]} placeholder="—" placeholderTextColor={COLORS.textDisabled} />
-                <TouchableOpacity onPress={() => delEq(i)} style={{ width: 28, alignItems: "center" }}>
-                  <Ionicons name="close" size={18} color={COLORS.errorText} />
+                <TouchableOpacity onPress={() => delEq(i)} style={s.eqDelBtn}>
+                  <Ionicons name="close" size={16} color={COLORS.errorText} />
                 </TouchableOpacity>
               </View>
             );
@@ -414,10 +415,12 @@ export default function BudgetEditor() {
         <Section title="ADJUNTOS">
           <View style={{ gap: 6 }}>
             {attachments.map((att: any) => (
-              <View key={att.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.surface, borderRadius: 8, padding: 8, borderWidth: 1, borderColor: COLORS.border }}>
-                <Ionicons name={att.mime?.startsWith("image/") ? "image-outline" : "document-text-outline"} size={20} color={COLORS.primary} />
-                <Text style={{ flex: 1, fontSize: 12, color: COLORS.text }} numberOfLines={1}>{att.name}</Text>
-                <TouchableOpacity onPress={() => removeAttachment(att.id)}><Ionicons name="close-circle" size={18} color={COLORS.errorText} /></TouchableOpacity>
+              <View key={att.id} style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: COLORS.surface, borderRadius: ios.radius.md, padding: 10, borderWidth: 1, borderColor: COLORS.border }}>
+                <View style={{ width: 32, height: 32, borderRadius: ios.radius.sm, backgroundColor: COLORS.bg, alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name={att.mime?.startsWith("image/") ? "image-outline" : "document-text-outline"} size={18} color={COLORS.primary} />
+                </View>
+                <Text style={{ flex: 1, fontSize: 13, color: COLORS.text }} numberOfLines={1}>{att.name}</Text>
+                <TouchableOpacity onPress={() => removeAttachment(att.id)}><Ionicons name="close-circle" size={20} color={COLORS.errorText} /></TouchableOpacity>
               </View>
             ))}
             <TouchableOpacity style={s.addRow} onPress={pickAttachment}>
@@ -434,15 +437,19 @@ export default function BudgetEditor() {
         </Section>
 
         <Section title="FIRMA I-SAI">
-          <SignaturePad value={f.firma_isai} onChange={(v) => set("firma_isai", v)} />
+          <View style={s.signaturePadWrap}>
+            <SignaturePad value={f.firma_isai} onChange={(v) => set("firma_isai", v)} />
+          </View>
           <Field label="Nombre y Apellidos" value={f.nombre_isai} onChange={(v) => set("nombre_isai", v)} />
           <Field label="Cargo" value={f.cargo_isai} onChange={(v) => set("cargo_isai", v)} />
         </Section>
 
         <Section title="FIRMA CLIENTE">
-          <SignaturePad value={f.firma_cliente} onChange={(v) => set("firma_cliente", v)} />
+          <View style={s.signaturePadWrap}>
+            <SignaturePad value={f.firma_cliente} onChange={(v) => set("firma_cliente", v)} />
+          </View>
           <Field label="Nombre y Apellidos" value={f.nombre_cliente} onChange={(v) => set("nombre_cliente", v)} />
-          <Field label="Cargo" value={f.cargo_cliente} onChange={(v) => set("cargo_cliente", v)} />
+          <Field label="Cargo" value={f.cargo_isai} onChange={(v) => set("cargo_isai", v)} />
         </Section>
 
         <TouchableOpacity style={[s.bigBtn, { backgroundColor: COLORS.accent }]} onPress={generatePdf}>
@@ -536,61 +543,69 @@ const useS = () => StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.bg },
   header: {
     flexDirection: "row", alignItems: "center", gap: 8,
-    paddingHorizontal: 12, paddingVertical: 10, backgroundColor: COLORS.surface,
+    paddingHorizontal: ios.spacing.md, paddingVertical: 10, backgroundColor: COLORS.surface,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
-  headerTitle: { flex: 1, fontSize: 17, fontWeight: "800", color: COLORS.text },
-  iconBtn: { width: 40, height: 40, borderRadius: 10, backgroundColor: COLORS.bg, alignItems: "center", justifyContent: "center" },
-  scroll: { padding: 16, paddingBottom: 40, gap: 16 },
-  section: { backgroundColor: COLORS.surface, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, gap: 10, overflow: "visible" },
-  sectionTitle: { fontSize: 12, fontWeight: "900", color: COLORS.primary, letterSpacing: 1.5 },
-  lbl: { fontSize: 11, fontWeight: "800", color: COLORS.textSecondary, letterSpacing: 0.8 },
-  inp: {
-    backgroundColor: COLORS.bg, borderRadius: 10, borderWidth: 2, borderColor: COLORS.borderInput,
-    paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: COLORS.text,
+  headerTitle: { flex: 1, fontSize: 17, fontWeight: "800", color: COLORS.text, letterSpacing: -0.3 },
+  iconBtn: { width: 40, height: 40, borderRadius: ios.radius.md, backgroundColor: COLORS.bg, alignItems: "center", justifyContent: "center" },
+  scroll: { padding: ios.spacing.lg, paddingBottom: 40, gap: ios.spacing.lg },
+  section: {
+    backgroundColor: COLORS.surface, padding: ios.spacing.lg, borderRadius: ios.radius.lg,
+    borderWidth: 1, borderColor: COLORS.border, gap: 12, overflow: "visible",
+    ...ios.shadow.card,
   },
-  eqHeader: { flexDirection: "row", gap: 4, paddingHorizontal: 4, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  eqHeaderTxt: { fontSize: 10, fontWeight: "900", color: COLORS.textSecondary, letterSpacing: 1 },
-  eqRow: { flexDirection: "row", gap: 4, alignItems: "center" },
-  eqInp: { backgroundColor: COLORS.bg, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 8, fontSize: 13, color: COLORS.text, borderWidth: 1, borderColor: COLORS.border },
+  sectionTitle: { ...fontStyle("section"), color: COLORS.primary, textTransform: "uppercase" as any },
+  lbl: { ...fontStyle("caption"), fontWeight: "800" as any, color: COLORS.textSecondary, marginBottom: 2 },
+  inp: {
+    backgroundColor: COLORS.bg, borderRadius: ios.radius.md, borderWidth: 2, borderColor: COLORS.borderInput,
+    paddingHorizontal: ios.spacing.md, paddingVertical: 12, fontSize: 14, color: COLORS.text,
+  },
+  eqHeader: { flexDirection: "row", gap: 6, paddingHorizontal: ios.spacing.sm, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 4 },
+  eqHeaderTxt: { ...fontStyle("caption"), color: COLORS.textSecondary, fontWeight: "800" as any },
+  eqRow: { flexDirection: "row", gap: 6, alignItems: "center", paddingVertical: 6 },
+  eqDelBtn: {
+    width: 30, height: 30, borderRadius: ios.radius.sm,
+    backgroundColor: COLORS.errorBg, alignItems: "center", justifyContent: "center",
+  },
+  eqInp: { backgroundColor: COLORS.bg, borderRadius: ios.radius.sm, paddingHorizontal: 10, paddingVertical: 10, fontSize: 13, color: COLORS.text, borderWidth: 1, borderColor: COLORS.border },
   comboList: {
     position: "absolute",
     top: "100%",
     left: 0,
     right: 0,
-    marginTop: 2,
+    marginTop: 4,
     backgroundColor: COLORS.surface,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 8,
+    borderRadius: ios.radius.md,
     zIndex: 100,
-    // web box-shadow (RN web maps this)
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 6,
+    ...ios.shadow.elevated,
   },
   comboItem: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingHorizontal: ios.spacing.md,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  comboItemTxt: { fontSize: 13, color: COLORS.text },
+  comboItemTxt: { fontSize: 14, color: COLORS.text },
   addRow: {
-    flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start",
-    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8,
+    flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "flex-start",
+    paddingHorizontal: ios.spacing.lg, paddingVertical: 10, borderRadius: ios.radius.sm,
     backgroundColor: COLORS.bg, borderWidth: 2, borderColor: COLORS.primary, borderStyle: "dashed" as any,
   },
-  addRowTxt: { color: COLORS.primary, fontWeight: "800", fontSize: 13 },
-  check: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 4 },
+  addRowTxt: { color: COLORS.primary, fontWeight: "800", fontSize: 14 },
+  check: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 8, paddingHorizontal: 4 },
   checkBox: {
-    width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: COLORS.borderInput,
+    width: 24, height: 24, borderRadius: ios.radius.sm, borderWidth: 2, borderColor: COLORS.borderInput,
     backgroundColor: COLORS.surface, alignItems: "center", justifyContent: "center",
   },
   checkBoxOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   checkLbl: { fontSize: 14, fontWeight: "700", color: COLORS.text, flex: 1 },
-  bigBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, height: 54, borderRadius: 14 },
+  signaturePadWrap: {
+    borderRadius: ios.radius.md, overflow: "hidden",
+    borderWidth: 1, borderColor: COLORS.border,
+    ...ios.shadow.card,
+  },
+  bigBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, height: 56, borderRadius: ios.radius.card },
   bigBtnTxt: { color: "#fff", fontWeight: "900", fontSize: 16, letterSpacing: 0.5 },
 });

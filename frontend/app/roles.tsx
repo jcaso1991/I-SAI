@@ -17,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../src/api";
+import { ios, fontStyle } from "../src/ui/iosTheme";
 
 type Permission = { key: string; label: string; module: string };
 type NotifPref = { key: string; label: string; module: string };
@@ -450,30 +451,39 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 12, paddingVertical: 8, backgroundColor: COLORS.surface,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    paddingHorizontal: ios.spacing.md, paddingVertical: ios.spacing.sm,
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border,
   },
   iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-  headerTitle: { fontSize: 18, fontWeight: "800", color: COLORS.text },
-  subtitle: { fontSize: 13, color: COLORS.textSecondary, marginBottom: 6, fontWeight: "600" },
-  roleCard: {
-    backgroundColor: COLORS.surface, borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: COLORS.border,
+  headerTitle: { ...fontStyle("title3"), color: COLORS.text },
+  subtitle: {
+    ...fontStyle("footnote"), color: COLORS.textSecondary,
+    marginBottom: 6, fontWeight: "600",
   },
-  roleHead: { flexDirection: "row", alignItems: "center", gap: 12 },
+  roleCard: {
+    backgroundColor: COLORS.surface, borderRadius: ios.radius.lg,
+    padding: ios.spacing.lg, borderWidth: 1, borderColor: COLORS.border,
+    ...ios.shadow.card,
+  },
+  roleHead: { flexDirection: "row", alignItems: "center", gap: ios.spacing.md },
   iconBox: {
     width: 44, height: 44, borderRadius: 22,
     alignItems: "center", justifyContent: "center",
   },
-  roleName: { fontSize: 15, fontWeight: "800", color: COLORS.text },
-  roleSub: { fontSize: 12, color: COLORS.textSecondary },
+  roleName: { ...fontStyle("body"), fontWeight: "800", color: COLORS.text },
+  roleSub: { ...fontStyle("caption"), color: COLORS.textSecondary },
   pill: {
-    backgroundColor: COLORS.pillBlueBg, paddingHorizontal: 8, paddingVertical: 2,
-    borderRadius: 6,
+    backgroundColor: COLORS.pillBlueBg, paddingHorizontal: ios.spacing.sm,
+    paddingVertical: 2, borderRadius: ios.radius.sm,
   },
-  pillTxt: { fontSize: 10, fontWeight: "900", letterSpacing: 0.8, color: COLORS.pillBlueText },
+  pillTxt: {
+    ...fontStyle("caption"), fontWeight: "900",
+    letterSpacing: 0.5, color: COLORS.pillBlueText,
+  },
   actionBtn: {
-    width: 36, height: 36, borderRadius: 8, backgroundColor: COLORS.bg,
+    width: 38, height: 38, borderRadius: ios.radius.icon,
+    backgroundColor: COLORS.primarySoft,
     alignItems: "center", justifyContent: "center",
   },
   // Modal
@@ -481,45 +491,57 @@ const s = StyleSheet.create({
     flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)",
   },
   modalCard: {
-    backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: 20, maxHeight: "92%",
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: ios.radius.xl, borderTopRightRadius: ios.radius.xl,
+    padding: ios.spacing.xl, maxHeight: "92%",
   },
   modalHeader: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    marginBottom: 12,
+    marginBottom: ios.spacing.md,
   },
-  modalTitle: { fontSize: 20, fontWeight: "900", color: COLORS.text },
+  modalTitle: { ...fontStyle("title2"), color: COLORS.text },
   mLabel: {
-    fontSize: 11, fontWeight: "800", color: COLORS.textSecondary,
-    letterSpacing: 1.2, marginTop: 12, marginBottom: 6,
+    ...fontStyle("section"), fontWeight: "800", color: COLORS.textSecondary,
+    letterSpacing: 1.2, marginTop: ios.spacing.md, marginBottom: ios.spacing.xs,
   },
   mInput: {
-    height: 50, backgroundColor: COLORS.bg, borderWidth: 2, borderColor: COLORS.borderInput,
-    borderRadius: 10, paddingHorizontal: 14, fontSize: 15, color: COLORS.text,
+    height: 52, backgroundColor: COLORS.bg,
+    borderWidth: 1.5, borderColor: COLORS.borderInput,
+    borderRadius: ios.radius.md, paddingHorizontal: ios.spacing.lg,
+    ...fontStyle("body"), color: COLORS.text,
   },
   permGroup: {
-    backgroundColor: COLORS.bg, borderRadius: 12, padding: 12, gap: 4,
+    backgroundColor: COLORS.bg, borderRadius: ios.radius.md,
+    padding: ios.spacing.lg, gap: ios.spacing.xs,
     borderWidth: 1, borderColor: COLORS.border,
   },
   permGroupTitle: {
-    fontSize: 11, fontWeight: "900", color: COLORS.textSecondary,
-    letterSpacing: 1.5, marginBottom: 8,
+    ...fontStyle("section"), fontWeight: "900", color: COLORS.textSecondary,
+    letterSpacing: 1.2, marginBottom: ios.spacing.sm,
   },
   permRow: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    paddingVertical: 8,
+    flexDirection: "row", alignItems: "center", gap: ios.spacing.sm,
+    paddingVertical: ios.spacing.sm, minHeight: 44,
   },
   checkbox: {
-    width: 22, height: 22, borderRadius: 6, borderWidth: 2,
+    width: 24, height: 24, borderRadius: ios.radius.sm, borderWidth: 2,
     borderColor: COLORS.borderInput, backgroundColor: "#fff",
     alignItems: "center", justifyContent: "center",
   },
   checkboxOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  permLabel: { flex: 1, fontSize: 14, color: COLORS.textSecondary, fontWeight: "500" },
-  permKey: { fontSize: 10, color: COLORS.textDisabled, fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }) },
-  primary: {
-    height: 52, borderRadius: 12, backgroundColor: COLORS.primary,
-    alignItems: "center", justifyContent: "center", marginTop: 20,
+  permLabel: {
+    flex: 1, ...fontStyle("subhead"), color: COLORS.textSecondary, fontWeight: "500",
   },
-  primaryText: { color: "#fff", fontSize: 15, fontWeight: "800", letterSpacing: 1 },
+  permKey: {
+    ...fontStyle("caption"), color: COLORS.textDisabled,
+    fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }),
+  },
+  primary: {
+    height: 52, borderRadius: ios.radius.card,
+    backgroundColor: COLORS.primary,
+    alignItems: "center", justifyContent: "center", marginTop: ios.spacing.xl,
+  },
+  primaryText: {
+    color: "#fff", ...fontStyle("callout"), fontWeight: "800", letterSpacing: 0.5,
+  },
 });

@@ -7,6 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../src/api";
+import { ios, fontStyle } from "../src/ui/iosTheme";
 
 type Role = { id: string; key: string; name: string; permissions: string[]; system?: boolean; locked?: boolean };
 type User = { id: string; email: string; name?: string; role: string; role_id?: string | null; role_name?: string | null; color?: string; created_at?: string };
@@ -519,34 +520,44 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 12, paddingVertical: 8, backgroundColor: COLORS.surface,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    paddingHorizontal: ios.spacing.md, paddingVertical: ios.spacing.sm,
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border,
   },
   iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-  headerTitle: { fontSize: 18, fontWeight: "800", color: COLORS.text },
-  subtitle: { fontSize: 13, color: COLORS.textSecondary, marginBottom: 6, fontWeight: "600" },
+  headerTitle: { ...fontStyle("title3"), color: COLORS.text },
+  subtitle: {
+    ...fontStyle("footnote"), color: COLORS.textSecondary,
+    marginBottom: 6, fontWeight: "600",
+  },
   userCard: {
-    flexDirection: "row", alignItems: "center", gap: 12,
-    backgroundColor: COLORS.surface, borderRadius: 14, padding: 12,
+    flexDirection: "row", alignItems: "center", gap: ios.spacing.md,
+    backgroundColor: COLORS.surface, borderRadius: ios.radius.lg,
+    padding: ios.spacing.lg, minHeight: 56,
     borderWidth: 1, borderColor: COLORS.border,
+    ...ios.shadow.card,
   },
   avatarBox: {
-    width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.bg,
+    width: 46, height: 46, borderRadius: 23,
     alignItems: "center", justifyContent: "center",
   },
-  userName: { fontSize: 15, fontWeight: "800", color: COLORS.text },
-  youBadge: { fontSize: 12, color: COLORS.primary, fontWeight: "700" },
-  userEmail: { fontSize: 13, color: COLORS.textSecondary },
+  userName: { ...fontStyle("body"), fontWeight: "800", color: COLORS.text },
+  youBadge: { ...fontStyle("footnote"), color: COLORS.primary, fontWeight: "700" },
+  userEmail: { ...fontStyle("footnote"), color: COLORS.textSecondary },
   roleBadge: {
-    alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 2,
-    borderRadius: 6, marginTop: 2,
+    alignSelf: "flex-start", paddingHorizontal: ios.spacing.sm,
+    paddingVertical: 2, borderRadius: ios.radius.sm, marginTop: 2,
   },
   roleAdmin: { backgroundColor: COLORS.pillBlueBg },
   roleUser: { backgroundColor: COLORS.bg },
-  roleBadgeText: { fontSize: 10, fontWeight: "900", letterSpacing: 1, color: COLORS.textSecondary },
-  actions: { flexDirection: "row", gap: 4 },
+  roleBadgeText: {
+    ...fontStyle("caption"), fontWeight: "900", letterSpacing: 1,
+    color: COLORS.textSecondary,
+  },
+  actions: { flexDirection: "row", gap: ios.spacing.xs },
   actionBtn: {
-    width: 36, height: 36, borderRadius: 8, backgroundColor: COLORS.bg,
+    width: 38, height: 38, borderRadius: ios.radius.icon,
+    backgroundColor: COLORS.primarySoft,
     alignItems: "center", justifyContent: "center",
   },
   // Modal
@@ -554,35 +565,39 @@ const s = StyleSheet.create({
     flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)",
   },
   modalCard: {
-    backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: 20, maxHeight: "85%",
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: ios.radius.xl, borderTopRightRadius: ios.radius.xl,
+    padding: ios.spacing.xl, maxHeight: "85%",
   },
   modalHeader: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    marginBottom: 12,
+    marginBottom: ios.spacing.md,
   },
-  modalTitle: { fontSize: 20, fontWeight: "900", color: COLORS.text },
+  modalTitle: { ...fontStyle("title2"), color: COLORS.text },
   mLabel: {
-    fontSize: 11, fontWeight: "800", color: COLORS.textSecondary,
-    letterSpacing: 1.2, marginTop: 12, marginBottom: 6,
+    ...fontStyle("section"), fontWeight: "800", color: COLORS.textSecondary,
+    letterSpacing: 1.2, marginTop: ios.spacing.md, marginBottom: ios.spacing.xs,
   },
   mInput: {
-    height: 50, backgroundColor: COLORS.bg, borderWidth: 2, borderColor: COLORS.borderInput,
-    borderRadius: 10, paddingHorizontal: 14, fontSize: 15, color: COLORS.text,
+    height: 52, backgroundColor: COLORS.bg,
+    borderWidth: 1.5, borderColor: COLORS.borderInput,
+    borderRadius: ios.radius.md, paddingHorizontal: ios.spacing.lg,
+    ...fontStyle("body"), color: COLORS.text,
   },
   roleRow: { flexDirection: "row", gap: 10 },
   roleChip: {
-    flex: 1, height: 50, borderRadius: 10, borderWidth: 2,
+    flex: 1, height: 50, borderRadius: ios.radius.md, borderWidth: 1.5,
     borderColor: COLORS.borderInput, backgroundColor: COLORS.bg,
-    alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8,
+    alignItems: "center", justifyContent: "center", flexDirection: "row",
+    gap: ios.spacing.sm,
   },
   roleChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  roleChipText: { fontSize: 14, fontWeight: "800", color: COLORS.navy },
-  roleList: { gap: 8 },
+  roleChipText: { ...fontStyle("subhead"), fontWeight: "800", color: COLORS.navy },
+  roleList: { gap: ios.spacing.sm },
   roleListItem: {
-    flexDirection: "row", alignItems: "center", gap: 12,
-    paddingVertical: 12, paddingHorizontal: 14,
-    borderRadius: 12, borderWidth: 2, borderColor: COLORS.borderInput,
+    flexDirection: "row", alignItems: "center", gap: ios.spacing.md,
+    paddingVertical: ios.spacing.md, paddingHorizontal: ios.spacing.lg,
+    borderRadius: ios.radius.md, borderWidth: 1.5, borderColor: COLORS.borderInput,
     backgroundColor: COLORS.bg,
   },
   roleListItemActive: {
@@ -590,39 +605,46 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.primarySoft,
   },
   roleRadio: {
-    width: 22, height: 22, borderRadius: 11, borderWidth: 2,
+    width: 24, height: 24, borderRadius: 12, borderWidth: 2,
     borderColor: COLORS.borderInput, backgroundColor: "#fff",
     alignItems: "center", justifyContent: "center",
   },
   roleRadioActive: { borderColor: COLORS.primary },
   roleRadioDot: {
-    width: 10, height: 10, borderRadius: 5, backgroundColor: COLORS.primary,
+    width: 12, height: 12, borderRadius: 6, backgroundColor: COLORS.primary,
   },
-  roleListName: { fontSize: 15, fontWeight: "700", color: COLORS.text },
-  roleListSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+  roleListName: { ...fontStyle("body"), fontWeight: "700", color: COLORS.text },
+  roleListSub: { ...fontStyle("caption"), color: COLORS.textSecondary, marginTop: 2 },
   primary: {
-    height: 52, borderRadius: 12, backgroundColor: COLORS.primary,
-    alignItems: "center", justifyContent: "center", marginTop: 20,
+    height: 52, borderRadius: ios.radius.card,
+    backgroundColor: COLORS.primary,
+    alignItems: "center", justifyContent: "center", marginTop: ios.spacing.xl,
   },
-  primaryText: { color: "#fff", fontSize: 15, fontWeight: "800", letterSpacing: 1 },
+  primaryText: {
+    color: "#fff", ...fontStyle("callout"), fontWeight: "800", letterSpacing: 0.5,
+  },
   colorGrid: {
-    flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 4,
+    flexDirection: "row", flexWrap: "wrap", gap: ios.spacing.md, marginTop: 4,
   },
   colorDot: {
-    width: 42, height: 42, borderRadius: 21,
+    width: 48, height: 48, borderRadius: 24,
     alignItems: "center", justifyContent: "center",
     borderWidth: 3, borderColor: "transparent",
   },
   colorDotActive: { borderColor: COLORS.navy },
   filterBtn: {
     flexDirection: "row", alignItems: "center", gap: 4,
-    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+    paddingHorizontal: ios.spacing.sm, paddingVertical: ios.spacing.xs,
+    borderRadius: ios.radius.sm,
     backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
   },
-  filterBtnText: { fontSize: 12, fontWeight: "700", color: COLORS.primary },
+  filterBtnText: { ...fontStyle("caption"), fontWeight: "700", color: COLORS.primary },
   roleFilterChip: {
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
+    paddingHorizontal: ios.spacing.md, paddingVertical: ios.spacing.xs,
+    borderRadius: ios.radius.sm,
     backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
   },
-  roleFilterChipText: { fontSize: 12, fontWeight: "600", color: COLORS.textSecondary },
+  roleFilterChipText: {
+    ...fontStyle("caption"), fontWeight: "600", color: COLORS.textSecondary,
+  },
 });

@@ -10,6 +10,7 @@ import { api, COLORS } from "../src/api";
 import BottomNav from "../src/BottomNav";
 import ResponsiveLayout from "../src/ResponsiveLayout";
 import { useTheme, useThemedStyles } from "../src/theme";
+import { ios, fontStyle } from "../src/ui/iosTheme";
 
 export default function Admin() {
   const router = useRouter();
@@ -145,7 +146,7 @@ export default function Admin() {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
+      <ScrollView contentContainerStyle={{ padding: ios.spacing.lg, gap: ios.spacing.sectionGap }}>
         {/* Selector de tema (visible para todos) */}
         <View style={s.card}>
           <View style={s.cardHeader}>
@@ -192,7 +193,7 @@ export default function Admin() {
         {/* Presentación pública para clientes */}
         <View style={s.card} testID="portfolio-card">
           <View style={s.cardHeader}>
-            <View style={[s.iconCircle, { backgroundColor: "#DBEAFE" }]}>
+            <View style={[s.iconCircle, { backgroundColor: COLORS.highlightBg }]}>
               <Ionicons name="albums" size={22} color={COLORS.primary} />
             </View>
             <View style={{ flex: 1 }}>
@@ -209,6 +210,28 @@ export default function Admin() {
           >
             <Ionicons name="open-outline" size={20} color="#fff" />
             <Text style={s.btnPrimaryText}>VER PRESENTACIÓN</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Info App — Portfolio interno */}
+        <View style={s.card}>
+          <View style={s.cardHeader}>
+            <View style={[s.iconCircle, { backgroundColor: COLORS.syncedBg }]}>
+              <Ionicons name="information-circle" size={22} color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.cardTitle}>Info App</Text>
+              <Text style={s.cardSub}>
+                Portfolio explicativo y visual de todas las funcionalidades de la aplicación.
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={[s.btnPrimary, { marginTop: 12 }]}
+            onPress={() => router.push("/portfolio")}
+          >
+            <Ionicons name="eye-outline" size={20} color="#fff" />
+            <Text style={s.btnPrimaryText}>VER INFO APP</Text>
           </TouchableOpacity>
         </View>
 
@@ -365,51 +388,54 @@ const useS = () =>
   root: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 12, paddingVertical: 8, backgroundColor: COLORS.surface,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    paddingHorizontal: ios.spacing.md, paddingVertical: ios.spacing.sm,
+    backgroundColor: COLORS.surface, borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border,
   },
   iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-  headerTitle: { fontSize: 18, fontWeight: "800", color: COLORS.text },
+  headerTitle: { ...fontStyle("title3"), color: COLORS.text },
   card: {
-    backgroundColor: COLORS.surface, borderRadius: 14, padding: 16,
-    borderWidth: 1, borderColor: COLORS.border, gap: 4,
+    backgroundColor: COLORS.surface, borderRadius: ios.radius.lg,
+    padding: ios.spacing.groupPadding, borderWidth: 1, borderColor: COLORS.border,
+    gap: 4, ...ios.shadow.card,
   },
-  cardHeader: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 4 },
+  cardHeader: { flexDirection: "row", alignItems: "center", gap: ios.spacing.md, marginBottom: 4 },
   iconCircle: {
-    width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center",
+    width: 48, height: 48, borderRadius: ios.radius.icon,
+    alignItems: "center", justifyContent: "center",
   },
   themeOption: {
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 8, paddingVertical: 14, borderRadius: 12, borderWidth: 2,
+    gap: 8, paddingVertical: 14, borderRadius: ios.radius.md, borderWidth: 2,
     borderColor: COLORS.border, backgroundColor: COLORS.readonly, position: "relative",
   },
-  themeOptionTxt: { fontSize: 14, fontWeight: "700", color: COLORS.textSecondary },
-  cardTitle: { fontSize: 17, fontWeight: "800", color: COLORS.text },
-  cardSub: { fontSize: 14, color: COLORS.textSecondary, marginTop: 2 },
-  cardText: { flex: 1, fontSize: 14, fontWeight: "600" },
+  themeOptionTxt: { ...fontStyle("callout"), fontWeight: "700", color: COLORS.textSecondary },
+  cardTitle: { ...fontStyle("bodyEmphasized"), fontWeight: "800", color: COLORS.text },
+  cardSub: { ...fontStyle("callout"), color: COLORS.textSecondary, marginTop: 2 },
+  cardText: { flex: 1, ...fontStyle("callout"), fontWeight: "600" },
   metaBlock: {
-    backgroundColor: COLORS.bg, borderRadius: 10, padding: 12, marginTop: 12, gap: 2,
+    backgroundColor: COLORS.bg, borderRadius: ios.radius.md,
+    padding: ios.spacing.md, marginTop: ios.spacing.md, gap: 2,
   },
   metaLabel: {
-    fontSize: 10, fontWeight: "800", color: COLORS.textSecondary,
-    letterSpacing: 1, marginTop: 6,
+    ...fontStyle("section"), color: COLORS.textSecondary,
+    letterSpacing: 1, marginTop: ios.spacing.sm,
   },
-  metaValue: { fontSize: 14, color: COLORS.text, fontWeight: "600" },
+  metaValue: { ...fontStyle("callout"), color: COLORS.text, fontWeight: "600" },
   btnPrimary: {
-    height: 52, borderRadius: 10, backgroundColor: COLORS.primary,
+    height: 52, borderRadius: ios.radius.md, backgroundColor: COLORS.primary,
     alignItems: "center", justifyContent: "center",
     flexDirection: "row", gap: 8,
   },
-  btnPrimaryText: { color: "#fff", fontSize: 14, fontWeight: "800", letterSpacing: 0.8 },
+  btnPrimaryText: { color: "#fff", ...fontStyle("callout"), fontWeight: "800", letterSpacing: 0.8 },
   btnSecondary: {
-    height: 52, borderRadius: 10, backgroundColor: COLORS.bg,
+    height: 52, borderRadius: ios.radius.md, backgroundColor: COLORS.bg,
     borderWidth: 2, borderColor: COLORS.borderInput,
     alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8,
   },
-  btnSecondaryText: { color: COLORS.navy, fontSize: 14, fontWeight: "800", letterSpacing: 0.5 },
+  btnSecondaryText: { color: COLORS.navy, ...fontStyle("callout"), fontWeight: "800", letterSpacing: 0.5 },
   btnGhost: {
     height: 44, alignItems: "center", justifyContent: "center",
     flexDirection: "row", gap: 6,
   },
-  btnGhostText: { color: COLORS.primary, fontWeight: "700", fontSize: 14 },
+  btnGhostText: { color: COLORS.primary, fontWeight: "700", ...fontStyle("callout") },
 });

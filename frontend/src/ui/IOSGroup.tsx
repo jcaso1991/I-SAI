@@ -1,15 +1,8 @@
-/**
- * IOSGroup — "grouped" list container that imitates iOS Settings.
- * Children are usually <IOSListRow /> or any custom row View.
- *
- * Use:
- *   <IOSGroup header="APARIENCIA" footer="Cambia el tema visual">
- *     <IOSListRow title="Tema" right={...} />
- *   </IOSGroup>
- */
 import React, { Children, isValidElement, cloneElement } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { ios } from "./iosTheme";
+import { COLORS } from "../api";
+import { useThemedStyles } from "../theme";
 
 export default function IOSGroup({
   header,
@@ -20,10 +13,10 @@ export default function IOSGroup({
   header?: string;
   footer?: string;
   children: React.ReactNode;
-  /** Adds horizontal padding around the card (default true). */
   inset?: boolean;
 }) {
-  // Add isFirst/isLast and showSeparator props automatically
+  const s = useThemedStyles(useS);
+
   const items = Children.toArray(children).filter(Boolean);
   const total = items.length;
   const enhanced = items.map((child, idx) => {
@@ -36,34 +29,40 @@ export default function IOSGroup({
   });
 
   return (
-    <View style={[styles.wrap, inset && styles.inset]}>
-      {!!header && <Text style={styles.header}>{header}</Text>}
-      <View style={styles.card}>{enhanced}</View>
-      {!!footer && <Text style={styles.footer}>{footer}</Text>}
+    <View style={[s.wrap, inset && s.inset]}>
+      {!!header && <Text style={s.header}>{header}</Text>}
+      <View style={s.card}>{enhanced}</View>
+      {!!footer && <Text style={s.footer}>{footer}</Text>}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: { marginBottom: 24 },
+const useS = () => StyleSheet.create({
+  wrap: { marginBottom: ios.spacing.sectionGap },
   inset: { paddingHorizontal: 16 },
   header: {
     fontFamily: ios.font.family,
-    fontSize: 13, fontWeight: "400",
-    color: ios.colors.sectionHeader,
+    fontSize: ios.font.section.size,
+    fontWeight: ios.font.section.weight,
+    color: COLORS.textSecondary,
     textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: 6, marginLeft: 16,
+    letterSpacing: ios.font.section.letter,
+    marginBottom: 8,
+    marginLeft: 4,
   },
   card: {
-    backgroundColor: ios.colors.surface,
-    borderRadius: ios.radius.card,
+    backgroundColor: COLORS.surface,
+    borderRadius: ios.radius.lg,
     overflow: "hidden",
+    ...ios.shadow.card,
   },
   footer: {
     fontFamily: ios.font.family,
-    fontSize: 13, color: ios.colors.footnote,
-    marginTop: 6, marginLeft: 16, marginRight: 16,
-    lineHeight: 18,
+    fontSize: ios.font.footnote.size,
+    color: COLORS.textDisabled,
+    marginTop: 8,
+    marginLeft: 4,
+    marginRight: 4,
+    lineHeight: ios.font.footnote.lh,
   },
 });

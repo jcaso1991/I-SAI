@@ -15,6 +15,7 @@ import { BUILTIN_STAMPS, STAMP_STROKE, CATEGORY_ORDER } from "../../src/stamps";
 import { captureCanvasJpegBase64, captureCanvasPngBase64, shareOrDownloadBase64 } from "../../src/canvasCapture";
 import { useBreakpoint } from "../../src/useBreakpoint";
 import SignaturePad from "../../src/SignaturePad";
+import { ios } from "../../src/ui/iosTheme";
 
 type Pt = { x: number; y: number };
 type LineShape = { id: string; type: "line"; points: Pt[]; stroke: string; strokeWidth: number; rotation?: number };
@@ -1921,32 +1922,32 @@ const s = StyleSheet.create({
     paddingHorizontal: 4, paddingVertical: 8, backgroundColor: COLORS.surface,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
-  iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 10 },
+  iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: ios.radius.md },
   saveBackBtn: {
     flexDirection: "row", alignItems: "center", gap: 6,
-    paddingHorizontal: 12, height: 40, borderRadius: 10,
+    paddingHorizontal: ios.spacing.md, height: 40, borderRadius: ios.radius.md,
     backgroundColor: COLORS.primary, marginLeft: 4,
   },
   saveBackBtnTxt: { color: "#fff", fontWeight: "800", fontSize: 13, letterSpacing: 0.3 },
   headerTitle: { fontSize: 16, fontWeight: "800", color: COLORS.text },
-  headerSub: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
+  headerSub: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2, fontWeight: "500" as any },
   toolbarToggle: {
     flexDirection: "row", alignItems: "center", gap: 8,
-    paddingHorizontal: 12, paddingVertical: 8,
+    paddingHorizontal: ios.spacing.md, paddingVertical: 10,
     backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
-  toolbarToggleText: { fontSize: 12, fontWeight: "700", color: COLORS.primary, flex: 1 },
+  toolbarToggleText: { fontSize: 13, fontWeight: "700", color: COLORS.primary, flex: 1 },
   toolDropdown: {
     backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
-    padding: 8, gap: 2,
+    padding: ios.spacing.sm, gap: 2,
   },
   toolDropdownItem: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    paddingVertical: 9, paddingHorizontal: 8, borderRadius: 8,
+    flexDirection: "row", alignItems: "center", gap: 12,
+    paddingVertical: 10, paddingHorizontal: ios.spacing.sm, borderRadius: ios.radius.sm,
   },
   toolDropdownItemActive: { backgroundColor: COLORS.primarySoft },
   toolDropdownIcon: {
-    width: 34, height: 34, borderRadius: 8,
+    width: 36, height: 36, borderRadius: ios.radius.md,
     alignItems: "center", justifyContent: "center",
     backgroundColor: COLORS.bg,
   },
@@ -1956,20 +1957,20 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
   toolBtn: {
-    alignItems: "center", justifyContent: "center", gap: 2,
-    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
-    minWidth: 56, height: 52, backgroundColor: COLORS.bg,
+    alignItems: "center", justifyContent: "center", gap: 4,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: ios.radius.md,
+    minWidth: 60, height: 54, backgroundColor: COLORS.bg,
   },
   toolBtnActive: { backgroundColor: COLORS.primary },
   toolBtnLabel: { fontSize: 10, fontWeight: "700", color: COLORS.navy, letterSpacing: 0.3 },
   sizeRow: {
     flexDirection: "row", alignItems: "center", gap: 8,
-    backgroundColor: COLORS.surface, paddingHorizontal: 12, paddingVertical: 6,
+    backgroundColor: COLORS.surface, paddingHorizontal: ios.spacing.md, paddingVertical: ios.spacing.sm,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
   subToolbar: {
     flexDirection: "row", alignItems: "center", gap: 8,
-    backgroundColor: COLORS.primarySoft, paddingHorizontal: 12, paddingVertical: 8,
+    backgroundColor: COLORS.primarySoft, paddingHorizontal: ios.spacing.md, paddingVertical: ios.spacing.sm,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
   subToolLabel: {
@@ -1978,14 +1979,14 @@ const s = StyleSheet.create({
   },
   subChip: {
     flexDirection: "row", alignItems: "center", gap: 6,
-    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: ios.radius.pill,
     backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
   },
   subChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   subChipText: { fontSize: 12, fontWeight: "800", color: COLORS.text },
   palette: {
     flexDirection: "row", alignItems: "center", gap: 10,
-    backgroundColor: COLORS.surface, paddingHorizontal: 12, paddingVertical: 8,
+    backgroundColor: COLORS.surface, paddingHorizontal: ios.spacing.md, paddingVertical: ios.spacing.sm,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
   paletteLabel: {
@@ -2018,7 +2019,7 @@ const s = StyleSheet.create({
   },
   sizeChipActive: { backgroundColor: COLORS.primary },
   sizeChipText: { fontSize: 12, fontWeight: "800", color: COLORS.navy },
-  canvasWrap: { flex: 1, padding: 4, backgroundColor: COLORS.bg, overflow: "hidden", position: "relative" },
+  canvasWrap: { flex: 1, padding: ios.spacing.sm, backgroundColor: COLORS.bg, overflow: "hidden", position: "relative" },
   canvasScrollOuter: {
     flex: 1,
     justifyContent: "center",
@@ -2027,17 +2028,18 @@ const s = StyleSheet.create({
   },
   canvasPaper: {
     backgroundColor: COLORS.canvasPaper,
-    borderRadius: 4, borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: ios.radius.lg, borderWidth: 1, borderColor: COLORS.border,
     overflow: "hidden",
+    ...ios.shadow.card,
   },
   zoomControls: {
-    position: "absolute", bottom: 12, right: 12,
+    position: "absolute", bottom: 16, right: 16,
     flexDirection: "row", alignItems: "center",
-    backgroundColor: COLORS.surface,
-    borderRadius: 10, borderWidth: 1, borderColor: COLORS.border,
-    paddingHorizontal: 4, paddingVertical: 2,
-    shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
+    backgroundColor: ios.colors.glassBg,
+    borderRadius: ios.radius.card, borderWidth: ios.hairline, borderColor: ios.colors.glassBorder,
+    paddingHorizontal: 6, paddingVertical: 4,
+    ...ios.shadow.elevated,
+    backdropFilter: "blur(20px)" as any,
   },
   zoomBtn: {
     width: 32, height: 32, alignItems: "center", justifyContent: "center", borderRadius: 8,
@@ -2048,8 +2050,9 @@ const s = StyleSheet.create({
   },
   bottomBar: {
     minHeight: BOTTOM_H,
-    padding: 14, paddingBottom: 20, backgroundColor: COLORS.surface,
-    borderTopWidth: 1, borderTopColor: COLORS.border,
+    padding: ios.spacing.lg, paddingBottom: 24,
+    backgroundColor: COLORS.surface,
+    borderTopWidth: ios.hairline, borderTopColor: COLORS.border,
   },
   hintText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: "600", textAlign: "center" },
   selectedRow: {
@@ -2057,13 +2060,13 @@ const s = StyleSheet.create({
   },
   selectedLabel: { color: COLORS.text, fontWeight: "700", fontSize: 14 },
   btnIconSm: {
-    width: 44, height: 44, borderRadius: 10, backgroundColor: COLORS.bg,
+    width: 44, height: 44, borderRadius: ios.radius.md, backgroundColor: COLORS.bg,
     alignItems: "center", justifyContent: "center",
   },
   modalRoot: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" },
   modalCard: {
-    backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: 20, paddingBottom: 32, maxHeight: "80%",
+    backgroundColor: COLORS.surface, borderTopLeftRadius: ios.radius.xl, borderTopRightRadius: ios.radius.xl,
+    padding: ios.spacing.xl, paddingBottom: 32, maxHeight: "80%",
   },
   modalHeader: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
@@ -2072,62 +2075,61 @@ const s = StyleSheet.create({
   modalTitle: { fontSize: 20, fontWeight: "900", color: COLORS.text },
   stampGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, padding: 4 },
   catTitle: {
-    fontSize: 12, fontWeight: "900", color: COLORS.textSecondary,
-    letterSpacing: 1.5, marginTop: 8, marginBottom: 4, marginLeft: 4,
-    textTransform: "uppercase",
+    fontSize: 12, fontWeight: "800", color: COLORS.textSecondary,
+    letterSpacing: 1.5, marginTop: ios.spacing.sm, marginBottom: 4, marginLeft: 4,
   },
   textField: {
-    borderWidth: 1, borderColor: COLORS.borderInput, borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 10,
+    borderWidth: 1, borderColor: COLORS.borderInput, borderRadius: ios.radius.md,
+    paddingHorizontal: ios.spacing.md, paddingVertical: 10,
     minHeight: 80, maxHeight: 160,
     fontSize: 16, color: COLORS.text, backgroundColor: COLORS.surface,
     textAlignVertical: "top",
   },
   fsChip: {
-    minWidth: 36, height: 28, paddingHorizontal: 8, borderRadius: 6,
+    minWidth: 36, height: 30, paddingHorizontal: 10, borderRadius: ios.radius.sm,
     backgroundColor: COLORS.bg, alignItems: "center", justifyContent: "center",
   },
   fsChipActive: { backgroundColor: COLORS.primary },
   fsChipText: { fontSize: 12, fontWeight: "700", color: COLORS.text },
   modalBtn: {
-    paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10,
+    paddingHorizontal: 20, paddingVertical: 12, borderRadius: ios.radius.md,
     alignItems: "center", justifyContent: "center",
   },
   modalBtnText: { fontSize: 14, fontWeight: "800" },
   stampCell: {
     width: "30%", minWidth: 90, alignItems: "center", padding: 10, gap: 4,
-    backgroundColor: COLORS.bg, borderRadius: 12, borderWidth: 2, borderColor: "transparent",
+    backgroundColor: COLORS.bg, borderRadius: ios.radius.md, borderWidth: 2, borderColor: "transparent",
   },
   stampCellActive: { borderColor: COLORS.primary },
   stampPreview: {
     width: 70, height: 70, backgroundColor: COLORS.canvasPaper,
-    alignItems: "center", justifyContent: "center", borderRadius: 8,
+    alignItems: "center", justifyContent: "center", borderRadius: ios.radius.sm,
   },
   stampName: { fontSize: 12, fontWeight: "700", color: COLORS.text, textAlign: "center" },
   mLabel: {
     fontSize: 11, fontWeight: "800", color: COLORS.textSecondary,
-    letterSpacing: 1.2, marginTop: 14, marginBottom: 6,
+    letterSpacing: 1.2, marginTop: ios.spacing.lg, marginBottom: ios.spacing.sm,
   },
   mInput: {
     height: 50, backgroundColor: COLORS.bg, borderWidth: 2, borderColor: COLORS.borderInput,
-    borderRadius: 10, paddingHorizontal: 14, fontSize: 15, color: COLORS.text,
+    borderRadius: ios.radius.md, paddingHorizontal: ios.spacing.lg, fontSize: 15, color: COLORS.text,
   },
   uploadBtn: {
     flexDirection: "row", alignItems: "center", gap: 8, justifyContent: "center",
-    marginTop: 10, height: 50, borderRadius: 10, borderWidth: 2,
+    marginTop: 10, height: 50, borderRadius: ios.radius.md, borderWidth: 2,
     borderColor: COLORS.primary, borderStyle: "dashed", backgroundColor: COLORS.bg,
   },
   primary: {
-    height: 50, borderRadius: 12, backgroundColor: COLORS.primary,
-    alignItems: "center", justifyContent: "center", marginTop: 14,
+    height: 50, borderRadius: ios.radius.card, backgroundColor: COLORS.primary,
+    alignItems: "center", justifyContent: "center", marginTop: ios.spacing.lg,
   },
   primaryText: { color: "#fff", fontSize: 14, fontWeight: "800", letterSpacing: 1 },
   customRow: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    padding: 10, backgroundColor: COLORS.bg, borderRadius: 10, marginBottom: 6,
+    flexDirection: "row", alignItems: "center", gap: 12,
+    padding: 12, backgroundColor: COLORS.bg, borderRadius: ios.radius.md, marginBottom: 6,
   },
   stampPreviewSm: {
-    width: 50, height: 50, backgroundColor: COLORS.canvasPaper, borderRadius: 8,
+    width: 50, height: 50, backgroundColor: COLORS.canvasPaper, borderRadius: ios.radius.sm,
     alignItems: "center", justifyContent: "center",
   },
 });

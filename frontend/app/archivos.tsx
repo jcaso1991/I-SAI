@@ -8,6 +8,7 @@ import { useBreakpoint } from "../src/useBreakpoint";
 import { useThemedStyles } from "../src/theme";
 import IOSHeader from "../src/ui/IOSHeader";
 import { api, COLORS, BACKEND_URL, getToken } from "../src/api";
+import { ios, fontStyle } from "../src/ui/iosTheme";
 
 interface Item {
   name: string; type: "folder" | "file"; path: string; size: number | null; count?: number;
@@ -128,11 +129,11 @@ export default function ArchivosScreen() {
       {viewingFile && (
         <Modal visible={!!viewingFile} animationType="slide" onRequestClose={() => setViewingFile(null)}>
           <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.bg }}>
-            <View style={{ flexDirection: "row", alignItems: "center", padding: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.surface }}>
+            <View style={{ flexDirection: "row", alignItems: "center", padding: ios.spacing.sm, borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border, backgroundColor: COLORS.surface, borderTopLeftRadius: ios.radius.xl, borderTopRightRadius: ios.radius.xl, overflow: "hidden" }}>
               <TouchableOpacity onPress={() => setViewingFile(null)} style={{ padding: 6 }}>
                 <Ionicons name="close" size={26} color={COLORS.text} />
               </TouchableOpacity>
-              <Text style={{ flex: 1, fontSize: 14, fontWeight: "800", color: COLORS.text, marginLeft: 10 }} numberOfLines={1}>{viewingName}</Text>
+              <Text style={{ flex: 1, ...fontStyle("title3"), color: COLORS.text, marginLeft: ios.spacing.sm }} numberOfLines={1}>{viewingName}</Text>
               <TouchableOpacity style={{ padding: 6 }} onPress={() => { const a = document.createElement("a"); a.href = viewingFile; a.download = viewingName; a.click(); }}>
                 <Ionicons name="download-outline" size={22} color={COLORS.primary} />
               </TouchableOpacity>
@@ -155,13 +156,13 @@ export default function ArchivosScreen() {
 
 const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
-  body: { flex: 1, padding: 12 },
-  header: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 },
-  pathText: { fontSize: 15, fontWeight: "800", color: COLORS.text, flex: 1 },
-  searchRow: { flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surface, borderRadius: 10, paddingHorizontal: 12, gap: 8, marginBottom: 8, borderWidth: 1, borderColor: COLORS.border, height: 40 },
-  searchInput: { flex: 1, fontSize: 13, color: COLORS.text },
-  row: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, borderRadius: 10, backgroundColor: COLORS.surface, marginBottom: 4, borderWidth: 1, borderColor: COLORS.border },
-  name: { flex: 1, fontSize: 13, fontWeight: "600", color: COLORS.text },
-  count: { fontSize: 11, fontWeight: "700", color: COLORS.primary, backgroundColor: COLORS.primarySoft, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, overflow: "hidden", marginRight: 4 },
-  size: { fontSize: 11, color: COLORS.textSecondary, marginRight: 4 },
+  body: { flex: 1, padding: ios.spacing.md },
+  header: { flexDirection: "row", alignItems: "center", gap: ios.spacing.sm, marginBottom: ios.spacing.sm },
+  pathText: { ...fontStyle("title3"), color: COLORS.text, flex: 1 },
+  searchRow: { flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surface, borderRadius: ios.radius.md, paddingHorizontal: ios.spacing.lg, gap: ios.spacing.sm, marginBottom: ios.spacing.sm, borderWidth: 1, borderColor: COLORS.border, height: 44 },
+  searchInput: { flex: 1, ...fontStyle("subhead"), color: COLORS.text },
+  row: { flexDirection: "row", alignItems: "center", gap: ios.spacing.sm, padding: ios.spacing.lg, borderRadius: ios.radius.md, backgroundColor: COLORS.surface, marginBottom: 4, borderWidth: 1, borderColor: COLORS.border, minHeight: 52 },
+  name: { flex: 1, ...fontStyle("subhead"), fontWeight: "600", color: COLORS.text },
+  count: { ...fontStyle("caption"), fontWeight: "700", color: COLORS.primary, backgroundColor: COLORS.primarySoft, paddingHorizontal: 6, paddingVertical: 2, borderRadius: ios.radius.sm, overflow: "hidden", marginRight: 4 },
+  size: { ...fontStyle("caption"), color: COLORS.textSecondary, marginRight: 4 },
 });

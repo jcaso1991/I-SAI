@@ -1,15 +1,9 @@
-/**
- * IOSListRow — Single row in an iOS settings-style list.
- *
- * Variants:
- *  - Tap → chevron right (default if onPress supplied)
- *  - Toggle / value text on the right (rightLabel or rightSlot)
- *  - Destructive action (red text) via destructive prop
- */
 import React from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ios } from "./iosTheme";
+import { COLORS } from "../api";
+import { useThemedStyles } from "../theme";
 
 export default function IOSListRow({
   title,
@@ -23,7 +17,6 @@ export default function IOSListRow({
   destructive,
   showChevron,
   testID,
-  // Internally injected by IOSGroup:
   _isFirst,
   _isLast,
   _showSeparator,
@@ -43,32 +36,28 @@ export default function IOSListRow({
   _isLast?: boolean;
   _showSeparator?: boolean;
 }) {
+  const s = useThemedStyles(useS);
   const tappable = !!onPress;
   const wantChevron = showChevron ?? (tappable && !rightSlot);
-  const titleColor = destructive ? ios.colors.destructive : ios.colors.text;
+  const titleColor = destructive ? COLORS.errorText : COLORS.text;
 
   const Inner = (
-    <View style={[styles.row]}>
+    <View style={s.row}>
       {icon && (
-        <View
-          style={[
-            styles.iconBox,
-            { backgroundColor: iconBg || iconColor },
-          ]}
-        >
-          <Ionicons name={icon} size={18} color="#fff" />
+        <View style={[s.iconBox, { backgroundColor: iconBg || iconColor + "18" }]}>
+          <Ionicons name={icon} size={18} color={iconBg ? "#fff" : iconColor} />
         </View>
       )}
       <View style={{ flex: 1 }}>
-        <Text style={[styles.title, { color: titleColor }]} numberOfLines={1}>{title}</Text>
-        {!!subtitle && <Text style={styles.subtitle} numberOfLines={2}>{subtitle}</Text>}
+        <Text style={[s.title, { color: titleColor }]} numberOfLines={1}>{title}</Text>
+        {!!subtitle && <Text style={s.subtitle} numberOfLines={2}>{subtitle}</Text>}
       </View>
       {!!rightLabel && (
-        <Text style={styles.rightLabel} numberOfLines={1}>{rightLabel}</Text>
+        <Text style={s.rightLabel} numberOfLines={1}>{rightLabel}</Text>
       )}
       {rightSlot}
       {wantChevron && (
-        <Ionicons name="chevron-forward" size={18} color={ios.colors.textMuted} style={{ marginLeft: 6 }} />
+        <Ionicons name="chevron-forward" size={16} color={COLORS.textDisabled} style={{ marginLeft: 4, opacity: 0.6 }} />
       )}
     </View>
   );
@@ -79,9 +68,9 @@ export default function IOSListRow({
         <Pressable
           testID={testID}
           onPress={onPress}
-          android_ripple={{ color: "rgba(0,0,0,0.06)" }}
+          android_ripple={{ color: "rgba(0,0,0,0.04)" }}
           style={({ pressed }) => [
-            pressed && { backgroundColor: ios.colors.separatorOpaque },
+            pressed && { backgroundColor: COLORS.border },
           ]}
         >
           {Inner}
@@ -90,47 +79,51 @@ export default function IOSListRow({
         Inner
       )}
       {_showSeparator && (
-        <View style={styles.separator} />
+        <View style={s.separator} />
       )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const useS = () => StyleSheet.create({
   row: {
-    flexDirection: "row", alignItems: "center",
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: ios.spacing.rowH,
     paddingVertical: ios.spacing.rowV,
-    minHeight: 44,
-    backgroundColor: ios.colors.surface,
-    gap: 12,
+    minHeight: 48,
+    backgroundColor: COLORS.surface,
+    gap: 14,
   },
   iconBox: {
-    width: 30, height: 30, borderRadius: ios.radius.icon,
-    alignItems: "center", justifyContent: "center",
+    width: 34,
+    height: 34,
+    borderRadius: ios.radius.icon,
+    alignItems: "center",
+    justifyContent: "center",
   },
   title: {
     fontFamily: ios.font.family,
     fontSize: ios.font.body.size,
-    fontWeight: "400",
-    color: ios.colors.text,
+    fontWeight: "500",
     letterSpacing: -0.2,
   },
   subtitle: {
     fontFamily: ios.font.family,
     fontSize: ios.font.subhead.size,
-    color: ios.colors.textSub,
-    marginTop: 2,
+    color: COLORS.textSecondary,
+    marginTop: 3,
+    fontWeight: "400",
   },
   rightLabel: {
     fontFamily: ios.font.family,
-    fontSize: ios.font.body.size,
-    color: ios.colors.textSub,
-    fontWeight: "400",
+    fontSize: ios.font.callout.size,
+    color: COLORS.textSecondary,
+    fontWeight: "500",
   },
   separator: {
     height: ios.hairline,
-    backgroundColor: ios.colors.separator,
-    marginLeft: 60, // align under text, not icon (iOS pattern)
+    backgroundColor: COLORS.border,
+    marginLeft: 60,
   },
 });

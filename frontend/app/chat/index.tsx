@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { api, clearToken, COLORS } from "../../src/api";
 import ResponsiveLayout from "../../src/ResponsiveLayout";
 import { useThemedStyles } from "../../src/theme";
+import { ios, fontStyle } from "../../src/ui/iosTheme";
 
 type ChatItem = {
   id: string;
@@ -136,31 +137,35 @@ const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingVertical: 12,
-    backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    paddingHorizontal: ios.spacing.lg, paddingVertical: ios.spacing.md,
+    backgroundColor: COLORS.surface, borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border,
   },
-  headerTitle: { fontSize: 22, fontWeight: "900", color: COLORS.text },
-  newChatBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: COLORS.bg },
-  empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8, padding: 40 },
-  emptyTitle: { fontSize: 18, fontWeight: "800", color: COLORS.text },
-  emptySub: { fontSize: 14, color: COLORS.textSecondary },
+  headerTitle: { ...fontStyle("title2"), color: COLORS.text },
+  newChatBtn: {
+    width: 40, height: 40, alignItems: "center", justifyContent: "center",
+    borderRadius: ios.radius.md, backgroundColor: COLORS.bg,
+  },
+  empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: ios.spacing.sm, padding: ios.spacing.xxl },
+  emptyTitle: { ...fontStyle("title3"), color: COLORS.text },
+  emptySub: { ...fontStyle("callout"), color: COLORS.textSecondary },
   chatRow: {
-    flexDirection: "row", alignItems: "center", gap: 12,
-    padding: 14, backgroundColor: COLORS.surface,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    flexDirection: "row", alignItems: "center", gap: ios.spacing.md,
+    padding: ios.spacing.lg, backgroundColor: COLORS.surface,
+    borderRadius: ios.radius.lg, marginHorizontal: ios.spacing.md, marginBottom: ios.spacing.sm,
+    ...ios.shadow.card,
   },
   avatar: {
-    width: 50, height: 50, borderRadius: 25,
+    width: 44, height: 44, borderRadius: ios.radius.icon,
     alignItems: "center", justifyContent: "center",
   },
   chatTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  chatName: { fontSize: 16, fontWeight: "700", color: COLORS.text, flex: 1 },
-  chatTime: { fontSize: 12, color: COLORS.textSecondary, marginLeft: 8 },
-  chatBottom: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 2 },
-  chatPreview: { fontSize: 13, color: COLORS.textSecondary, flex: 1 },
+  chatName: { ...fontStyle("bodyEmphasized"), color: COLORS.text, flex: 1 },
+  chatTime: { ...fontStyle("footnote"), color: COLORS.textSecondary, marginLeft: ios.spacing.sm },
+  chatBottom: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: ios.spacing.xs },
+  chatPreview: { ...fontStyle("footnote"), color: COLORS.textSecondary, flex: 1 },
   badge: {
     minWidth: 22, height: 22, borderRadius: 11, backgroundColor: COLORS.primary,
-    alignItems: "center", justifyContent: "center", paddingHorizontal: 6, marginLeft: 8,
+    alignItems: "center", justifyContent: "center", paddingHorizontal: 6, marginLeft: ios.spacing.sm,
   },
-  badgeText: { color: "#fff", fontSize: 11, fontWeight: "800" },
+  badgeText: { color: "#fff", ...fontStyle("caption"), fontWeight: "800" },
 });

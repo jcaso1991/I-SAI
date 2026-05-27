@@ -1,22 +1,23 @@
 import { useState, useCallback } from "react";
-import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
+import { View, Text, TouchableOpacity, ActivityIndicator, Platform } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { Circle, G } from "react-native-svg";
 import { api, COLORS } from "../../api";
-import { ios } from "../../ui/iosTheme";
 import { useS } from "./DashboardStyles";
-import { useThemedStyles } from "../../theme";
+import { ios } from "../../ui/iosTheme";
 import { useBreakpoint } from "../../useBreakpoint";
+
+const CL = { brand: '#3B82F6', green: '#10B981', orange: '#F97316', yellow: '#EAB308', teal: '#14B8A6', purple: '#8B5CF6', pink: '#EC4899' };
 
 type DashboardData = {
   projects_by_status: Record<string, number>;
-  manager_hours: Array<{ name: string; color: string; hours: number; count: number; by_status: Record<string, number> }>;
-  sat_by_month: Array<{ month: string; total: number; resolved: number }>;
-  projects_by_month: Array<{ month: string; count: number; hours: number }>;
+  manager_hours: { name: string; color: string; hours: number; count: number; by_status: Record<string, number> }[];
+  sat_by_month: { month: string; total: number; resolved: number }[];
+  projects_by_month: { month: string; count: number; hours: number }[];
   total_active_hours: number;
   projects_over_hours: number;
-  top_over_hours: Array<{ id: string; materiales: string; cliente: string; previstas: number; imputadas: number; exceso: number }>;
+  top_over_hours: { id: string; materiales: string; cliente: string; previstas: number; imputadas: number; exceso: number }[];
   total_imputadas_hours: number;
   total_previstas_hours: number;
   today: { events: number; pending_sat: number; pending_budgets: number };
@@ -40,7 +41,7 @@ function getCurrentMonthAbbr(): string {
   return MONTHS_ES[new Date().getMonth()] ?? "";
 }
 
-function DonutChart({ data, size = 140 }: { data: Array<{ label: string; value: number; color: string }>; size?: number }) {
+function DonutChart({ data, size = 140 }: { data: { label: string; value: number; color: string }[]; size?: number }) {
   const strokeWidth = 22;
   const radius = (size - strokeWidth) / 2;
   const center = size / 2;
@@ -131,7 +132,7 @@ export default function DashboardData() {
   const router = useRouter();
   const [dash, setDash] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const s = useThemedStyles(useS);
+  const s = useS();
 
   useFocusEffect(useCallback(() => {
     let alive = true;
@@ -150,7 +151,7 @@ export default function DashboardData() {
   if (loading) {
     return (
       <View style={s.center}>
-        <ActivityIndicator size="large" color={ios.colors.brand} />
+        <ActivityIndicator size="large" color={CL.brand} />
       </View>
     );
   }
@@ -176,7 +177,6 @@ export default function DashboardData() {
         <View style={{ flex: 1, minWidth: 280 }}><ProjectsByStatus dash={dash} router={router} /></View>
         <View style={{ flex: 1, minWidth: 280 }}><GlobalHours dash={dash} /></View>
       </View>
-      <TopTechnicians dash={dash} router={router} />
       <ProjectsOverHours dash={dash} router={router} />
       <ManagerHours dash={dash} />
       <BudgetPipeline dash={dash} router={router} />
@@ -192,7 +192,7 @@ export default function DashboardData() {
 }
 
 function TodayRow({ dash, router }: { dash: any; router: any }) {
-  const s = useThemedStyles(useS);
+  const s = useS();
   return (
     <View style={s.kpiStrip}>
       <TouchableOpacity style={s.kpiCard} onPress={() => router.push("/calendario")}>
@@ -221,7 +221,7 @@ function TodayRow({ dash, router }: { dash: any; router: any }) {
 }
 
 function ProjectsByStatus({ dash, router }: { dash: any; router: any }) {
-  const s = useThemedStyles(useS);
+  const s = useS();
   if (!dash.projects_by_status) return null;
   const entries = Object.entries(dash.projects_by_status) as [string, number][];
   if (!entries.length) return null;
@@ -260,7 +260,7 @@ function ProjectsByStatus({ dash, router }: { dash: any; router: any }) {
 }
 
 function GlobalHours({ dash }: { dash: any }) {
-  const s = useThemedStyles(useS);
+  const s = useS();
   const prev = dash.total_previstas_hours || 0;
   const imp = dash.total_imputadas_hours || 0;
   const over = imp > prev;
@@ -285,13 +285,13 @@ function GlobalHours({ dash }: { dash: any }) {
 }
 
 function ProjectsOverHours({ dash, router }: { dash: any; router: any }) {
-  const s = useThemedStyles(useS);
+  const s = useS();
   const [open, setOpen] = useState(false);
   const count: number = dash.projects_over_hours ?? 0;
   const totalOver: number = dash.total_over_hours ?? 0;
-  const top = (dash.top_over_hours || []) as Array<{
+  const top = (dash.top_over_hours || []) as {
     id: string; materiales: string; cliente: string; previstas: number; imputadas: number; exceso: number;
-  }>;
+  }[];
 
   return (
     <View style={s.cardWrap}>
@@ -368,7 +368,7 @@ function ProjectsOverHours({ dash, router }: { dash: any; router: any }) {
 }
 
 function ManagerHours({ dash }: { dash: any }) {
-  const s = useThemedStyles(useS);
+  const s = useS();
   if (!dash.manager_hours?.length) return null;
   return (
     <View style={s.cardWrap}>
@@ -418,7 +418,7 @@ function ManagerHours({ dash }: { dash: any }) {
 }
 
 function ProjectsByMonth({ dash }: { dash: any }) {
-  const s = useThemedStyles(useS);
+  const s = useS();
   const router = useRouter();
   if (!dash.projects_by_month?.length) return null;
   const currentMonth = getCurrentMonthAbbr();
@@ -475,7 +475,7 @@ function ProjectsByMonth({ dash }: { dash: any }) {
 }
 
 function SatByMonth({ dash }: { dash: any }) {
-  const s = useThemedStyles(useS);
+  const s = useS();
   const router = useRouter();
   if (!dash.sat_by_month?.length) return null;
   const currentMonth = getCurrentMonthAbbr();
@@ -528,7 +528,7 @@ const BUDGET_STATUS_LABELS: Record<string, string> = {
 const BUDGET_STATUS_ORDER = ["pendiente", "en_revision", "aceptado", "rechazado", "facturado"];
 
 function BudgetsKPI() {
-  const s = useThemedStyles(useS);
+  const s = useS();
   const [stats, setStats] = useState<any>(null);
 
   useFocusEffect(useCallback(() => {
@@ -619,11 +619,11 @@ function formatEur(n: number | undefined | null): string {
 }
 
 function CriticalAlerts({ dash, router }: { dash: any; router: any }) {
-  const s = useThemedStyles(useS);
+  const s = useS();
   const alerts = dash?.alerts;
   if (!alerts || alerts.total === 0) return null;
 
-  const items: Array<{ icon: any; label: string; value: number; color: string; onPress: () => void }> = [];
+  const items: { icon: any; label: string; value: number; color: string; onPress: () => void }[] = [];
   if (alerts.sat_urgent_open > 0) {
     items.push({
       icon: "warning",
@@ -654,23 +654,23 @@ function CriticalAlerts({ dash, router }: { dash: any; router: any }) {
 
   return (
     <View style={{
-      backgroundColor: "#FEF2F2",
+      backgroundColor: COLORS.errorBg,
       borderWidth: 1,
-      borderColor: "#FECACA",
-      borderRadius: 12,
-      padding: 12,
-      gap: 8,
+      borderColor: COLORS.errorBg,
+      borderRadius: ios.radius.card,
+      padding: ios.spacing.md,
+      gap: ios.spacing.sm,
     }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-        <Ionicons name="alert-circle" size={22} color="#DC2626" />
-        <Text style={{ fontSize: 15, fontWeight: "800", color: "#991B1B" }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.sm }}>
+        <Ionicons name="alert-circle" size={22} color={COLORS.errorText} />
+        <Text style={{ fontSize: ios.font.callout.size, fontWeight: "800", color: COLORS.errorText }}>
           Alertas críticas
         </Text>
-        <View style={{ backgroundColor: "#DC2626", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 }}>
-          <Text style={{ fontSize: 11, fontWeight: "800", color: "#fff" }}>{alerts.total}</Text>
+        <View style={{ backgroundColor: COLORS.errorText, borderRadius: ios.radius.pill, paddingHorizontal: ios.spacing.sm, paddingVertical: ios.spacing.xs }}>
+          <Text style={{ fontSize: ios.font.footnote.size, fontWeight: "800", color: "#fff" }}>{alerts.total}</Text>
         </View>
       </View>
-      <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+      <View style={{ flexDirection: "row", gap: ios.spacing.sm, flexWrap: "wrap" }}>
         {items.map((it, i) => (
           <TouchableOpacity
             key={i}
@@ -678,17 +678,18 @@ function CriticalAlerts({ dash, router }: { dash: any; router: any }) {
             style={{
               flexDirection: "row",
               alignItems: "center",
-              gap: 6,
-              paddingVertical: 6,
+              gap: ios.spacing.sm,
+              paddingVertical: ios.spacing.sm,
               paddingHorizontal: 10,
-              backgroundColor: "#fff",
-              borderRadius: 8,
+              backgroundColor: COLORS.surface,
+              borderRadius: ios.radius.sm,
               borderLeftWidth: 3,
               borderLeftColor: it.color,
+              ...ios.shadow.card,
             }}
           >
             <Ionicons name={it.icon} size={14} color={it.color} />
-            <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.text }}>{it.label}</Text>
+            <Text style={{ fontSize: ios.font.footnote.size, fontWeight: "700", color: COLORS.text }}>{it.label}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -697,60 +698,55 @@ function CriticalAlerts({ dash, router }: { dash: any; router: any }) {
 }
 
 function WeekSummary({ dash, router }: { dash: any; router: any }) {
-  const s = useThemedStyles(useS);
+  const s = useS();
   const w = dash?.week_summary;
   if (!w) return null;
   const pct = w.hours_planned_week > 0 ? Math.round((w.hours_real_week / w.hours_planned_week) * 100) : 0;
-  const busyPct = w.technicians_total > 0 ? Math.round((w.technicians_busy / w.technicians_total) * 100) : 0;
 
   return (
     <View style={s.cardWrap}>
       <View style={s.cardHeader}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.sm }}>
           <Ionicons name="speedometer-outline" size={18} color={COLORS.primary} />
           <Text style={s.cardTitle}>Resumen de la semana</Text>
         </View>
       </View>
-      <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-        {/* Eventos hoy */}
+      <View style={{ flexDirection: "row", gap: ios.spacing.md, flexWrap: "wrap" }}>
         <TouchableOpacity onPress={() => router.push("/calendario")} style={{
-          flex: 1, minWidth: 130, backgroundColor: "#EFF6FF", borderRadius: 10, padding: 12,
-          borderLeftWidth: 3, borderLeftColor: "#3B82F6",
+          flex: 1, minWidth: 130, backgroundColor: COLORS.primarySoft, borderRadius: ios.radius.sm, padding: ios.spacing.md,
+          borderLeftWidth: 3, borderLeftColor: COLORS.primary,
         }}>
-          <Text style={{ fontSize: 11, color: COLORS.textSecondary, fontWeight: "700" }}>HOY</Text>
-          <Text style={{ fontSize: 22, fontWeight: "900", color: COLORS.text, marginTop: 2 }}>{w.events_today}</Text>
-          <Text style={{ fontSize: 11, color: COLORS.textSecondary }}>eventos</Text>
+          <Text style={{ fontSize: ios.font.footnote.size, color: COLORS.textSecondary, fontWeight: "700" }}>HOY</Text>
+          <Text style={{ fontSize: 22, fontWeight: "900", color: COLORS.text, marginTop: ios.spacing.xs }}>{w.events_today}</Text>
+          <Text style={{ fontSize: ios.font.footnote.size, color: COLORS.textSecondary }}>eventos</Text>
         </TouchableOpacity>
-        {/* Eventos semana */}
         <TouchableOpacity onPress={() => router.push("/calendario")} style={{
-          flex: 1, minWidth: 130, backgroundColor: "#F0FDF4", borderRadius: 10, padding: 12,
-          borderLeftWidth: 3, borderLeftColor: "#10B981",
+          flex: 1, minWidth: 130, backgroundColor: COLORS.syncedBg, borderRadius: ios.radius.sm, padding: ios.spacing.md,
+          borderLeftWidth: 3, borderLeftColor: COLORS.syncedText,
         }}>
-          <Text style={{ fontSize: 11, color: COLORS.textSecondary, fontWeight: "700" }}>ESTA SEMANA</Text>
-          <Text style={{ fontSize: 22, fontWeight: "900", color: COLORS.text, marginTop: 2 }}>{w.events_week}</Text>
-          <Text style={{ fontSize: 11, color: COLORS.textSecondary }}>eventos</Text>
+          <Text style={{ fontSize: ios.font.footnote.size, color: COLORS.textSecondary, fontWeight: "700" }}>ESTA SEMANA</Text>
+          <Text style={{ fontSize: 22, fontWeight: "900", color: COLORS.text, marginTop: ios.spacing.xs }}>{w.events_week}</Text>
+          <Text style={{ fontSize: ios.font.footnote.size, color: COLORS.textSecondary }}>eventos</Text>
         </TouchableOpacity>
-        {/* Horas plan vs real */}
         <View style={{
-          flex: 1.4, minWidth: 180, backgroundColor: "#FAF5FF", borderRadius: 10, padding: 12,
-          borderLeftWidth: 3, borderLeftColor: "#8B5CF6",
+          flex: 1.4, minWidth: 180, backgroundColor: COLORS.pillPurpleBg, borderRadius: ios.radius.sm, padding: ios.spacing.md,
+          borderLeftWidth: 3, borderLeftColor: COLORS.pillPurpleText,
         }}>
-          <Text style={{ fontSize: 11, color: COLORS.textSecondary, fontWeight: "700" }}>HORAS SEMANA</Text>
-          <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4, marginTop: 2 }}>
+          <Text style={{ fontSize: ios.font.footnote.size, color: COLORS.textSecondary, fontWeight: "700" }}>HORAS SEMANA</Text>
+          <View style={{ flexDirection: "row", alignItems: "baseline", gap: ios.spacing.xs, marginTop: ios.spacing.xs }}>
             <Text style={{ fontSize: 22, fontWeight: "900", color: COLORS.text }}>{w.hours_real_week}h</Text>
-            <Text style={{ fontSize: 13, color: COLORS.textSecondary }}>/ {w.hours_planned_week}h</Text>
+            <Text style={{ fontSize: ios.font.subhead.size, color: COLORS.textSecondary }}>/ {w.hours_planned_week}h</Text>
           </View>
-          <View style={{ height: 6, backgroundColor: "#E9D5FF", borderRadius: 3, marginTop: 6, overflow: "hidden" }}>
-            <View style={{ height: 6, width: `${Math.min(pct, 100)}%`, backgroundColor: "#8B5CF6", borderRadius: 3 }} />
+          <View style={{ height: 6, backgroundColor: COLORS.pillPurpleBg, borderRadius: ios.radius.sm, marginTop: ios.spacing.sm, overflow: "hidden" }}>
+            <View style={{ height: 6, width: `${Math.min(pct, 100)}%`, backgroundColor: COLORS.pillPurpleText, borderRadius: ios.radius.sm }} />
           </View>
-          <Text style={{ fontSize: 10, color: "#8B5CF6", fontWeight: "700", marginTop: 4 }}>{pct}% completado</Text>
+          <Text style={{ fontSize: ios.font.caption.size, color: COLORS.pillPurpleText, fontWeight: "700", marginTop: ios.spacing.xs }}>{pct}% completado</Text>
         </View>
-        {/* Técnicos · 3 semanas (resumen) */}
         <View style={{
-          flex: 1.2, minWidth: 160, backgroundColor: "#FFF7ED", borderRadius: 10, padding: 12,
-          borderLeftWidth: 3, borderLeftColor: "#F97316",
+          flex: 1.2, minWidth: 160, backgroundColor: COLORS.pendingBg, borderRadius: ios.radius.sm, padding: ios.spacing.md,
+          borderLeftWidth: 3, borderLeftColor: CL.orange,
         }}>
-          <Text style={{ fontSize: 11, color: COLORS.textSecondary, fontWeight: "700" }}>TÉCNICOS · MES</Text>
+          <Text style={{ fontSize: ios.font.footnote.size, color: COLORS.textSecondary, fontWeight: "700" }}>TÉCNICOS · MES</Text>
           {(() => {
             const t3 = dash?.tech_three_weeks;
             const totalTech = t3?.technicians?.length || 0;
@@ -759,11 +755,11 @@ function WeekSummary({ dash, router }: { dash: any; router: any }) {
             const pctFree = totalSlots > 0 ? Math.round((totalFree / totalSlots) * 100) : 0;
             return (
               <>
-                <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4, marginTop: 2 }}>
-                  <Text style={{ fontSize: 22, fontWeight: "900", color: "#EA580C" }}>{totalFree}</Text>
-                  <Text style={{ fontSize: 13, color: COLORS.textSecondary }}>días libres</Text>
+                <View style={{ flexDirection: "row", alignItems: "baseline", gap: ios.spacing.xs, marginTop: ios.spacing.xs }}>
+                  <Text style={{ fontSize: 22, fontWeight: "900", color: CL.orange }}>{totalFree}</Text>
+                  <Text style={{ fontSize: ios.font.subhead.size, color: COLORS.textSecondary }}>días libres</Text>
                 </View>
-                <Text style={{ fontSize: 11, color: COLORS.textSecondary, marginTop: 2 }}>
+                <Text style={{ fontSize: ios.font.footnote.size, color: COLORS.textSecondary, marginTop: ios.spacing.xs }}>
                   {totalTech} técnicos · {pctFree}% libre
                 </Text>
               </>
@@ -775,48 +771,8 @@ function WeekSummary({ dash, router }: { dash: any; router: any }) {
   );
 }
 
-function TopTechnicians({ dash, router }: { dash: any; router: any }) {
-  const s = useThemedStyles(useS);
-  const techs: any[] = dash?.top_technicians || [];
-  if (!techs.length) return null;
-  return (
-    <View style={s.cardWrap}>
-      <View style={s.cardHeader}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Ionicons name="trophy-outline" size={18} color="#F59E0B" />
-          <Text style={s.cardTitle}>Top técnicos del mes</Text>
-        </View>
-        <Text style={{ fontSize: 11, color: COLORS.textSecondary }}>productividad</Text>
-      </View>
-      {techs.slice(0, 6).map((t, i) => {
-        const rate = t.completion_rate || 0;
-        const color = rate >= 80 ? "#10B981" : rate >= 50 ? "#F59E0B" : "#EF4444";
-        return (
-          <View key={i} style={{ paddingVertical: 8, paddingHorizontal: 4, borderBottomWidth: i < techs.length - 1 ? 1 : 0, borderBottomColor: COLORS.borderInput }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: t.color || "#3B82F6", alignItems: "center", justifyContent: "center" }}>
-                <Text style={{ fontSize: 11, fontWeight: "800", color: "#fff" }}>{i + 1}</Text>
-              </View>
-              <Text style={{ fontSize: 13, fontWeight: "700", color: COLORS.text, flex: 1 }} numberOfLines={1}>{t.name}</Text>
-              <Text style={{ fontSize: 13, fontWeight: "800", color }}>{rate}%</Text>
-            </View>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <View style={{ flex: 1, height: 5, backgroundColor: COLORS.borderInput, borderRadius: 3, overflow: "hidden" }}>
-                <View style={{ height: 5, width: `${Math.min(rate, 100)}%`, backgroundColor: color, borderRadius: 3 }} />
-              </View>
-              <Text style={{ fontSize: 10, color: COLORS.textSecondary, minWidth: 80, textAlign: "right" }}>
-                {t.hours_real}h / {t.hours_planned}h · {t.events} ev.
-              </Text>
-            </View>
-          </View>
-        );
-      })}
-    </View>
-  );
-}
-
 function BudgetPipeline({ dash, router }: { dash: any; router: any }) {
-  const s = useThemedStyles(useS);
+  const s = useS();
   const bp = dash?.budget_pipeline;
   if (!bp || !bp.stages) return null;
   const stages = [
@@ -830,28 +786,28 @@ function BudgetPipeline({ dash, router }: { dash: any; router: any }) {
   return (
     <View style={s.cardWrap}>
       <View style={s.cardHeader}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.sm }}>
           <Ionicons name="funnel-outline" size={18} color={COLORS.primary} />
           <Text style={s.cardTitle}>Embudo de presupuestos</Text>
         </View>
-        <View style={{ backgroundColor: "#10B98120", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
-          <Text style={{ fontSize: 12, fontWeight: "800", color: "#059669" }}>Conversión: {bp.conversion_rate}%</Text>
+        <View style={{ backgroundColor: COLORS.syncedBg, paddingHorizontal: ios.spacing.sm, paddingVertical: ios.spacing.xs, borderRadius: ios.radius.sm }}>
+          <Text style={{ fontSize: ios.font.footnote.size, fontWeight: "800", color: COLORS.syncedText }}>Conversión: {bp.conversion_rate}%</Text>
         </View>
       </View>
-      <View style={{ gap: 8 }}>
+      <View style={{ gap: ios.spacing.sm }}>
         {stages.map(st => {
           const data = bp.stages[st.key] || { count: 0, amount: 0 };
           const widthPct = (data.count / maxCount) * 100;
           return (
-            <TouchableOpacity key={st.key} onPress={() => router.push("/presupuestos")} style={{ paddingVertical: 4 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <TouchableOpacity key={st.key} onPress={() => router.push("/presupuestos")} style={{ paddingVertical: ios.spacing.xs }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.sm, marginBottom: ios.spacing.xs }}>
                 <Ionicons name={st.icon as any} size={14} color={st.color} />
-                <Text style={{ fontSize: 13, fontWeight: "700", color: COLORS.text, flex: 1 }}>{st.label}</Text>
-                <Text style={{ fontSize: 12, fontWeight: "800", color: COLORS.text }}>{data.count}</Text>
-                <Text style={{ fontSize: 11, color: COLORS.textSecondary, minWidth: 60, textAlign: "right" }}>{formatEur(data.amount)}</Text>
+                <Text style={{ fontSize: ios.font.subhead.size, fontWeight: "700", color: COLORS.text, flex: 1 }}>{st.label}</Text>
+                <Text style={{ fontSize: ios.font.footnote.size, fontWeight: "800", color: COLORS.text }}>{data.count}</Text>
+                <Text style={{ fontSize: ios.font.footnote.size, color: COLORS.textSecondary, minWidth: 60, textAlign: "right" }}>{formatEur(data.amount)}</Text>
               </View>
-              <View style={{ height: 8, backgroundColor: COLORS.borderInput, borderRadius: 4, overflow: "hidden" }}>
-                <View style={{ height: 8, width: `${Math.max(widthPct, 2)}%`, backgroundColor: st.color, borderRadius: 4 }} />
+              <View style={{ height: 8, backgroundColor: COLORS.borderInput, borderRadius: ios.spacing.xs, overflow: "hidden" }}>
+                <View style={{ height: 8, width: `${Math.max(widthPct, 2)}%`, backgroundColor: st.color, borderRadius: ios.spacing.xs }} />
               </View>
             </TouchableOpacity>
           );
@@ -866,79 +822,76 @@ function BudgetPipeline({ dash, router }: { dash: any; router: any }) {
 }
 
 function SatHealth({ dash, router }: { dash: any; router: any }) {
-  const s = useThemedStyles(useS);
+  const s = useS();
   const h = dash?.sat_health;
   if (!h || h.total_resolved === 0) return null;
   const heatmap: any[] = h.heatmap || [];
 
-  // Mini visual: bounding box ES + dots
   const minLat = 36.0, maxLat = 44.0, minLng = -9.5, maxLng = 3.5;
   const w = 260, hgt = 130;
   const dots = heatmap.slice(0, 200).map((p) => {
     const x = ((p.lng - minLng) / (maxLng - minLng)) * w;
     const y = hgt - ((p.lat - minLat) / (maxLat - minLat)) * hgt;
-    const color = p.priority === "urgente" ? "#DC2626" : p.priority === "alta" ? "#F97316" : "#3B82F6";
+    const color = p.priority === "urgente" ? COLORS.errorText : p.priority === "alta" ? CL.orange : COLORS.primary;
     return { x, y, color };
   });
 
   return (
     <View style={s.cardWrap}>
       <View style={s.cardHeader}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Ionicons name="heart-circle-outline" size={18} color="#DC2626" />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.sm }}>
+          <Ionicons name="heart-circle-outline" size={18} color={COLORS.errorText} />
           <Text style={s.cardTitle}>SAT — Salud del servicio</Text>
         </View>
       </View>
-      <View style={{ flexDirection: "row", gap: 12, flexWrap: "wrap" }}>
-        <View style={{ flex: 1, minWidth: 130, backgroundColor: "#FEF2F2", padding: 10, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: "#DC2626" }}>
-          <Text style={{ fontSize: 10, fontWeight: "700", color: COLORS.textSecondary }}>RESOLUCIÓN MEDIA</Text>
-          <Text style={{ fontSize: 20, fontWeight: "900", color: COLORS.text, marginTop: 2 }}>{h.avg_resolution_hours}h</Text>
-          <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>tiempo medio</Text>
+      <View style={{ flexDirection: "row", gap: ios.spacing.md, flexWrap: "wrap" }}>
+        <View style={{ flex: 1, minWidth: 130, backgroundColor: COLORS.errorBg, padding: 10, borderRadius: ios.radius.sm, borderLeftWidth: 3, borderLeftColor: COLORS.errorText }}>
+          <Text style={{ fontSize: ios.font.caption.size, fontWeight: "700", color: COLORS.textSecondary }}>RESOLUCIÓN MEDIA</Text>
+          <Text style={{ fontSize: 20, fontWeight: "900", color: COLORS.text, marginTop: ios.spacing.xs }}>{h.avg_resolution_hours}h</Text>
+          <Text style={{ fontSize: ios.font.caption.size, color: COLORS.textSecondary }}>tiempo medio</Text>
         </View>
-        <View style={{ flex: 1, minWidth: 130, backgroundColor: "#F0FDF4", padding: 10, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: "#10B981" }}>
-          <Text style={{ fontSize: 10, fontWeight: "700", color: COLORS.textSecondary }}>RESUELTAS 1ª VISITA</Text>
-          <Text style={{ fontSize: 20, fontWeight: "900", color: COLORS.text, marginTop: 2 }}>{h.first_visit_rate}%</Text>
-          <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>de {h.total_resolved} resueltas</Text>
+        <View style={{ flex: 1, minWidth: 130, backgroundColor: COLORS.syncedBg, padding: 10, borderRadius: ios.radius.sm, borderLeftWidth: 3, borderLeftColor: COLORS.syncedText }}>
+          <Text style={{ fontSize: ios.font.caption.size, fontWeight: "700", color: COLORS.textSecondary }}>RESUELTAS 1ª VISITA</Text>
+          <Text style={{ fontSize: 20, fontWeight: "900", color: COLORS.text, marginTop: ios.spacing.xs }}>{h.first_visit_rate}%</Text>
+          <Text style={{ fontSize: ios.font.caption.size, color: COLORS.textSecondary }}>de {h.total_resolved} resueltas</Text>
         </View>
       </View>
-      {/* Top clientes */}
       {h.top_clients && h.top_clients.length > 0 && (
-        <View style={{ marginTop: 12, gap: 4 }}>
-          <Text style={{ fontSize: 11, fontWeight: "800", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 4 }}>Top 5 clientes por incidencias</Text>
+        <View style={{ marginTop: ios.spacing.md, gap: ios.spacing.xs }}>
+          <Text style={{ fontSize: ios.font.footnote.size, fontWeight: "800", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: ios.spacing.xs }}>Top 5 clientes por incidencias</Text>
           {h.top_clients.map((c: any, i: number) => (
-            <View key={i} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 3 }}>
-              <Text style={{ fontSize: 11, fontWeight: "800", color: COLORS.textSecondary, width: 18 }}>{i + 1}.</Text>
-              <Text style={{ flex: 1, fontSize: 12, color: COLORS.text }} numberOfLines={1}>{c.name}</Text>
-              <View style={{ backgroundColor: "#FEF2F2", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
-                <Text style={{ fontSize: 11, fontWeight: "800", color: "#DC2626" }}>{c.count}</Text>
+            <View key={i} style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.sm, paddingVertical: ios.spacing.xs }}>
+              <Text style={{ fontSize: ios.font.footnote.size, fontWeight: "800", color: COLORS.textSecondary, width: 18 }}>{i + 1}.</Text>
+              <Text style={{ flex: 1, fontSize: ios.font.footnote.size, color: COLORS.text }} numberOfLines={1}>{c.name}</Text>
+              <View style={{ backgroundColor: COLORS.errorBg, paddingHorizontal: ios.spacing.sm, paddingVertical: ios.spacing.xs, borderRadius: ios.radius.sm }}>
+                <Text style={{ fontSize: ios.font.footnote.size, fontWeight: "800", color: COLORS.errorText }}>{c.count}</Text>
               </View>
             </View>
           ))}
         </View>
       )}
-      {/* Mini heatmap visual */}
       {dots.length > 0 && (
-        <View style={{ marginTop: 12 }}>
-          <Text style={{ fontSize: 11, fontWeight: "800", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 6 }}>Mapa de calor (incidencias)</Text>
-          <View style={{ width: w, height: hgt, backgroundColor: "#F3F4F6", borderRadius: 8, position: "relative", alignSelf: "center" }}>
+        <View style={{ marginTop: ios.spacing.md }}>
+          <Text style={{ fontSize: ios.font.footnote.size, fontWeight: "800", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: ios.spacing.sm }}>Mapa de calor (incidencias)</Text>
+          <View style={{ width: w, height: hgt, backgroundColor: COLORS.bg, borderRadius: ios.radius.sm, position: "relative", alignSelf: "center" }}>
             <Svg width={w} height={hgt}>
               {dots.map((d, i) => (
                 <Circle key={i} cx={d.x} cy={d.y} r={3} fill={d.color} opacity={0.55} />
               ))}
             </Svg>
           </View>
-          <View style={{ flexDirection: "row", justifyContent: "center", gap: 12, marginTop: 6 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#DC2626" }} />
-              <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>Urgente</Text>
+          <View style={{ flexDirection: "row", justifyContent: "center", gap: ios.spacing.md, marginTop: ios.spacing.sm }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.xs }}>
+              <View style={{ width: 8, height: 8, borderRadius: ios.spacing.xs, backgroundColor: COLORS.errorText }} />
+              <Text style={{ fontSize: ios.font.caption.size, color: COLORS.textSecondary }}>Urgente</Text>
             </View>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#F97316" }} />
-              <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>Alta</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.xs }}>
+              <View style={{ width: 8, height: 8, borderRadius: ios.spacing.xs, backgroundColor: CL.orange }} />
+              <Text style={{ fontSize: ios.font.caption.size, color: COLORS.textSecondary }}>Alta</Text>
             </View>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#3B82F6" }} />
-              <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>Media/Baja</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.xs }}>
+              <View style={{ width: 8, height: 8, borderRadius: ios.spacing.xs, backgroundColor: COLORS.primary }} />
+              <Text style={{ fontSize: ios.font.caption.size, color: COLORS.textSecondary }}>Media/Baja</Text>
             </View>
           </View>
         </View>
@@ -948,7 +901,7 @@ function SatHealth({ dash, router }: { dash: any; router: any }) {
 }
 
 function MiniMap({ dash, router }: { dash: any; router: any }) {
-  const s = useThemedStyles(useS);
+  const s = useS();
   const pts: any[] = dash?.active_projects_map || [];
   if (!pts.length) return null;
 
@@ -996,35 +949,36 @@ function MiniMap({ dash, router }: { dash: any; router: any }) {
 }
 
 function YoYComparison({ dash }: { dash: any }) {
-  const s = useThemedStyles(useS);
+  const s = useS();
   const y = dash?.yoy_comparison;
   if (!y) return null;
   const max = Math.max(...(y.quarters_this || []), ...(y.quarters_last || []), 1);
-  const growthColor = y.growth_pct >= 0 ? "#10B981" : "#EF4444";
+  const growthColor = y.growth_pct >= 0 ? COLORS.syncedText : COLORS.errorText;
   const growthIcon = y.growth_pct >= 0 ? "trending-up" : "trending-down";
+  const growthPillBg = y.growth_pct >= 0 ? COLORS.syncedBg : COLORS.errorBg;
 
   return (
     <View style={s.cardWrap}>
       <View style={s.cardHeader}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.sm }}>
           <Ionicons name="stats-chart-outline" size={18} color={COLORS.primary} />
           <Text style={s.cardTitle}>Comparativa año vs año</Text>
         </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: `${growthColor}20`, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.xs, backgroundColor: growthPillBg, paddingHorizontal: ios.spacing.sm, paddingVertical: ios.spacing.xs, borderRadius: ios.radius.sm }}>
           <Ionicons name={growthIcon} size={12} color={growthColor} />
-          <Text style={{ fontSize: 12, fontWeight: "800", color: growthColor }}>{y.growth_pct > 0 ? "+" : ""}{y.growth_pct}%</Text>
+          <Text style={{ fontSize: ios.font.footnote.size, fontWeight: "800", color: growthColor }}>{y.growth_pct > 0 ? "+" : ""}{y.growth_pct}%</Text>
         </View>
       </View>
-      <View style={{ flexDirection: "row", gap: 12, marginBottom: 12 }}>
-        <View style={{ flex: 1, backgroundColor: "#EFF6FF", padding: 10, borderRadius: 8 }}>
-          <Text style={{ fontSize: 10, fontWeight: "700", color: COLORS.textSecondary }}>{y.this_year}</Text>
-          <Text style={{ fontSize: 22, fontWeight: "900", color: COLORS.primary, marginTop: 2 }}>{y.closed_this_year}</Text>
-          <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>proyectos cerrados</Text>
+      <View style={{ flexDirection: "row", gap: ios.spacing.md, marginBottom: ios.spacing.md }}>
+        <View style={{ flex: 1, backgroundColor: COLORS.primarySoft, padding: 10, borderRadius: ios.radius.sm }}>
+          <Text style={{ fontSize: ios.font.caption.size, fontWeight: "700", color: COLORS.textSecondary }}>{y.this_year}</Text>
+          <Text style={{ fontSize: 22, fontWeight: "900", color: COLORS.primary, marginTop: ios.spacing.xs }}>{y.closed_this_year}</Text>
+          <Text style={{ fontSize: ios.font.caption.size, color: COLORS.textSecondary }}>proyectos cerrados</Text>
         </View>
-        <View style={{ flex: 1, backgroundColor: "#F3F4F6", padding: 10, borderRadius: 8 }}>
-          <Text style={{ fontSize: 10, fontWeight: "700", color: COLORS.textSecondary }}>{y.last_year}</Text>
-          <Text style={{ fontSize: 22, fontWeight: "900", color: COLORS.textSecondary, marginTop: 2 }}>{y.closed_last_year}</Text>
-          <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>proyectos cerrados</Text>
+        <View style={{ flex: 1, backgroundColor: COLORS.bg, padding: 10, borderRadius: ios.radius.sm }}>
+          <Text style={{ fontSize: ios.font.caption.size, fontWeight: "700", color: COLORS.textSecondary }}>{y.last_year}</Text>
+          <Text style={{ fontSize: 22, fontWeight: "900", color: COLORS.textSecondary, marginTop: ios.spacing.xs }}>{y.closed_last_year}</Text>
+          <Text style={{ fontSize: ios.font.caption.size, color: COLORS.textSecondary }}>proyectos cerrados</Text>
         </View>
       </View>
       {/* Quarter bars */}
@@ -1057,7 +1011,7 @@ function YoYComparison({ dash }: { dash: any }) {
 }
 
 function GeoDistribution({ dash, router }: { dash: any; router: any }) {
-  const s = useThemedStyles(useS);
+  const s = useS();
   const g = dash?.geo_distribution;
   if (!g) return null;
   const maxCity = Math.max(...((g.top_cities || []).map((c: any) => c.count)), 1);
@@ -1131,7 +1085,7 @@ function fmtDayLabel(dateStr: string): string {
 }
 
 function TechAvailability3W({ dash, router }: { dash: any; router: any }) {
-  const s = useThemedStyles(useS);
+  const s = useS();
   const { isWide } = useBreakpoint();
   const t3 = dash?.tech_three_weeks;
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -1197,18 +1151,18 @@ function TechAvailability3W({ dash, router }: { dash: any; router: any }) {
       )}
 
       {/* Leyenda */}
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-          <View style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: "#D1FAE5", borderWidth: 1, borderColor: "#10B981" }} />
-          <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>Libre</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.md, marginBottom: ios.spacing.sm, flexWrap: "wrap" }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.xs }}>
+          <View style={{ width: 12, height: 12, borderRadius: ios.radius.sm, backgroundColor: COLORS.syncedBg, borderWidth: 1, borderColor: COLORS.syncedText }} />
+          <Text style={{ fontSize: ios.font.caption.size, color: COLORS.textSecondary }}>Libre</Text>
         </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-          <View style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: "#FED7AA", borderWidth: 1, borderColor: "#F97316" }} />
-          <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>½ día</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.xs }}>
+          <View style={{ width: 12, height: 12, borderRadius: ios.radius.sm, backgroundColor: "#FED7AA", borderWidth: 1, borderColor: "#F97316" }} />
+          <Text style={{ fontSize: ios.font.caption.size, color: COLORS.textSecondary }}>½ día</Text>
         </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-          <View style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: "#FEE2E2", borderWidth: 1, borderColor: "#EF4444" }} />
-          <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>Ocupado</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.xs }}>
+          <View style={{ width: 12, height: 12, borderRadius: ios.radius.sm, backgroundColor: COLORS.errorBg, borderWidth: 1, borderColor: COLORS.errorText }} />
+          <Text style={{ fontSize: ios.font.caption.size, color: COLORS.textSecondary }}>Ocupado</Text>
         </View>
       </View>
 
@@ -1266,8 +1220,8 @@ function TechAvailability3W({ dash, router }: { dash: any; router: any }) {
                     const isHalf = st === "half";
                     const isFree = st === "free";
                     const isBusy = st === "busy";
-                    const bg = isFree ? "#D1FAE5" : isHalf ? "#FED7AA" : "#FEE2E2";
-                    const bc = isFree ? "#10B981" : isHalf ? "#F97316" : "#EF4444";
+                    const bg = isFree ? COLORS.syncedBg : isHalf ? "#FED7AA" : COLORS.errorBg;
+                    const bc = isFree ? COLORS.syncedText : isHalf ? "#F97316" : COLORS.errorText;
                     const canTap = !isBusy;
                     return (
                     <TouchableOpacity
@@ -1276,15 +1230,15 @@ function TechAvailability3W({ dash, router }: { dash: any; router: any }) {
                       activeOpacity={canTap ? 0.6 : 1}
                       disabled={!canTap}
                       style={{
-                        width: isWide ? 20 : 30, height: isWide ? 18 : 26, borderRadius: 4,
+                        width: isWide ? 20 : 30, height: isWide ? 18 : 26, borderRadius: ios.radius.sm,
                         backgroundColor: bg,
                         borderWidth: 1,
                         borderColor: bc,
                         alignItems: "center", justifyContent: "center",
                       }}
                     >
-                      {isBusy && <Ionicons name="close" size={isWide ? 11 : 14} color="#EF4444" />}
-                      {isFree && <Ionicons name="checkmark" size={isWide ? 11 : 14} color="#10B981" />}
+                      {isBusy && <Ionicons name="close" size={isWide ? 11 : 14} color={COLORS.errorText} />}
+                      {isFree && <Ionicons name="checkmark" size={isWide ? 11 : 14} color={COLORS.syncedText} />}
                       {isHalf && <Text style={{ fontSize: isWide ? 9 : 12, fontWeight: "800", color: "#C2410C" }}>½</Text>}
                     </TouchableOpacity>
                     );
@@ -1296,11 +1250,11 @@ function TechAvailability3W({ dash, router }: { dash: any; router: any }) {
 
             {/* Detalle desplegable */}
             {isOpen && (
-              <View style={{ marginTop: 8, marginLeft: 30, padding: 10, backgroundColor: COLORS.primarySoft || "#F0F9FF", borderRadius: 8 }}>
-                <Text style={{ fontSize: 11, fontWeight: "800", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 6 }}>
+              <View style={{ marginTop: ios.spacing.sm, marginLeft: 30, padding: 10, backgroundColor: COLORS.primarySoft, borderRadius: ios.radius.sm }}>
+                <Text style={{ fontSize: ios.font.footnote.size, fontWeight: "800", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: ios.spacing.sm }}>
                   Días del mes (libres: {tech.free_days}{tech.half_days ? `, ½: ${tech.half_days}` : ""})
                 </Text>
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: ios.spacing.sm }}>
                   {tech.days.filter((d: any) => d.free || (d.status === "half")).map((d: any, k: number) => {
                     const isHalf = d.status === "half";
                     return (
@@ -1308,15 +1262,15 @@ function TechAvailability3W({ dash, router }: { dash: any; router: any }) {
                       key={k}
                       onPress={() => router.push(`/calendario?date=${d.date}` as any)}
                       style={{
-                        backgroundColor: isHalf ? "#FED7AA" : "#D1FAE5",
+                        backgroundColor: isHalf ? "#FED7AA" : COLORS.syncedBg,
                         borderWidth: 1,
-                        borderColor: isHalf ? "#F97316" : "#10B981",
-                        paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
-                        flexDirection: "row", alignItems: "center", gap: 4,
+                        borderColor: isHalf ? "#F97316" : COLORS.syncedText,
+                        paddingHorizontal: ios.spacing.sm, paddingVertical: ios.spacing.xs, borderRadius: ios.radius.sm,
+                        flexDirection: "row", alignItems: "center", gap: ios.spacing.xs,
                       }}
                     >
                       <Ionicons name="calendar-outline" size={11} color={isHalf ? "#C2410C" : "#065F46"} />
-                      <Text style={{ fontSize: 11, fontWeight: "700", color: isHalf ? "#C2410C" : "#065F46" }}>{DAY_LETTERS[d.weekday]} {fmtDayLabel(d.date)} {isHalf ? "½" : ""}</Text>
+                      <Text style={{ fontSize: ios.font.footnote.size, fontWeight: "700", color: isHalf ? "#C2410C" : "#065F46" }}>{DAY_LETTERS[d.weekday]} {fmtDayLabel(d.date)} {isHalf ? "½" : ""}</Text>
                     </TouchableOpacity>
                     );
                   })}

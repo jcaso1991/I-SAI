@@ -9,6 +9,7 @@ import { api, clearToken, COLORS } from "../../src/api";
 import ResponsiveLayout from "../../src/ResponsiveLayout";
 import { useBreakpoint } from "../../src/useBreakpoint";
 import { useThemedStyles } from "../../src/theme";
+import { ios } from "../../src/ui/iosTheme";
 
 type Tab = "pendientes" | "aceptados";
 
@@ -100,7 +101,7 @@ export default function PresupuestosIndex() {
         </TouchableOpacity>
       </View>
 
-      {/* Create actions (collapsible) */}
+        {/* Create actions (collapsible) */}
       {showCreate && (
         <View style={[s.actions, isWide && { maxWidth: 900, alignSelf: "center", width: "100%" }]}>
           <TouchableOpacity
@@ -109,7 +110,9 @@ export default function PresupuestosIndex() {
             onPress={() => { setShowCreate(false); router.push("/presupuestos/nuevo"); }}
             activeOpacity={0.85}
           >
-            <Ionicons name="add-circle" size={48} color="#fff" />
+            <View style={s.cardIconContainer}>
+              <Ionicons name="add-circle" size={28} color="#fff" />
+            </View>
             <Text style={s.cardTitle}>Proyecto nuevo</Text>
             <Text style={s.cardSub}>Crear un presupuesto en blanco</Text>
           </TouchableOpacity>
@@ -119,7 +122,9 @@ export default function PresupuestosIndex() {
             onPress={() => { setShowCreate(false); router.push("/presupuestos/existente"); }}
             activeOpacity={0.85}
           >
-            <Ionicons name="folder-open" size={48} color="#fff" />
+            <View style={s.cardIconContainer}>
+              <Ionicons name="folder-open" size={28} color="#fff" />
+            </View>
             <Text style={s.cardTitle}>Proyecto existente</Text>
             <Text style={s.cardSub}>Enlazar a un proyecto ya creado</Text>
           </TouchableOpacity>
@@ -214,47 +219,56 @@ const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingVertical: 12, backgroundColor: COLORS.surface,
+    paddingHorizontal: ios.spacing.lg, paddingVertical: 12, backgroundColor: COLORS.surface,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
-  headerTitle: { fontSize: 22, fontWeight: "900", color: COLORS.text, flex: 1, textAlign: "center" },
-  iconBtn: { width: 40, height: 40, borderRadius: 10, backgroundColor: COLORS.bg, alignItems: "center", justifyContent: "center" },
-  scroll: { padding: 16, paddingBottom: 40, gap: 10 },
-  actions: { flexDirection: "row", gap: 12, padding: 16 },
+  headerTitle: { fontSize: 22, fontWeight: "900", color: COLORS.text, flex: 1, textAlign: "center", letterSpacing: -0.4 },
+  iconBtn: { width: 40, height: 40, borderRadius: ios.radius.md, backgroundColor: COLORS.bg, alignItems: "center", justifyContent: "center" },
+  scroll: { padding: ios.spacing.lg, paddingBottom: 40, gap: 10 },
+  actions: { flexDirection: "row", gap: ios.spacing.md, padding: ios.spacing.lg },
   card: {
-    flex: 1, minWidth: 200, padding: 18, borderRadius: 16, alignItems: "center", gap: 6,
+    flex: 1, minWidth: 200, padding: ios.spacing.lg, borderRadius: ios.radius.lg,
+    alignItems: "center", gap: ios.spacing.sm,
+    ...ios.shadow.card,
+  },
+  cardIconContainer: {
+    width: 52, height: 52, borderRadius: ios.radius.md,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center", justifyContent: "center", marginBottom: 4,
   },
   cardTitle: { color: "#fff", fontSize: 16, fontWeight: "900" },
   cardSub: { color: "rgba(255,255,255,0.85)", fontSize: 12, fontWeight: "600" },
   searchBox: {
-    flexDirection: "row", alignItems: "center", gap: 8,
+    flexDirection: "row", alignItems: "center", gap: 10,
     marginHorizontal: 16, marginTop: 12, marginBottom: 8,
-    paddingHorizontal: 12, height: 42, backgroundColor: COLORS.surface,
-    borderRadius: 10, borderWidth: 1, borderColor: COLORS.border,
+    paddingHorizontal: 16, height: 48, backgroundColor: COLORS.surface,
+    borderRadius: ios.radius.md, borderWidth: 1, borderColor: COLORS.border,
   },
-  searchInput: { flex: 1, fontSize: 14, color: COLORS.text },
+  searchInput: { flex: 1, fontSize: 15, color: COLORS.text },
   tabRow: {
     flexDirection: "row", marginHorizontal: 16, marginBottom: 8,
-    backgroundColor: COLORS.surface, borderRadius: 10, padding: 4,
+    backgroundColor: COLORS.surface, borderRadius: ios.radius.pill, padding: 4,
     borderWidth: 1, borderColor: COLORS.border,
   },
   tab: {
-    flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: "center",
+    flex: 1, paddingVertical: 10, borderRadius: ios.radius.pill, alignItems: "center",
   },
   tabActive: { backgroundColor: COLORS.primary },
   tabText: { fontSize: 14, fontWeight: "700", color: COLORS.textSecondary },
   tabTextActive: { color: "#fff" },
   empty: { color: COLORS.textSecondary, textAlign: "center", padding: 20 },
   row: {
-    flexDirection: "row", alignItems: "center", padding: 12, backgroundColor: COLORS.surface,
-    borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, gap: 8,
+    flexDirection: "row", alignItems: "center", padding: ios.spacing.lg,
+    backgroundColor: COLORS.surface,
+    borderRadius: ios.radius.lg, borderWidth: 1, borderColor: COLORS.border, gap: 10,
+    ...ios.shadow.card,
   },
   rowTitle: { fontSize: 14, fontWeight: "800", color: COLORS.text },
   rowSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
   rowCreator: { fontSize: 11, color: COLORS.textDisabled, fontWeight: "600", marginTop: 3 },
   statusBtn: {
-    flexDirection: "row", alignItems: "center", gap: 4,
-    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: ios.radius.pill,
   },
   statusBtnPending: { backgroundColor: "#FEF3C7" },
   statusBtnAccepted: { backgroundColor: "#DCFCE7" },

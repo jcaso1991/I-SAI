@@ -5182,6 +5182,11 @@ class NotaCreate(BaseModel):
     fecha: Optional[str] = None
     material_id: Optional[str] = None
     marcada: bool = False
+    color: Optional[str] = None
+    priority: Optional[str] = None
+    tags: Optional[list] = []
+    pinned: bool = False
+    archived: bool = False
 
 class NotaUpdate(BaseModel):
     titulo: Optional[str] = None
@@ -5189,18 +5194,43 @@ class NotaUpdate(BaseModel):
     fecha: Optional[str] = None
     material_id: Optional[str] = None
     marcada: Optional[bool] = None
+    color: Optional[str] = None
+    priority: Optional[str] = None
+    tags: Optional[list] = None
+    pinned: Optional[bool] = None
+    archived: Optional[bool] = None
 
 @api_router.get("/notas")
 async def list_notas(
     user: dict = Depends(require_permission("notas.view")),
     fecha: Optional[str] = Query(None, description="Filtrar por fecha YYYY-MM-DD"),
     marcada: Optional[bool] = Query(None, description="Filtrar por marcadas (true/false)"),
+    search: Optional[str] = Query(None),
+    priority: Optional[str] = Query(None),
+    tag: Optional[str] = Query(None),
+    material_id: Optional[str] = Query(None),
+    pinned: Optional[bool] = Query(None),
+    archived: Optional[bool] = Query(False),
 ):
     q: dict = {"user_id": user["id"]}
     if fecha:
         q["fecha"] = fecha
     if marcada is not None:
         q["marcada"] = marcada
+    if search:
+        q["$or"] = [{"titulo": {"$regex": search, "$options": "i"}}, {"contenido": {"$regex": search, "$options": "i"}}]
+    if priority:
+        q["priority"] = priority
+    if tag:
+        q["tags"] = tag
+    if material_id:
+        q["material_id"] = material_id
+    if pinned is not None:
+        q["pinned"] = pinned
+    if archived is not None:
+        q["archived"] = archived
+    else:
+        q["archived"] = {"$ne": True}
     items = await db.notas.find(q, {"_id": 0}).sort("updated_at", -1).to_list(500)
     # Enriquecer con nombre de proyecto
     mids = {n["material_id"] for n in items if n.get("material_id")}
@@ -5227,6 +5257,11 @@ async def create_nota(
         "fecha": body.fecha,
         "material_id": body.material_id or None,
         "marcada": body.marcada or False,
+        "color": body.color or None,
+        "priority": body.priority or None,
+        "tags": body.tags or [],
+        "pinned": body.pinned or False,
+        "archived": body.archived or False,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }

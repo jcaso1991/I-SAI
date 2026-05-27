@@ -19,6 +19,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../src/api";
+import { useThemedStyles } from "../src/theme";
+import { ios } from "../src/ui/iosTheme";
 
 export default function PublicSATForm() {
   const [cliente, setCliente] = useState("");
@@ -28,6 +30,7 @@ export default function PublicSATForm() {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const s = useThemedStyles(useS);
 
   const submit = async () => {
     setError(null);
@@ -193,61 +196,58 @@ export default function PublicSATForm() {
   );
 }
 
-const s = StyleSheet.create({
+const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
-  scroll: { padding: 20, alignItems: "center", minHeight: "100%" as any },
+  scroll: { padding: ios.spacing.xl, alignItems: "center", minHeight: "100%" as any },
   card: {
     width: "100%", maxWidth: 560,
     backgroundColor: COLORS.surface,
-    borderRadius: 20,
+    borderRadius: ios.radius.lg,
     borderWidth: 1, borderColor: COLORS.border,
-    padding: 24,
-    ...Platform.select<any>({
-      web: { boxShadow: "0 12px 36px rgba(15,23,42,0.08)" },
-      default: { shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 4 },
-    }),
+    padding: ios.spacing.xxl,
+    ...ios.shadow.card,
   },
 
-  headerBlock: { alignItems: "center", marginBottom: 24 },
+  headerBlock: { alignItems: "center", marginBottom: ios.spacing.xxl },
   logoCircle: {
-    width: 68, height: 68, borderRadius: 20,
+    width: 80, height: 80, borderRadius: 24,
     backgroundColor: COLORS.primarySoft,
     borderWidth: 1, borderColor: COLORS.primary + "33",
     alignItems: "center", justifyContent: "center",
-    marginBottom: 12,
+    marginBottom: ios.spacing.lg,
   },
   brand: { fontSize: 12, color: COLORS.primary, fontWeight: "900", letterSpacing: 2 },
-  title: { fontSize: 26, fontWeight: "900", color: COLORS.text, marginTop: 4, letterSpacing: -0.5 },
+  title: { fontSize: 28, fontWeight: "900", color: COLORS.text, marginTop: 4, letterSpacing: -0.5 },
   subtitle: {
     fontSize: 13, color: COLORS.textSecondary, textAlign: "center",
     marginTop: 8, lineHeight: 19, fontWeight: "600",
   },
 
-  field: { marginBottom: 14 },
+  field: { marginBottom: ios.spacing.lg },
   label: { fontSize: 12, fontWeight: "800", color: COLORS.text, marginBottom: 6, letterSpacing: 0.2 },
   input: {
     borderWidth: 1.5, borderColor: COLORS.borderInput,
-    borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 12,
-    fontSize: 15, color: COLORS.text,
+    borderRadius: ios.radius.md,
+    paddingHorizontal: ios.spacing.lg, paddingVertical: ios.spacing.md,
+    fontSize: 16, color: COLORS.text,
     backgroundColor: COLORS.bg,
   },
-  textarea: { minHeight: 110, textAlignVertical: "top" as any, paddingTop: 12 },
+  textarea: { minHeight: 120, textAlignVertical: "top" as any, paddingTop: ios.spacing.md },
 
   errorBox: {
     flexDirection: "row", alignItems: "center", gap: 8,
-    backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FEE2E2",
-    borderRadius: 10, padding: 10, marginBottom: 12,
+    backgroundColor: COLORS.errorBg, borderWidth: 1, borderColor: COLORS.errorBg,
+    borderRadius: ios.radius.row, padding: 10, marginBottom: ios.spacing.md,
   },
-  errorText: { flex: 1, color: "#EF4444", fontWeight: "700", fontSize: 13 },
+  errorText: { flex: 1, color: COLORS.errorText, fontWeight: "700", fontSize: 13 },
 
   primaryBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
-    backgroundColor: COLORS.primary, height: 50, borderRadius: 12, marginTop: 6,
+    backgroundColor: COLORS.primary, height: 56, borderRadius: ios.radius.md, marginTop: 6,
   },
-  primaryBtnText: { color: "#fff", fontWeight: "900", fontSize: 16, letterSpacing: 0.3 },
+  primaryBtnText: { color: "#fff", fontWeight: "900", fontSize: 17, letterSpacing: 0.3 },
   secondaryBtn: {
-    height: 48, borderRadius: 12, borderWidth: 2, borderColor: COLORS.primary,
+    height: 48, borderRadius: ios.radius.md, borderWidth: 2, borderColor: COLORS.primary,
     alignItems: "center", justifyContent: "center", paddingHorizontal: 18, marginTop: 18,
   },
   secondaryBtnText: { color: COLORS.primary, fontWeight: "900", fontSize: 14 },
@@ -261,7 +261,7 @@ const s = StyleSheet.create({
   successCard: {
     flex: 1, alignItems: "center", justifyContent: "center", padding: 30,
   },
-  successIcon: { marginBottom: 12 },
+  successIcon: { marginBottom: ios.spacing.md },
   successTitle: { fontSize: 28, fontWeight: "900", color: COLORS.text, letterSpacing: -0.5, marginBottom: 10, textAlign: "center" },
   successMsg: {
     fontSize: 15, color: COLORS.textSecondary, textAlign: "center",

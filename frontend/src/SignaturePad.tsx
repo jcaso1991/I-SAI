@@ -1,11 +1,10 @@
 import React, { useRef, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Platform , PanResponder } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "./api";
 import { useThemedStyles } from "./theme";
 import { captureRef } from "react-native-view-shot";
-import { PanResponder } from "react-native";
 
 export default function SignaturePad({
   value, onChange, label,

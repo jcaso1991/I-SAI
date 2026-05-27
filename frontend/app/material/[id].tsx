@@ -10,6 +10,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { api, COLORS } from "../../src/api";
 import { useThemedStyles } from "../../src/theme";
 import { usePermissions } from "../../src/permissions";
+import { ios } from "../../src/ui/iosTheme";
 
 // ---------- date helpers ----------
 function todayISO(): string {
@@ -360,15 +361,15 @@ export default function MaterialDetail() {
               <Ionicons name={showLinkedEvents ? "chevron-up" : "chevron-down"} size={14} color={COLORS.textSecondary} />
             </TouchableOpacity>
             {showLinkedEvents && linkedEvents.map((ev: any) => (
-              <View key={ev.id} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 4 }}>
+              <View key={ev.id} style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.sm, paddingVertical: ios.spacing.xs }}>
                 <TouchableOpacity
                   style={{ flex: 1 }}
                   onPress={() => router.push(`/calendario?openEvent=${encodeURIComponent(ev.id)}&from=project` as any)}
                   activeOpacity={0.6}
                 >
-                  <Text style={{ fontSize: 12, color: COLORS.primary, fontWeight: "600" }} numberOfLines={1}>{ev.title}</Text>
+                  <Text style={{ fontSize: ios.font.footnote.size, color: COLORS.primary, fontWeight: "600" }} numberOfLines={1}>{ev.title}</Text>
                 </TouchableOpacity>
-                <Text style={{ fontSize: 10, color: COLORS.textSecondary, minWidth: 60 }}>{ev.start_at?.slice(0, 16).replace("T", " ")}</Text>
+                <Text style={{ fontSize: ios.font.caption.size, color: COLORS.textSecondary, minWidth: 60 }}>{ev.start_at?.slice(0, 16).replace("T", " ")}</Text>
                 <TouchableOpacity
                   style={[s.statusChip, ev.status === "in_progress" && { backgroundColor: COLORS.primarySoft }]}
                   onPress={async () => { await api.updateEvent(ev.id.split(":")[0], { status: "in_progress" } as any); updateEventStatus(ev.id, "in_progress"); }}
@@ -428,7 +429,7 @@ export default function MaterialDetail() {
                 {m.attachments.map((a: any) => (
                   <TouchableOpacity
                     key={a.id}
-                    style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 8, backgroundColor: COLORS.bg, borderRadius: 8, marginBottom: 4 }}
+                    style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.sm, padding: ios.spacing.sm, backgroundColor: COLORS.bg, borderRadius: ios.radius.sm, marginBottom: ios.spacing.xs }}
                     onPress={() => {
                       if (a.base64) {
                         const byteChars = atob(a.base64);
@@ -440,7 +441,7 @@ export default function MaterialDetail() {
                     }}
                   >
                     <Ionicons name="document-text-outline" size={18} color={COLORS.primary} />
-                    <Text style={{ flex: 1, fontSize: 12, color: COLORS.text }} numberOfLines={1}>{a.filename}</Text>
+                    <Text style={{ flex: 1, fontSize: ios.font.footnote.size, color: COLORS.text }} numberOfLines={1}>{a.filename}</Text>
                     <Ionicons name="download-outline" size={16} color={COLORS.textSecondary} />
                   </TouchableOpacity>
                 ))}
@@ -473,14 +474,14 @@ export default function MaterialDetail() {
           </TouchableOpacity>
         </View>
         {showHistory && (
-          <View style={{ padding: 4 }}>
+          <View style={{ padding: ios.spacing.xs }}>
             {history.length === 0 ? (
-              <Text style={{ color: COLORS.textDisabled, fontStyle: "italic", padding: 8, fontSize: 12 }}>Sin cambios registrados</Text>
+              <Text style={{ color: COLORS.textDisabled, fontStyle: "italic", padding: ios.spacing.sm, fontSize: ios.font.footnote.size }}>Sin cambios registrados</Text>
             ) : history.map((h, i) => (
-              <View key={h.id || i} style={{ flexDirection: "row", padding: 6, gap: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
-                <Text style={{ fontSize: 10, color: COLORS.textDisabled, minWidth: 50 }}>{(h.created_at || "").slice(0, 16).replace("T", " ")}</Text>
-                <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.primary, minWidth: 80 }}>{h.changed_by?.split("@")[0]}</Text>
-                <Text style={{ fontSize: 11, color: COLORS.text, flex: 1 }} numberOfLines={2}>
+              <View key={h.id || i} style={{ flexDirection: "row", padding: ios.spacing.sm, gap: ios.spacing.sm, borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border }}>
+                <Text style={{ fontSize: ios.font.caption.size, color: COLORS.textDisabled, minWidth: 50 }}>{(h.created_at || "").slice(0, 16).replace("T", " ")}</Text>
+                <Text style={{ fontSize: ios.font.footnote.size, fontWeight: "700", color: COLORS.primary, minWidth: 80 }}>{h.changed_by?.split("@")[0]}</Text>
+                <Text style={{ fontSize: ios.font.footnote.size, color: COLORS.text, flex: 1 }} numberOfLines={2}>
                   <Text style={{ fontWeight: "600" }}>{h.field}</Text>: {h.old_value || "—"} → {h.new_value || "—"}
                 </Text>
               </View>
@@ -727,121 +728,130 @@ const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 12, paddingVertical: 8, backgroundColor: COLORS.surface,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    paddingHorizontal: ios.spacing.lg, paddingVertical: ios.spacing.sm, backgroundColor: COLORS.surface,
+    borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border,
   },
   iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-  headerTitle: { fontSize: 18, fontWeight: "800", color: COLORS.text },
-  titleBlock: { gap: 4 },
+  headerTitle: { fontSize: ios.font.title3.size, fontWeight: ios.font.title3.weight, color: COLORS.text },
+  titleBlock: { gap: ios.spacing.xs, marginBottom: ios.spacing.sm },
   matCode: {
     fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
-    fontSize: 13, fontWeight: "700", color: COLORS.primary, letterSpacing: 0.5,
+    fontSize: ios.font.subhead.size, fontWeight: "700", color: COLORS.primary, letterSpacing: 0.5,
   },
-  matCliente: { fontSize: 24, fontWeight: "900", color: COLORS.text, letterSpacing: -0.3 },
-  matMeta: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
-  matMetaText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: "500" },
+  matCliente: { fontSize: ios.font.title1.size, fontWeight: ios.font.title1.weight, color: COLORS.text, letterSpacing: ios.font.title1.letter },
+  matMeta: { flexDirection: "row", alignItems: "center", gap: ios.spacing.sm, marginTop: ios.spacing.xs },
+  matMetaText: { color: COLORS.textSecondary, fontSize: ios.font.callout.size, fontWeight: "500" },
   section: {
-    backgroundColor: COLORS.surface, borderRadius: 14, padding: 16,
-    borderWidth: 1, borderColor: COLORS.border, gap: 10,
+    backgroundColor: COLORS.surface, borderRadius: ios.radius.lg, padding: ios.spacing.lg,
+    borderWidth: 1, borderColor: COLORS.border, gap: ios.spacing.sm,
+    ...ios.shadow.card,
   },
   sectionTitle: {
-    fontSize: 11, fontWeight: "800", color: COLORS.textSecondary,
-    letterSpacing: 1.5, marginBottom: 4,
+    fontSize: ios.font.section.size, fontWeight: ios.font.section.weight, color: COLORS.textSecondary,
+    letterSpacing: ios.font.section.letter, marginBottom: ios.spacing.xs,
   },
   roRow: {
     flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    paddingVertical: ios.spacing.md, borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border,
   },
-  roLabel: { color: COLORS.textSecondary, fontSize: 14, fontWeight: "500" },
-  roValue: { color: COLORS.text, fontSize: 15, fontWeight: "700", maxWidth: "60%", textAlign: "right" },
+  roLabel: { color: COLORS.textSecondary, fontSize: ios.font.callout.size, fontWeight: "500" },
+  roValue: { color: COLORS.text, fontSize: ios.font.callout.size, fontWeight: "700", maxWidth: "60%", textAlign: "right" },
   fieldLabel: {
-    fontSize: 11, fontWeight: "800", color: COLORS.textSecondary,
-    letterSpacing: 1.2, marginTop: 10, marginBottom: 4,
+    fontSize: ios.font.section.size, fontWeight: ios.font.section.weight, color: COLORS.textSecondary,
+    letterSpacing: ios.font.section.letter, marginTop: ios.spacing.sm, marginBottom: ios.spacing.xs,
   },
   input: {
-    height: 52, backgroundColor: COLORS.bg,
-    borderWidth: 2, borderColor: COLORS.borderInput, borderRadius: 10,
-    paddingHorizontal: 14, fontSize: 16, color: COLORS.text,
+    height: 56, backgroundColor: COLORS.bg,
+    borderWidth: 2, borderColor: COLORS.borderInput, borderRadius: ios.radius.md,
+    paddingHorizontal: ios.spacing.lg, fontSize: ios.font.body.size, color: COLORS.text,
   },
-  textarea: { height: 110, paddingTop: 12 },
-  chipRow: { flexDirection: "row", gap: 10 },
+  textarea: { height: 120, paddingTop: ios.spacing.md, textAlignVertical: "top" },
+  chipRow: { flexDirection: "row", gap: ios.spacing.sm },
   chip: {
-    flex: 1, height: 48, borderRadius: 10, borderWidth: 2,
+    flex: 1, height: 52, borderRadius: ios.radius.md, borderWidth: 2,
     borderColor: COLORS.borderInput, backgroundColor: COLORS.bg,
     alignItems: "center", justifyContent: "center",
   },
   chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  chipText: { fontSize: 14, fontWeight: "800", color: COLORS.textSecondary, letterSpacing: 0.5 },
+  chipText: { fontSize: ios.font.callout.size, fontWeight: "800", color: COLORS.textSecondary, letterSpacing: 0.5 },
   chipTextActive: { color: "#fff" },
   bottomBar: {
     position: "absolute", bottom: 0, left: 0, right: 0,
-    padding: 16, paddingBottom: 24, backgroundColor: COLORS.surface,
-    borderTopWidth: 1, borderTopColor: COLORS.border,
+    padding: ios.spacing.lg, paddingBottom: 24,
+    backgroundColor: ios.colors.glassBg,
+    borderTopWidth: ios.hairline, borderTopColor: COLORS.border,
+    ...Platform.select({
+      web: { backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" } as any,
+      ios: { backdropFilter: "blur(16px)" } as any,
+    }),
+    ...ios.shadow.elevated,
   },
   btnPrimary: {
-    height: 56, borderRadius: 12, backgroundColor: COLORS.primary,
+    height: 56, borderRadius: ios.radius.card, backgroundColor: COLORS.primary,
     alignItems: "center", justifyContent: "center",
+    ...ios.shadow.card,
   },
-  btnDisabled: { opacity: 0.5 },
-  btnPrimaryText: { color: "#fff", fontSize: 16, fontWeight: "800", letterSpacing: 1 },
+  btnDisabled: { opacity: 0.4 },
+  btnPrimaryText: { color: "#fff", fontSize: ios.font.body.size, fontWeight: "800", letterSpacing: 1 },
   picker: {
-    height: 52, backgroundColor: COLORS.bg,
-    borderWidth: 2, borderColor: COLORS.borderInput, borderRadius: 10,
-    paddingHorizontal: 14, flexDirection: "row", alignItems: "center",
+    height: 56, backgroundColor: COLORS.bg,
+    borderWidth: 2, borderColor: COLORS.borderInput, borderRadius: ios.radius.md,
+    paddingHorizontal: ios.spacing.lg, flexDirection: "row", alignItems: "center",
     justifyContent: "space-between",
   },
-  pickerText: { fontSize: 16, color: COLORS.text, flex: 1 },
+  pickerText: { fontSize: ios.font.body.size, color: COLORS.text, flex: 1 },
   modalRoot: {
     flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)",
   },
   modalCard: {
-    backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: 16, paddingBottom: 28,
+    backgroundColor: COLORS.surface, borderTopLeftRadius: ios.radius.xl, borderTopRightRadius: ios.radius.xl,
+    padding: ios.spacing.lg, paddingBottom: ios.spacing.xxl,
+    ...ios.shadow.modal,
   },
   modalHeader: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    marginBottom: 12, paddingHorizontal: 4,
+    marginBottom: ios.spacing.md, paddingHorizontal: ios.spacing.xs,
   },
-  modalTitle: { fontSize: 20, fontWeight: "900", color: COLORS.text },
+  modalTitle: { fontSize: ios.font.title2.size, fontWeight: ios.font.title2.weight, color: COLORS.text },
   techRow: {
-    flexDirection: "row", alignItems: "center", gap: 12,
-    padding: 12, borderRadius: 10, marginBottom: 4,
+    flexDirection: "row", alignItems: "center", gap: ios.spacing.md,
+    padding: ios.spacing.md, borderRadius: ios.radius.sm, marginBottom: ios.spacing.xs,
   },
   techRowActive: { backgroundColor: COLORS.bg },
   techAvatar: {
-    width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.bg,
+    width: 40, height: 40, borderRadius: ios.spacing.xl, backgroundColor: COLORS.bg,
     alignItems: "center", justifyContent: "center",
   },
-  techName: { fontSize: 15, fontWeight: "700", color: COLORS.text },
-  techEmail: { fontSize: 12, color: COLORS.textSecondary, marginTop: 1 },
+  techName: { fontSize: ios.font.callout.size, fontWeight: "700", color: COLORS.text },
+  techEmail: { fontSize: ios.font.footnote.size, color: COLORS.textSecondary, marginTop: 1 },
   datePickerCard: {
-    backgroundColor: COLORS.surface, borderRadius: 20,
-    marginHorizontal: 20, padding: 16, width: "90%", maxWidth: 420,
+    backgroundColor: COLORS.surface, borderRadius: ios.radius.xl,
+    marginHorizontal: ios.spacing.xl, padding: ios.spacing.lg, width: "90%", maxWidth: 420,
     alignSelf: "center",
   },
   dateActions: {
-    flexDirection: "row", gap: 10, marginTop: 8,
+    flexDirection: "row", gap: ios.spacing.sm, marginTop: ios.spacing.sm,
   },
   btnSecondary: {
-    flex: 1, height: 48, borderRadius: 10, backgroundColor: COLORS.bg,
+    flex: 1, height: 52, borderRadius: ios.radius.md, backgroundColor: COLORS.bg,
     borderWidth: 2, borderColor: COLORS.borderInput,
     alignItems: "center", justifyContent: "center",
-    flexDirection: "row", gap: 6,
+    flexDirection: "row", gap: ios.spacing.sm,
   },
-  btnSecondaryText: { fontSize: 14, fontWeight: "800", color: COLORS.navy, letterSpacing: 0.5 },
+  btnSecondaryText: { fontSize: ios.font.callout.size, fontWeight: "800", color: COLORS.navy, letterSpacing: 0.5 },
   btnPrimarySmall: {
-    flex: 1, height: 48, borderRadius: 10, backgroundColor: COLORS.primary,
+    flex: 1, height: 52, borderRadius: ios.radius.md, backgroundColor: COLORS.primary,
     alignItems: "center", justifyContent: "center",
   },
   techChipSmall: {
-    flexDirection: "row", alignItems: "center", gap: 4,
-    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6,
+    flexDirection: "row", alignItems: "center", gap: ios.spacing.xs,
+    paddingHorizontal: ios.spacing.sm, paddingVertical: ios.spacing.xs, borderRadius: ios.radius.sm,
     backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
   },
-  techChipSmallText: { fontSize: 11, fontWeight: "600", color: COLORS.text },
+  techChipSmallText: { fontSize: ios.font.footnote.size, fontWeight: "600", color: COLORS.text },
   statusChip: {
-    paddingHorizontal: 6, paddingVertical: 3, borderRadius: 4,
+    paddingHorizontal: ios.spacing.sm, paddingVertical: ios.spacing.xs, borderRadius: ios.radius.sm,
     backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
   },
-  statusChipTxt: { fontSize: 9, fontWeight: "700", color: COLORS.textSecondary },
+  statusChipTxt: { fontSize: ios.font.caption.size, fontWeight: "700", color: COLORS.textSecondary },
 });

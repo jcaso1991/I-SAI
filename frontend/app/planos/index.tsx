@@ -12,6 +12,7 @@ import BottomNav from "../../src/BottomNav";
 import ResponsiveLayout from "../../src/ResponsiveLayout";
 import { useBreakpoint } from "../../src/useBreakpoint";
 import { useThemedStyles } from "../../src/theme";
+import { ios } from "../../src/ui/iosTheme";
 
 type Plan = {
   id: string; title: string; created_at: string; updated_at: string;
@@ -144,8 +145,8 @@ export default function PlansList() {
       </View>
 
       {loading ? (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator color={COLORS.primary} size="large" />
+        <View style={{ padding: 16, gap: 10 }}>
+          {[1, 2, 3].map((i) => <View key={i} style={s.skeleton} />)}
         </View>
       ) : plans.length === 0 ? (
         <View style={s.empty}>
@@ -158,7 +159,7 @@ export default function PlansList() {
           </TouchableOpacity>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
+        <ScrollView contentContainerStyle={{ padding: ios.spacing.lg, gap: 10 }}>
           {plans.filter((p: any) => !p.material_id && !p.source_event_id).map((p) => (
             <View key={p.id} style={s.planCard} testID={`plan-card-${p.id}`}>
               <TouchableOpacity
@@ -225,34 +226,40 @@ export default function PlansList() {
     {linkPlan && (
       <Modal visible={!!linkPlan} transparent animationType="fade" onRequestClose={() => setLinkPlan(null)}>
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", alignItems: "center" }}>
-          <View style={{ backgroundColor: COLORS.surface, borderRadius: 14, width: 400, maxHeight: "70%", overflow: "hidden" }}>
-            <View style={{ flexDirection: "row", alignItems: "center", padding: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
-              <Text style={{ fontSize: 16, fontWeight: "900", color: COLORS.text, flex: 1 }}>Vincular "{linkPlan.title}"</Text>
+          <View style={{ backgroundColor: COLORS.surface, borderRadius: ios.radius.lg, width: 400, maxHeight: "70%", overflow: "hidden", ...ios.shadow.modal }}>
+            <View style={{ flexDirection: "row", alignItems: "center", padding: ios.spacing.lg, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
+              <Text style={{ fontSize: 16, fontWeight: "900", color: COLORS.text, flex: 1 }} numberOfLines={1}>Vincular "{linkPlan.title}"</Text>
               <TouchableOpacity onPress={() => setLinkPlan(null)}><Ionicons name="close" size={22} color={COLORS.textSecondary} /></TouchableOpacity>
             </View>
             {linkType ? (
               <>
-                <TextInput style={{ margin: 14, fontSize: 13, color: COLORS.text, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 8, backgroundColor: COLORS.bg }} value={linkSearch} onChangeText={setLinkSearch} placeholder="Buscar..." placeholderTextColor={COLORS.textDisabled} />
+                <TextInput style={{ margin: ios.spacing.lg, fontSize: 14, color: COLORS.text, borderWidth: 1, borderColor: COLORS.border, borderRadius: ios.radius.sm, padding: ios.spacing.sm, backgroundColor: COLORS.bg }} value={linkSearch} onChangeText={setLinkSearch} placeholder="Buscar..." placeholderTextColor={COLORS.textDisabled} />
                 <FlatList
                   data={linkSearch ? linkItems.filter((i: any) => (i.title || i.materiales || i.cliente || "").toLowerCase().includes(linkSearch.toLowerCase())) : linkItems}
                   keyExtractor={(i: any) => i.id}
                   style={{ maxHeight: 300 }}
                   renderItem={({ item }: any) => (
-                    <TouchableOpacity style={{ padding: 12, paddingHorizontal: 14 }} onPress={() => doLink(item.id)}>
-                      <Text style={{ fontSize: 13, fontWeight: "600", color: COLORS.text }} numberOfLines={1}>{item.title || item.materiales || item.cliente || "—"}</Text>
+                    <TouchableOpacity style={{ paddingVertical: 12, paddingHorizontal: ios.spacing.lg }} onPress={() => doLink(item.id)}>
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: COLORS.text }} numberOfLines={1}>{item.title || item.materiales || item.cliente || "—"}</Text>
                     </TouchableOpacity>
                   )}
                 />
               </>
             ) : (
-              <View style={{ padding: 14, gap: 8 }}>
-                <TouchableOpacity style={{ padding: 14, borderRadius: 10, backgroundColor: COLORS.bg, flexDirection: "row", alignItems: "center", gap: 10 }} onPress={() => openLinkSearch("evento")}>
-                  <Ionicons name="calendar" size={22} color={COLORS.primary} />
-                  <Text style={{ fontSize: 14, fontWeight: "700", color: COLORS.text }}>Vincular a evento</Text>
+              <View style={{ padding: ios.spacing.lg, gap: 8 }}>
+                <TouchableOpacity style={{ padding: ios.spacing.lg, borderRadius: ios.radius.md, backgroundColor: COLORS.bg, flexDirection: "row", alignItems: "center", gap: 12 }} onPress={() => openLinkSearch("evento")}>
+                  <View style={{ width: 40, height: 40, borderRadius: ios.radius.sm, backgroundColor: COLORS.primarySoft, alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="calendar" size={22} color={COLORS.primary} />
+                  </View>
+                  <Text style={{ fontSize: 15, fontWeight: "700", color: COLORS.text, flex: 1 }}>Vincular a evento</Text>
+                  <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />
                 </TouchableOpacity>
-                <TouchableOpacity style={{ padding: 14, borderRadius: 10, backgroundColor: COLORS.bg, flexDirection: "row", alignItems: "center", gap: 10 }} onPress={() => openLinkSearch("proyecto")}>
-                  <Ionicons name="cube" size={22} color={COLORS.primary} />
-                  <Text style={{ fontSize: 14, fontWeight: "700", color: COLORS.text }}>Vincular a proyecto</Text>
+                <TouchableOpacity style={{ padding: ios.spacing.lg, borderRadius: ios.radius.md, backgroundColor: COLORS.bg, flexDirection: "row", alignItems: "center", gap: 12 }} onPress={() => openLinkSearch("proyecto")}>
+                  <View style={{ width: 40, height: 40, borderRadius: ios.radius.sm, backgroundColor: COLORS.primarySoft, alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="cube" size={22} color={COLORS.primary} />
+                  </View>
+                  <Text style={{ fontSize: 15, fontWeight: "700", color: COLORS.text, flex: 1 }}>Vincular a proyecto</Text>
+                  <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />
                 </TouchableOpacity>
               </View>
             )}
@@ -483,30 +490,32 @@ const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 12, paddingVertical: 8, backgroundColor: COLORS.surface,
+    paddingHorizontal: ios.spacing.md, paddingVertical: 10, backgroundColor: COLORS.surface,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
-  iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: ios.radius.md },
   headerTitle: { fontSize: 18, fontWeight: "800", color: COLORS.text },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8, padding: 40 },
   emptyTitle: { fontSize: 22, fontWeight: "900", color: COLORS.text, marginTop: 12 },
   emptySub: { fontSize: 14, color: COLORS.textSecondary, marginBottom: 20, textAlign: "center" },
   emptyBtn: {
     flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.primary,
-    paddingHorizontal: 20, height: 50, borderRadius: 12,
+    paddingHorizontal: 24, height: 50, borderRadius: ios.radius.card,
+    ...ios.shadow.elevated,
   },
   emptyBtnText: { color: "#fff", fontWeight: "800", fontSize: 14, letterSpacing: 1 },
   planCard: {
     flexDirection: "row", alignItems: "stretch", gap: 4,
-    backgroundColor: COLORS.surface, borderRadius: 14,
+    backgroundColor: COLORS.surface, borderRadius: ios.radius.lg,
     borderWidth: 1, borderColor: COLORS.border,
     overflow: "hidden",
+    ...ios.shadow.card,
   },
   planCardBody: {
-    flex: 1, flexDirection: "row", alignItems: "center", gap: 12, padding: 14,
+    flex: 1, flexDirection: "row", alignItems: "center", gap: 12, padding: ios.spacing.lg,
   },
   planIcon: {
-    width: 48, height: 48, borderRadius: 12, backgroundColor: COLORS.bg,
+    width: 48, height: 48, borderRadius: ios.radius.md, backgroundColor: COLORS.bg,
     alignItems: "center", justifyContent: "center",
   },
   planTitle: { fontSize: 16, fontWeight: "800", color: COLORS.text },
@@ -514,17 +523,18 @@ const useS = () => StyleSheet.create({
   planDate: { fontSize: 11, color: COLORS.textDisabled, fontWeight: "600" },
   planActions: {
     flexDirection: "column", alignItems: "center", justifyContent: "center",
-    gap: 4, paddingHorizontal: 6, borderLeftWidth: 1, borderLeftColor: COLORS.border,
+    gap: 6, paddingHorizontal: 10, borderLeftWidth: 1, borderLeftColor: COLORS.border,
   },
   actionBtn: {
-    width: 36, height: 36, borderRadius: 8,
+    width: 40, height: 40, borderRadius: ios.radius.sm,
     alignItems: "center", justifyContent: "center",
+    backgroundColor: COLORS.bg,
   },
   trashBtn: { padding: 8 },
   modalRoot: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" },
   modalCard: {
-    backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: 20, paddingBottom: 32, maxHeight: "80%",
+    backgroundColor: COLORS.surface, borderTopLeftRadius: ios.radius.xl, borderTopRightRadius: ios.radius.xl,
+    padding: ios.spacing.xl, paddingBottom: 32, maxHeight: "80%",
   },
   modalHeader: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
@@ -534,41 +544,41 @@ const useS = () => StyleSheet.create({
   chooseHint: { color: COLORS.textSecondary, fontSize: 14, marginBottom: 4 },
   optionCard: {
     flexDirection: "row", alignItems: "center", gap: 12,
-    backgroundColor: COLORS.bg, padding: 14, borderRadius: 14,
+    backgroundColor: COLORS.bg, padding: ios.spacing.lg, borderRadius: ios.radius.lg,
     borderWidth: 1, borderColor: COLORS.border,
   },
   optionIcon: {
-    width: 52, height: 52, borderRadius: 12, alignItems: "center", justifyContent: "center",
+    width: 52, height: 52, borderRadius: ios.radius.md, alignItems: "center", justifyContent: "center",
   },
   optionTitle: { fontSize: 16, fontWeight: "800", color: COLORS.text },
   optionDesc: { fontSize: 13, color: COLORS.textSecondary, marginTop: 2 },
   mLabel: {
     fontSize: 11, fontWeight: "800", color: COLORS.textSecondary,
-    letterSpacing: 1.2, marginTop: 14, marginBottom: 6,
+    letterSpacing: 1.2, marginTop: ios.spacing.lg, marginBottom: ios.spacing.sm,
   },
   mInput: {
     height: 52, backgroundColor: COLORS.bg, borderWidth: 2, borderColor: COLORS.borderInput,
-    borderRadius: 10, paddingHorizontal: 14, fontSize: 16, color: COLORS.text,
+    borderRadius: ios.radius.md, paddingHorizontal: ios.spacing.lg, fontSize: 16, color: COLORS.text,
   },
   hint: { fontSize: 12, color: COLORS.textSecondary, marginTop: 10, lineHeight: 18 },
   primary: {
-    height: 52, borderRadius: 12, backgroundColor: COLORS.primary,
-    alignItems: "center", justifyContent: "center", marginTop: 20,
+    height: 52, borderRadius: ios.radius.card, backgroundColor: COLORS.primary,
+    alignItems: "center", justifyContent: "center", marginTop: ios.spacing.xl,
   },
   primaryText: { color: "#fff", fontSize: 15, fontWeight: "800", letterSpacing: 1 },
   searchBox: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    backgroundColor: COLORS.bg, borderRadius: 10, paddingHorizontal: 12, height: 44,
-    marginTop: 12, marginBottom: 6,
+    flexDirection: "row", alignItems: "center", gap: 10,
+    backgroundColor: COLORS.bg, borderRadius: ios.radius.md, paddingHorizontal: ios.spacing.md, height: 48,
+    marginTop: ios.spacing.md, marginBottom: ios.spacing.sm,
   },
   searchInput: { flex: 1, fontSize: 15, color: COLORS.text },
-  resultsCount: { fontSize: 12, color: COLORS.textSecondary, marginBottom: 6, fontWeight: "600" },
+  resultsCount: { fontSize: 12, color: COLORS.textSecondary, marginBottom: ios.spacing.sm, fontWeight: "600" },
   matRow: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    padding: 10, backgroundColor: COLORS.bg, borderRadius: 10, marginBottom: 6,
+    flexDirection: "row", alignItems: "center", gap: 12,
+    padding: 12, backgroundColor: COLORS.bg, borderRadius: ios.radius.md, marginBottom: 6,
   },
   matIcon: {
-    width: 40, height: 40, borderRadius: 10, backgroundColor: COLORS.surface,
+    width: 44, height: 44, borderRadius: ios.radius.md, backgroundColor: COLORS.surface,
     alignItems: "center", justifyContent: "center",
   },
   matCode: {
@@ -577,4 +587,8 @@ const useS = () => StyleSheet.create({
   },
   matCliente: { fontSize: 14, fontWeight: "700", color: COLORS.text, marginTop: 1 },
   matUbic: { fontSize: 11, color: COLORS.textSecondary, marginTop: 1 },
+  skeleton: {
+    height: 92, borderRadius: ios.radius.lg, backgroundColor: COLORS.surface,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
 });

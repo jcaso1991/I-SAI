@@ -8,6 +8,7 @@ import { useBreakpoint } from "../../src/useBreakpoint";
 import { useThemedStyles } from "../../src/theme";
 import IOSHeader from "../../src/ui/IOSHeader";
 import { api, COLORS } from "../../src/api";
+import { ios, fontStyle } from "../../src/ui/iosTheme";
 
 interface Nota {
   id: string;
@@ -83,7 +84,7 @@ export default function NotasLibresScreen() {
       >
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ padding: 16, paddingBottom: 60, gap: 6 }}
+          contentContainerStyle={{ padding: ios.spacing.lg, paddingBottom: 60, gap: 6 }}
           keyboardShouldPersistTaps="handled"
         >
           {editando ? (
@@ -122,22 +123,22 @@ export default function NotasLibresScreen() {
 const useS = () =>
   StyleSheet.create({
     root: { flex: 1, backgroundColor: COLORS.bg },
-    body: { flex: 1, padding: 16 },
-    editor: { backgroundColor: COLORS.surface, borderRadius: 12, padding: 14, gap: 10, marginBottom: 12, borderWidth: 1, borderColor: COLORS.border },
-    inputTitulo: { fontSize: 18, fontWeight: "700", color: COLORS.text, paddingVertical: 4 },
-    inputContenido: { fontSize: 14, color: COLORS.text, minHeight: 150, lineHeight: 20 },
-    btnGuardar: { backgroundColor: COLORS.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, alignItems: "center" },
-    btnCancelar: { backgroundColor: COLORS.readonly, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, alignItems: "center" },
+    body: { flex: 1, padding: ios.spacing.lg },
+    editor: { backgroundColor: COLORS.surface, borderRadius: ios.radius.card, padding: ios.spacing.rowV, gap: ios.spacing.md, marginBottom: ios.spacing.md, borderWidth: 1, borderColor: COLORS.border, ...ios.shadow.card },
+    inputTitulo: { ...fontStyle("title3"), fontWeight: "700", color: COLORS.text, paddingVertical: ios.spacing.xs },
+    inputContenido: { ...fontStyle("callout"), color: COLORS.text, minHeight: 150 },
+    btnGuardar: { backgroundColor: COLORS.primary, paddingHorizontal: ios.spacing.xl, paddingVertical: ios.spacing.sm, borderRadius: ios.radius.sm, alignItems: "center" },
+    btnCancelar: { backgroundColor: COLORS.readonly, paddingHorizontal: ios.spacing.xl, paddingVertical: ios.spacing.sm, borderRadius: ios.radius.sm, alignItems: "center" },
     btnNueva: {
-      flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
-      backgroundColor: COLORS.primary, paddingVertical: 12, borderRadius: 10, marginBottom: 12,
+      flexDirection: "row", alignItems: "center", justifyContent: "center", gap: ios.spacing.sm,
+      backgroundColor: COLORS.primary, paddingVertical: ios.spacing.md, borderRadius: ios.radius.row, marginBottom: ios.spacing.md,
     },
-    btnText: { fontSize: 14, fontWeight: "700", color: "#fff" },
+    btnText: { ...fontStyle("callout"), fontWeight: "700", color: "#fff" },
     notaCard: {
       flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surface,
-      borderRadius: 10, padding: 12, gap: 8, borderWidth: 1, borderColor: COLORS.border,
+      borderRadius: ios.radius.row, padding: ios.spacing.md, gap: ios.spacing.sm, borderWidth: 1, borderColor: COLORS.border, ...ios.shadow.card,
     },
-    notaTitulo: { fontSize: 14, fontWeight: "800", color: COLORS.text },
-    notaPreview: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
-    notaFecha: { fontSize: 10, color: COLORS.textDisabled, marginTop: 4 },
+    notaTitulo: { ...fontStyle("callout"), fontWeight: "800", color: COLORS.text },
+    notaPreview: { ...fontStyle("footnote"), color: COLORS.textSecondary, marginTop: 2 },
+    notaFecha: { ...fontStyle("caption"), color: COLORS.textDisabled, marginTop: ios.spacing.xs },
   });

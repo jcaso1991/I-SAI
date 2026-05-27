@@ -7,6 +7,7 @@ import { useBreakpoint } from "../src/useBreakpoint";
 import IOSHeader from "../src/ui/IOSHeader";
 import { COLORS } from "../src/api";
 import { useThemedStyles } from "../src/theme";
+import { ios, fontStyle } from "../src/ui/iosTheme";
 
 export default function DocumentosScreen() {
   const router = useRouter();
@@ -71,55 +72,46 @@ export default function DocumentosScreen() {
 const useS = () =>
   StyleSheet.create({
     root: { flex: 1, backgroundColor: COLORS.bg },
-    body: { flex: 1, padding: 20, paddingTop: 12 },
+    body: {
+      flex: 1, padding: 20, paddingTop: 12,
+      gap: ios.spacing.sectionGap,
+    },
     heading: {
-      fontSize: 26,
-      fontWeight: "900",
+      ...fontStyle("title1"),
       color: COLORS.text,
-      letterSpacing: 0.2,
     },
     subtitle: {
-      fontSize: 14,
+      ...fontStyle("callout"),
       color: COLORS.textSecondary,
       marginTop: 4,
-      marginBottom: 24,
     },
-    cards: { gap: 12 },
+    cards: { gap: ios.spacing.lg },
     card: {
       flexDirection: "row",
       alignItems: "center",
       backgroundColor: COLORS.surface,
-      borderRadius: 14,
-      padding: 16,
-      gap: 14,
+      borderRadius: ios.radius.lg,
+      padding: ios.spacing.lg,
+      gap: ios.spacing.lg,
       borderWidth: 1,
       borderColor: COLORS.border,
-      ...Platform.select({
-        web: { boxShadow: `0 1px 3px ${COLORS.text}08` } as any,
-        default: {
-          shadowColor: COLORS.text,
-          shadowOpacity: 0.05,
-          shadowRadius: 6,
-          shadowOffset: { width: 0, height: 2 },
-        },
-      }),
+      ...ios.shadow.card,
     },
     cardIcon: {
-      width: 52,
-      height: 52,
-      borderRadius: 14,
+      width: 56,
+      height: 56,
+      borderRadius: ios.radius.lg,
       backgroundColor: COLORS.primarySoft,
       alignItems: "center",
       justifyContent: "center",
     },
     cardBody: { flex: 1 },
     cardTitle: {
-      fontSize: 16,
-      fontWeight: "800",
+      ...fontStyle("title3"),
       color: COLORS.text,
     },
     cardSubtitle: {
-      fontSize: 12.5,
+      ...fontStyle("footnote"),
       color: COLORS.textSecondary,
       marginTop: 2,
     },

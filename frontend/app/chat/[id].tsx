@@ -10,6 +10,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { api, COLORS } from "../../src/api";
 import { useThemedStyles } from "../../src/theme";
+import { ios, fontStyle } from "../../src/ui/iosTheme";
 
 type Message = {
   id: string;
@@ -167,20 +168,29 @@ export default function ChatDetail() {
                         }
                       }}>
                         {msg.file_mime?.startsWith("image/") ? (
-                          <Image source={{ uri: `data:${msg.file_mime};base64,${msg.file_base64}` }} style={{ width: 200, height: 150, borderRadius: 8, marginBottom: 4 }} resizeMode="cover" />
+                          <Image source={{ uri: `data:${msg.file_mime};base64,${msg.file_base64}` }} style={{ width: 200, height: 150, borderRadius: ios.radius.md, marginBottom: 4 }} resizeMode="cover" />
                         ) : (
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, padding: 8, backgroundColor: "rgba(0,0,0,0.05)", borderRadius: 6, marginBottom: 4 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, padding: ios.spacing.sm, backgroundColor: "rgba(0,0,0,0.05)", borderRadius: ios.radius.sm, marginBottom: 4 }}>
                             <Ionicons name="document" size={20} color={isMine ? "#fff" : COLORS.text} />
-                            <Text style={{ fontSize: 12, color: isMine ? "#fff" : COLORS.text }} numberOfLines={1}>{msg.file_name || "Archivo"}</Text>
+                            <Text style={{ ...fontStyle("caption"), color: isMine ? "#fff" : COLORS.text }} numberOfLines={1}>{msg.file_name || "Archivo"}</Text>
                           </View>
                         )}
                       </TouchableOpacity>
                     )}
                     {msg.text ? <Text style={[s.bubbleText, isMine && { color: "#fff" }]}>{msg.text}</Text> : null}
-                    <Text style={[s.bubbleTime, isMine && { color: "rgba(255,255,255,0.7)" }]}>
-                      {formatTime(msg.created_at)}
-                      {isMine && msg.read_by.length > 1 ? " ✓✓" : isMine ? " ✓" : ""}
-                    </Text>
+                    <View style={[s.bubbleFooter, isMine && { justifyContent: "flex-end" }]}>
+                      <Text style={[s.bubbleTime, isMine && { color: "rgba(255,255,255,0.7)" }]}>
+                        {formatTime(msg.created_at)}
+                      </Text>
+                      {isMine && (
+                        <Ionicons
+                          name={msg.read_by.length > 1 ? "checkmark-done" : "checkmark"}
+                          size={12}
+                          color={isMine ? "rgba(255,255,255,0.7)" : COLORS.textDisabled}
+                          style={{ marginLeft: 2 }}
+                        />
+                      )}
+                    </View>
                   </View>
                 </View>
               );
@@ -218,32 +228,37 @@ export default function ChatDetail() {
 const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   header: {
-    flexDirection: "row", alignItems: "center", gap: 12,
-    paddingHorizontal: 12, paddingVertical: 8,
-    backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    flexDirection: "row", alignItems: "center", gap: ios.spacing.md,
+    paddingHorizontal: ios.spacing.md, paddingVertical: ios.spacing.sm,
+    backgroundColor: COLORS.surface, borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border,
   },
   backBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-  headerTitle: { fontSize: 17, fontWeight: "700", color: COLORS.text },
-  senderName: { fontSize: 11, color: COLORS.textSecondary, fontWeight: "600", marginBottom: 2, paddingHorizontal: 4 },
-  bubble: { maxWidth: "80%", padding: 10, borderRadius: 12, gap: 2 },
-  bubbleMine: { alignSelf: "flex-end", backgroundColor: COLORS.primary },
-  bubbleOther: { alignSelf: "flex-start", backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
-  bubbleText: { fontSize: 15, color: COLORS.text, lineHeight: 20 },
-  bubbleTime: { fontSize: 10, color: COLORS.textSecondary, alignSelf: "flex-end" },
+  headerTitle: { ...fontStyle("title3"), color: COLORS.text },
+  senderName: { ...fontStyle("caption"), color: COLORS.textSecondary, fontWeight: "600", marginBottom: 2, paddingHorizontal: ios.spacing.xs },
+  bubble: { maxWidth: "80%", padding: ios.spacing.md, borderRadius: ios.radius.lg, gap: 2 },
+  bubbleMine: { alignSelf: "flex-end", backgroundColor: COLORS.primarySoft },
+  bubbleOther: { alignSelf: "flex-start", backgroundColor: COLORS.bg, borderWidth: ios.hairline, borderColor: COLORS.border },
+  bubbleText: { ...fontStyle("body"), color: COLORS.text },
+  bubbleFooter: { flexDirection: "row", alignItems: "center", alignSelf: "flex-end", marginTop: 2 },
+  bubbleTime: { ...fontStyle("caption"), color: COLORS.textSecondary },
   inputRow: {
-    flexDirection: "row", alignItems: "flex-end", gap: 6,
-    padding: 10, backgroundColor: COLORS.surface,
-    borderTopWidth: 1, borderTopColor: COLORS.border,
+    flexDirection: "row", alignItems: "flex-end", gap: ios.spacing.sm,
+    padding: ios.spacing.md, backgroundColor: COLORS.surface,
+    borderTopWidth: ios.hairline, borderTopColor: COLORS.border,
   },
-  attachBtn: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
+  attachBtn: {
+    width: 40, height: 40, borderRadius: ios.radius.md,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: COLORS.readonly,
+  },
   input: {
-    flex: 1, minHeight: 40, maxHeight: 120,
-    backgroundColor: COLORS.bg, borderRadius: 20,
-    paddingHorizontal: 16, paddingVertical: 8,
-    fontSize: 15, color: COLORS.text,
+    flex: 1, minHeight: 44, maxHeight: 120,
+    backgroundColor: COLORS.bg, borderRadius: ios.radius.md,
+    paddingHorizontal: ios.spacing.lg, paddingVertical: ios.spacing.sm,
+    ...fontStyle("body"), color: COLORS.text,
   },
   sendBtn: {
-    width: 40, height: 40, borderRadius: 20,
+    width: 44, height: 44, borderRadius: ios.radius.md,
     backgroundColor: COLORS.primary,
     alignItems: "center", justifyContent: "center",
   },

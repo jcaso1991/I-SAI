@@ -9,6 +9,7 @@ import { useThemedStyles } from "../src/theme";
 import IOSHeader from "../src/ui/IOSHeader";
 import { usePermissions } from "../src/permissions";
 import { api, COLORS, BACKEND_URL, getToken } from "../src/api";
+import { ios, fontStyle } from "../src/ui/iosTheme";
 
 interface DocItem {
   _id: string; titulo: string; categoria: string; filename: string; created_by: string; created_at: string;
@@ -180,11 +181,11 @@ export default function DocumentacionesScreen() {
     {viewingFile && (
       <Modal visible={!!viewingFile} animationType="slide" onRequestClose={() => setViewingFile(null)}>
         <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.bg }}>
-          <View style={{ flexDirection: "row", alignItems: "center", padding: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.surface }}>
+          <View style={{ flexDirection: "row", alignItems: "center", padding: ios.spacing.sm, borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border, backgroundColor: COLORS.surface, borderTopLeftRadius: ios.radius.xl, borderTopRightRadius: ios.radius.xl, overflow: "hidden" }}>
             <TouchableOpacity onPress={() => setViewingFile(null)} style={{ padding: 6 }}>
               <Ionicons name="close" size={26} color={COLORS.text} />
             </TouchableOpacity>
-            <Text style={{ flex: 1, fontSize: 16, fontWeight: "800", color: COLORS.text, marginLeft: 10 }} numberOfLines={1}>{viewingTitle}</Text>
+            <Text style={{ flex: 1, ...fontStyle("title3"), color: COLORS.text, marginLeft: ios.spacing.sm }} numberOfLines={1}>{viewingTitle}</Text>
             <TouchableOpacity style={{ padding: 6 }} onPress={() => { const a = document.createElement("a"); a.href = viewingFile; a.download = "documento.pdf"; a.click(); }}>
               <Ionicons name="download-outline" size={22} color={COLORS.primary} />
             </TouchableOpacity>
@@ -208,25 +209,25 @@ export default function DocumentacionesScreen() {
 const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   body: { flex: 1, padding: 20, paddingTop: 12 },
-  heading: { fontSize: 22, fontWeight: "900", color: COLORS.text, letterSpacing: 0.2 },
-  subtitle: { fontSize: 14, color: COLORS.textSecondary, marginTop: 4, marginBottom: 24 },
-  cards: { gap: 12 },
+  heading: { ...fontStyle("title2"), color: COLORS.text },
+  subtitle: { ...fontStyle("callout"), color: COLORS.textSecondary, marginTop: 4, marginBottom: ios.spacing.xxl },
+  cards: { gap: ios.spacing.lg },
   card: {
     flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surface,
-    borderRadius: 14, padding: 16, gap: 14, borderWidth: 1, borderColor: COLORS.border,
-    ...(Platform.OS === "web" ? { boxShadow: `0 1px 3px ${COLORS.text}08` } as any : {}),
+    borderRadius: ios.radius.lg, padding: ios.spacing.lg, gap: ios.spacing.lg,
+    borderWidth: 1, borderColor: COLORS.border, ...ios.shadow.card,
   },
-  cardIcon: { width: 52, height: 52, borderRadius: 14, backgroundColor: COLORS.primarySoft, alignItems: "center", justifyContent: "center" },
+  cardIcon: { width: 52, height: 52, borderRadius: ios.radius.lg, backgroundColor: COLORS.primarySoft, alignItems: "center", justifyContent: "center" },
   cardBody: { flex: 1 },
-  cardTitle: { fontSize: 16, fontWeight: "800", color: COLORS.text },
-  cardSubtitle: { fontSize: 12.5, color: COLORS.textSecondary, marginTop: 2 },
-  backBtn: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 },
-  backText: { fontSize: 14, fontWeight: "600", color: COLORS.primary },
-  btnAdd: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: COLORS.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  btnAddText: { fontSize: 12, fontWeight: "700", color: "#fff" },
-  docRow: { flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surface, borderRadius: 10, padding: 12, gap: 6, borderWidth: 1, borderColor: COLORS.border },
-  docTitle: { fontSize: 13, fontWeight: "700", color: COLORS.text },
-  docMeta: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
-  searchRow: { flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surface, borderRadius: 10, paddingHorizontal: 12, gap: 8, marginBottom: 10, borderWidth: 1, borderColor: COLORS.border, height: 40 },
-  searchInput: { flex: 1, fontSize: 13, color: COLORS.text },
+  cardTitle: { ...fontStyle("title3"), color: COLORS.text },
+  cardSubtitle: { ...fontStyle("footnote"), color: COLORS.textSecondary, marginTop: 2 },
+  backBtn: { flexDirection: "row", alignItems: "center", gap: ios.spacing.xs, marginBottom: ios.spacing.md },
+  backText: { ...fontStyle("subhead"), fontWeight: "600", color: COLORS.primary },
+  btnAdd: { flexDirection: "row", alignItems: "center", gap: ios.spacing.xs, backgroundColor: COLORS.primary, paddingHorizontal: ios.spacing.md, paddingVertical: 7, borderRadius: ios.radius.pill },
+  btnAddText: { ...fontStyle("caption"), fontWeight: "700", color: "#fff" },
+  docRow: { flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surface, borderRadius: ios.radius.lg, padding: ios.spacing.md, gap: ios.spacing.xs, borderWidth: 1, borderColor: COLORS.border, ...ios.shadow.card },
+  docTitle: { ...fontStyle("subhead"), fontWeight: "700", color: COLORS.text },
+  docMeta: { ...fontStyle("caption"), color: COLORS.textSecondary, marginTop: 2 },
+  searchRow: { flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surface, borderRadius: ios.radius.md, paddingHorizontal: ios.spacing.lg, gap: ios.spacing.sm, marginBottom: ios.spacing.sm, borderWidth: 1, borderColor: COLORS.border, height: 44 },
+  searchInput: { flex: 1, ...fontStyle("subhead"), color: COLORS.text },
 });

@@ -1,11 +1,5 @@
-/**
- * IOSTabBar — Tab bar with iOS look-and-feel.
- *
- * Tabs are filtered dynamically based on the current user's permissions
- * (fetched on mount via /auth/me). Home and Ajustes are always visible.
- */
-import { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Animated } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -66,9 +60,47 @@ const LABELS: Record<BottomTab, string> = {
   notas: "Notas",
 };
 
-// Cache permissions in module scope so all tab bars on the same screen
-// share the same list (and the next render is instant).
 let _cachedPerms: string[] | null = null;
+
+function Icon({ tab, on, size }: { tab: BottomTab; on: boolean; size: number }) {
+  const color = on ? COLORS.primary : COLORS.textSecondary;
+  if (tab === "home") return <Ionicons name={on ? "home" : "home-outline"} size={size} color={color} />;
+  if (tab === "dashboard") return <Ionicons name={on ? "stats-chart" : "stats-chart-outline"} size={size} color={color} />;
+  if (tab === "proyectos") return <MaterialCommunityIcons name="set-square" size={size + 2} color={color} />;
+  if (tab === "calendario") return <Ionicons name={on ? "calendar" : "calendar-outline"} size={size} color={color} />;
+  if (tab === "planos") return <Ionicons name={on ? "map" : "map-outline"} size={size} color={color} />;
+  if (tab === "presupuestos") return <Ionicons name={on ? "document-text" : "document-text-outline"} size={size} color={color} />;
+  if (tab === "sat") return <Ionicons name={on ? "headset" : "headset-outline"} size={size} color={color} />;
+  if (tab === "documentos") return <Ionicons name={on ? "folder-open" : "folder-open-outline"} size={size} color={color} />;
+  if (tab === "notas") return <Ionicons name={on ? "book" : "book-outline"} size={size} color={color} />;
+  return <Ionicons name={on ? "settings" : "settings-outline"} size={size} color={color} />;
+}
+
+function TabButton({ tab, on, label, onPress, styles: st }: {
+  tab: BottomTab; on: boolean; label: string; onPress: () => void; styles: any;
+}) {
+  const pillOpacity = useRef(new Animated.Value(on ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(pillOpacity, {
+      toValue: on ? 1 : 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+  }, [on]);
+
+  return (
+    <TouchableOpacity style={st.tab} onPress={onPress} activeOpacity={0.6}>
+      <View style={st.tabIconWrap}>
+        <Icon tab={tab} on={on} size={22} />
+        <Animated.View style={[st.tabPill, { opacity: pillOpacity }]} />
+      </View>
+      <Text style={[st.label, on && st.labelActive]} numberOfLines={1}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
 
 export default function IOSTabBar({ active, isAdmin: _isAdmin }: { active: BottomTab; isAdmin?: boolean }) {
   const router = useRouter();
@@ -96,78 +128,84 @@ export default function IOSTabBar({ active, isAdmin: _isAdmin }: { active: Botto
     router.replace(TAB_ROUTES[tab] as any);
   };
 
-  const Icon = ({ tab, on }: { tab: BottomTab; on: boolean }) => {
-    const color = on ? ios.colors.brand : ios.colors.tabInactive;
-    const sz = 26;
-    if (tab === "home") return <Ionicons name={on ? "home" : "home-outline"} size={sz} color={color} />;
-    if (tab === "dashboard") return <Ionicons name={on ? "stats-chart" : "stats-chart-outline"} size={sz} color={color} />;
-    if (tab === "proyectos") return <MaterialCommunityIcons name="set-square" size={sz + 2} color={color} />;
-    if (tab === "calendario") return <Ionicons name={on ? "calendar" : "calendar-outline"} size={sz} color={color} />;
-    if (tab === "planos") return <Ionicons name={on ? "map" : "map-outline"} size={sz} color={color} />;
-    if (tab === "presupuestos") return <Ionicons name={on ? "document-text" : "document-text-outline"} size={sz} color={color} />;
-    if (tab === "sat") return <Ionicons name={on ? "headset" : "headset-outline"} size={sz} color={color} />;
-    if (tab === "documentos") return <Ionicons name={on ? "folder-open" : "folder-open-outline"} size={sz} color={color} />;
-    if (tab === "notas") return <Ionicons name={on ? "book" : "book-outline"} size={sz} color={color} />;
-    return <Ionicons name={on ? "settings" : "settings-outline"} size={sz} color={color} />;
-  };
-
-  // Determine which tabs to show. Until perms load, fall back to legacy (admin shows all).
   const allTabs: BottomTab[] = ["ajustes", "proyectos", "home", "dashboard", "calendario", "planos", "presupuestos", "sat", "documentos", "notas"];
   const isReady = perms !== null;
   const visibleTabs = !isReady
-    ? allTabs.filter((t) => t !== "sat") // legacy default until perms arrive
+    ? allTabs.filter((t) => t !== "sat")
     : allTabs.filter((t) => {
         const p = TAB_PERM_MAP[t];
         return p === null || perms!.includes(p);
       });
 
-  // Order: Home leftmost, then functional tabs, Settings rightmost.
   const ORDER: BottomTab[] = ["home", "dashboard", "calendario", "planos", "proyectos", "documentos", "presupuestos", "chat", "notas", "sat", "ajustes"];
   const ordered = ORDER.filter((t) => visibleTabs.includes(t));
 
   return (
-    <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 4) }]}>
+    <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 6) }]}>
       {ordered.map((tab) => {
         const on = active === tab;
         return (
-          <TouchableOpacity
+          <TabButton
             key={tab}
-            testID={`tab-${tab}`}
-            style={styles.tab}
+            tab={tab}
+            on={on}
+            label={LABELS[tab]}
             onPress={() => go(tab)}
-            activeOpacity={0.6}
-          >
-            <Icon tab={tab} on={on} />
-            <Text style={[styles.label, on && { color: ios.colors.brand, fontWeight: "600" }]} numberOfLines={1}>
-              {LABELS[tab]}
-            </Text>
-          </TouchableOpacity>
+            styles={styles}
+          />
         );
       })}
     </View>
   );
 }
 
-const useStyles = () =>
-  StyleSheet.create({
-  wrap: {
-    flexDirection: "row",
-    backgroundColor: COLORS.surface,
-    borderTopWidth: ios.hairline,
-    borderTopColor: COLORS.border,
-    paddingTop: 6,
-    paddingHorizontal: 4,
-    ...Platform.select({
-      ios: { backdropFilter: "blur(20px)" } as any,
-      default: {},
-    }),
-  },
-  tab: { flex: 1, alignItems: "center", paddingVertical: 4, gap: 2 },
-  label: {
-    fontFamily: ios.font.family,
-    fontSize: ios.font.tabLabel.size,
-    fontWeight: "500",
-    color: ios.colors.tabInactive,
-    letterSpacing: 0.1,
-  },
-});
+const useStyles = () => {
+  const isWeb = Platform.OS === "web";
+  const surfaceBg = COLORS.surface;
+  const wrapBg = isWeb ? surfaceBg + "B8" : surfaceBg;
+
+  return StyleSheet.create({
+    wrap: {
+      flexDirection: "row",
+      backgroundColor: wrapBg,
+      borderTopWidth: ios.hairline,
+      borderTopColor: COLORS.border,
+      paddingTop: 4,
+      paddingHorizontal: 4,
+      ...Platform.select({
+        web: { backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" } as any,
+        default: {},
+      }),
+    },
+    tab: {
+      flex: 1,
+      alignItems: "center",
+      paddingVertical: 4,
+      gap: 2,
+    },
+    tabIconWrap: {
+      alignItems: "center",
+      justifyContent: "center",
+      height: 30,
+    },
+    tabPill: {
+      width: 20,
+      height: 3,
+      borderRadius: 1.5,
+      backgroundColor: COLORS.primary,
+      position: "absolute",
+      bottom: -2,
+    },
+    label: {
+      fontFamily: ios.font.family,
+      fontSize: 9,
+      fontWeight: "500",
+      color: COLORS.textSecondary,
+      letterSpacing: 0.3,
+    },
+    labelActive: {
+      color: COLORS.primary,
+      fontWeight: "600",
+    },
+  });
+};

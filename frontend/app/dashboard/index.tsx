@@ -5,19 +5,17 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { api, clearToken } from "../../src/api";
 import ResponsiveLayout from "../../src/ResponsiveLayout";
 import { useBreakpoint } from "../../src/useBreakpoint";
-import { ios } from "../../src/ui/iosTheme";
 import IOSHeader from "../../src/ui/IOSHeader";
+import { greetingForNow, spanishToday } from "../../src/modules/dashboard/DashboardUtils";
 import DashboardData from "../../src/modules/dashboard/DashboardData";
 import { useS } from "../../src/modules/dashboard/DashboardStyles";
-import { useThemedStyles } from "../../src/theme";
-import { greetingForNow, spanishToday } from "../../src/modules/dashboard/DashboardUtils";
 
 export default function DashboardPage() {
   const router = useRouter();
   const { isWide } = useBreakpoint();
   const [me, setMe] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const s = useThemedStyles(useS);
+  const s = useS();
 
   useFocusEffect(useCallback(() => {
     let alive = true;
@@ -54,7 +52,7 @@ export default function DashboardPage() {
 
       {loading ? (
         <View style={s.center}>
-          <ActivityIndicator size="large" color={ios.colors.brand} />
+          <ActivityIndicator size="large" color={'#3B82F6'} />
         </View>
       ) : (
         <ScrollView
@@ -63,10 +61,12 @@ export default function DashboardPage() {
           showsVerticalScrollIndicator={false}
         >
           {isWide && (
-            <View style={s.hero}>
-              <Text style={s.heroGreet}>{greetingForNow()},</Text>
-              <Text style={s.heroName}>{firstName || "Bienvenido"}</Text>
-              <Text style={s.heroDate}>{spanishToday()}</Text>
+            <View style={s.heroBg}>
+              <View style={s.hero}>
+                <Text style={s.heroGreet}>{greetingForNow()},</Text>
+                <Text style={s.heroName}>{firstName || "Bienvenido"}</Text>
+                <Text style={s.heroDate}>{spanishToday()}</Text>
+              </View>
             </View>
           )}
 

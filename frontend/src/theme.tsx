@@ -34,100 +34,94 @@ export type ThemeName = "light" | "dark";
 const KEY = "app_theme_v1";
 
 const LIGHT = {
-  bg: "#F8FAFC",
+  bg: "#F7F6F2",
   surface: "#FFFFFF",
-  readonly: "#F1F5F9",
-  text: "#0F172A",
-  textSecondary: "#475569",
-  textDisabled: "#94A3B8",
+  readonly: "#F0EFEB",
+  text: "#1C1917",
+  textSecondary: "#78716C",
+  textDisabled: "#A8A29E",
   primary: "#1E88E5",
   primaryHover: "#1565C0",
-  border: "#E2E8F0",
-  borderInput: "#CBD5E1",
-  syncedBg: "#DCFCE7",
+  border: "#E7E5E4",
+  borderInput: "#D6D3D1",
+  syncedBg: "#F0FDF4",
   syncedText: "#166534",
-  pendingBg: "#FEF3C7",
+  pendingBg: "#FFFBEB",
   pendingText: "#92400E",
-  errorBg: "#FEE2E2",
+  errorBg: "#FEF2F2",
   errorText: "#991B1B",
-  navy: "#0F172A",
-  // accents (NEW)
-  primarySoft: "#EFF6FF",   // very light blue — active/open buttons
-  highlightBg: "#DBEAFE",   // selected row / today column header
-  highlightText: "#1E40AF",
-  pillBlueBg: "#DBEAFE",
-  pillBlueText: "#1E40AF",
-  pillOrangeBg: "#FEF3C7",
+  navy: "#292524",
+  primarySoft: "#EFF6FF",
+  highlightBg: "#E0F2FE",
+  highlightText: "#0369A1",
+  pillBlueBg: "#E0F2FE",
+  pillBlueText: "#0369A1",
+  pillOrangeBg: "#FFFBEB",
   pillOrangeText: "#92400E",
-  pillPurpleBg: "#EDE9FE",
-  pillPurpleText: "#5B21B6",
-  accent: "#8B5CF6",        // purple accent (presupuestos)
+  pillPurpleBg: "#FAF5FF",
+  pillPurpleText: "#6B21A8",
+  accent: "#0EA5E9",
   accentText: "#FFFFFF",
-  canvasPaper: "#FFFFFF",   // always white — drawings canvas
-  // Project status badge colours
-  statusPlanifBg: "#DBEAFE",
-  statusPlanifFg: "#1E40AF",
-  statusFacturarBg: "#EDE9FE",
-  statusFacturarFg: "#5B21B6",
-  statusFacturadoBg: "#DCFCE7",
+  canvasPaper: "#FFFFFF",
+  statusPlanifBg: "#E0F2FE",
+  statusPlanifFg: "#0369A1",
+  statusFacturarBg: "#FAF5FF",
+  statusFacturarFg: "#6B21A8",
+  statusFacturadoBg: "#F0FDF4",
   statusFacturadoFg: "#166534",
-  statusTerminadoBg: "#E0E7FF",
-  statusTerminadoFg: "#3730A3",
-  statusBloqueadoBg: "#FEE2E2",
+  statusTerminadoBg: "#EFF6FF",
+  statusTerminadoFg: "#1E40AF",
+  statusBloqueadoBg: "#FEF2F2",
   statusBloqueadoFg: "#991B1B",
-  statusAnuladoBg: "#F3F4F6",
-  statusAnuladoFg: "#6B7280",
-  // Completed event colours
-  statusCompletedBg: "#E5E7EB",
-  statusCompletedFg: "#6B7280",
+  statusAnuladoBg: "#F5F5F4",
+  statusAnuladoFg: "#78716C",
+  statusCompletedBg: "#F5F5F4",
+  statusCompletedFg: "#78716C",
 };
 
 const DARK = {
-  bg: "#0B1220",          // deep near-black blue
-  surface: "#111827",     // cards
-  readonly: "#0E1526",
-  text: "#F8FAFC",
+  bg: "#0B0F19",
+  surface: "#131822",
+  readonly: "#0F1420",
+  text: "#F1F5F9",
   textSecondary: "#94A3B8",
   textDisabled: "#475569",
   primary: "#3B82F6",
   primaryHover: "#2563EB",
-  border: "#1F2937",
-  borderInput: "#374151",
+  border: "#1E2937",
+  borderInput: "#334155",
   syncedBg: "#064E3B",
   syncedText: "#A7F3D0",
   pendingBg: "#78350F",
   pendingText: "#FDE68A",
   errorBg: "#7F1D1D",
   errorText: "#FCA5A5",
-  navy: "#E2E8F0",        // used as "strong text" — light in dark
-  // accents (NEW)
+  navy: "#E2E8F0",
   primarySoft: "#1E293B",
-  highlightBg: "#1E3A8A",
-  highlightText: "#BFDBFE",
-  pillBlueBg: "#1E3A8A",
-  pillBlueText: "#BFDBFE",
+  highlightBg: "#0C4A6E",
+  highlightText: "#BAE6FD",
+  pillBlueBg: "#0C4A6E",
+  pillBlueText: "#BAE6FD",
   pillOrangeBg: "#78350F",
   pillOrangeText: "#FDE68A",
   pillPurpleBg: "#4C1D95",
   pillPurpleText: "#DDD6FE",
-  accent: "#A78BFA",
+  accent: "#38BDF8",
   accentText: "#FFFFFF",
-  canvasPaper: "#F8FAFC",  // slightly dim for readability
-  // Project status badge colours (dark variants)
-  statusPlanifBg: "#1E3A8A",
-  statusPlanifFg: "#BFDBFE",
+  canvasPaper: "#F8FAFC",
+  statusPlanifBg: "#0C4A6E",
+  statusPlanifFg: "#BAE6FD",
   statusFacturarBg: "#4C1D95",
   statusFacturarFg: "#DDD6FE",
   statusFacturadoBg: "#064E3B",
   statusFacturadoFg: "#A7F3D0",
-  statusTerminadoBg: "#312E81",
+  statusTerminadoBg: "#1E3A8A",
   statusTerminadoFg: "#C7D2FE",
   statusBloqueadoBg: "#7F1D1D",
   statusBloqueadoFg: "#FCA5A5",
   statusAnuladoBg: "#1F2937",
   statusAnuladoFg: "#9CA3AF",
-  // Completed event colours (dark)
-  statusCompletedBg: "#374151",
+  statusCompletedBg: "#1F2937",
   statusCompletedFg: "#9CA3AF",
 };
 
@@ -349,7 +343,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       } catch {}
       loaded.current = true;
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const setTheme = useCallback((t: ThemeName) => {

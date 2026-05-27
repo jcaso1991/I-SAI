@@ -8,10 +8,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { api, clearToken, COLORS } from "../../src/api";
 import ResponsiveLayout from "../../src/ResponsiveLayout";
 import { useBreakpoint } from "../../src/useBreakpoint";
+import { useThemedStyles } from "../../src/theme";
+import { ios } from "../../src/ui/iosTheme";
 
 export default function PresupuestoExistente() {
   const router = useRouter();
   const { isWide } = useBreakpoint();
+  const s = useThemedStyles(useS);
   const [me, setMe] = useState<any>(null);
   const [items, setItems] = useState<any[]>([]);
   const [q, setQ] = useState("");
@@ -49,11 +52,18 @@ export default function PresupuestoExistente() {
           onChangeText={setQ}
           placeholder="Buscar cliente o proyecto..."
           placeholderTextColor={COLORS.textDisabled}
-          style={{ flex: 1, fontSize: 14, color: COLORS.text }}
+          style={s.searchInput}
         />
+        {q.length > 0 && (
+          <TouchableOpacity onPress={() => setQ("")}>
+            <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        )}
       </View>
       {loading ? (
-        <View style={s.center}><ActivityIndicator color={COLORS.primary} /></View>
+        <View style={{ padding: 16, gap: 10 }}>
+          {[1, 2, 3, 4, 5].map((i) => <View key={i} style={s.skeleton} />)}
+        </View>
       ) : (
         <FlatList
           data={items}
@@ -79,26 +89,33 @@ export default function PresupuestoExistente() {
   );
 }
 
-const s = StyleSheet.create({
+const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: "row", alignItems: "center", gap: 8,
     paddingHorizontal: 12, paddingVertical: 10, backgroundColor: COLORS.surface,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
-  headerTitle: { flex: 1, fontSize: 17, fontWeight: "800", color: COLORS.text },
-  iconBtn: { width: 40, height: 40, borderRadius: 10, backgroundColor: COLORS.bg, alignItems: "center", justifyContent: "center" },
+  headerTitle: { flex: 1, fontSize: 17, fontWeight: "800", color: COLORS.text, letterSpacing: -0.3 },
+  iconBtn: { width: 40, height: 40, borderRadius: ios.radius.md, backgroundColor: COLORS.bg, alignItems: "center", justifyContent: "center" },
   searchRow: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    marginHorizontal: 16, marginTop: 12, paddingHorizontal: 12, height: 44,
-    borderRadius: 10, backgroundColor: COLORS.surface,
+    flexDirection: "row", alignItems: "center", gap: 10,
+    marginHorizontal: 16, marginTop: 12, paddingHorizontal: 16, height: 48,
+    borderRadius: ios.radius.md, backgroundColor: COLORS.surface,
     borderWidth: 1, borderColor: COLORS.border,
   },
+  searchInput: { flex: 1, fontSize: 15, color: COLORS.text },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   row: {
-    flexDirection: "row", alignItems: "center", padding: 14, backgroundColor: COLORS.surface,
-    borderRadius: 12, borderWidth: 1, borderColor: COLORS.border,
+    flexDirection: "row", alignItems: "center", padding: ios.spacing.lg,
+    backgroundColor: COLORS.surface,
+    borderRadius: ios.radius.lg, borderWidth: 1, borderColor: COLORS.border,
+    ...ios.shadow.card,
   },
-  rowTitle: { fontSize: 14, fontWeight: "800", color: COLORS.text },
-  rowSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+  rowTitle: { fontSize: 15, fontWeight: "800", color: COLORS.text },
+  rowSub: { fontSize: 13, color: COLORS.textSecondary, marginTop: 2 },
+  skeleton: {
+    height: 72, borderRadius: ios.radius.lg, backgroundColor: COLORS.surface,
+    borderWidth: 1, borderColor: COLORS.border, marginBottom: 10,
+  },
 });

@@ -264,16 +264,22 @@ export const api = {
     request("/preciario/stock", { method: "PATCH", body: JSON.stringify({ ref, stock }) }),
 
   // Notas personales
-  listNotas: (fecha?: string, marcada?: boolean) => {
+  listNotas: (fecha?: string, marcada?: boolean, search?: string, priority?: string, tag?: string, material_id?: string, pinned?: boolean, archived?: boolean) => {
     const params = new URLSearchParams();
     if (fecha) params.set("fecha", fecha);
     if (marcada !== undefined) params.set("marcada", String(marcada));
+    if (search) params.set("search", search);
+    if (priority) params.set("priority", priority);
+    if (tag) params.set("tag", tag);
+    if (material_id) params.set("material_id", material_id);
+    if (pinned !== undefined) params.set("pinned", String(pinned));
+    if (archived !== undefined) params.set("archived", String(archived));
     const qs = params.toString();
     return request(`/notas${qs ? "?" + qs : ""}`);
   },
-  createNota: (body: { titulo?: string; contenido?: string; fecha?: string; material_id?: string; marcada?: boolean }) =>
+  createNota: (body: { titulo?: string; contenido?: string; fecha?: string; material_id?: string; marcada?: boolean; color?: string; priority?: string; tags?: string[]; pinned?: boolean; archived?: boolean }) =>
     request("/notas", { method: "POST", body: JSON.stringify(body) }),
-  updateNota: (id: string, body: { titulo?: string; contenido?: string; fecha?: string; material_id?: string; marcada?: boolean }) =>
+  updateNota: (id: string, body: { titulo?: string; contenido?: string; fecha?: string; material_id?: string; marcada?: boolean; color?: string; priority?: string; tags?: string[]; pinned?: boolean; archived?: boolean }) =>
     request(`/notas/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteNota: (id: string) => request(`/notas/${id}`, { method: "DELETE" }),
 
@@ -429,6 +435,7 @@ export const COLORS = {
   canvasPaper: "#F1F5F9",
   accent: "#EA580C",
   pillOrangeBg: "#FFF7ED",
+  pillOrangeText: "#92400E",
   // Project status badge colours
   statusPlanifBg: "#DBEAFE",
   statusPlanifFg: "#1E40AF",

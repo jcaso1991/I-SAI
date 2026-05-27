@@ -7,9 +7,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, COLORS } from "../../src/api";
+import { useThemedStyles } from "../../src/theme";
+import { ios, fontStyle } from "../../src/ui/iosTheme";
 
 export default function NewChat() {
   const router = useRouter();
+  const s = useThemedStyles(useS);
   const [users, setUsers] = useState<any[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [name, setName] = useState("");
@@ -85,8 +88,8 @@ export default function NewChat() {
                 style={[s.userRow, on && { backgroundColor: COLORS.primarySoft }]}
                 onPress={() => toggle(u.id)}
               >
-                <View style={[s.avatar, { backgroundColor: (u.color || COLORS.primary) + "22" }]}>
-                  <Ionicons name="person" size={22} color={u.color || COLORS.primary} />
+                <View style={[s.avatar, { backgroundColor: u.color || COLORS.primary }]}>
+                  <Text style={s.avatarInitial}>{(u.name || u.email || "?")[0].toUpperCase()}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.userName}>{u.name || u.email}</Text>
@@ -104,38 +107,42 @@ export default function NewChat() {
   );
 }
 
-const s = StyleSheet.create({
+const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   header: {
-    flexDirection: "row", alignItems: "center", gap: 12,
-    paddingHorizontal: 12, paddingVertical: 8,
-    backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    flexDirection: "row", alignItems: "center", gap: ios.spacing.md,
+    paddingHorizontal: ios.spacing.md, paddingVertical: ios.spacing.sm,
+    backgroundColor: COLORS.surface, borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border,
   },
   backBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-  headerTitle: { fontSize: 18, fontWeight: "800", color: COLORS.text, flex: 1 },
+  headerTitle: { ...fontStyle("title3"), color: COLORS.text, flex: 1 },
   createBtn: {
-    width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary,
+    height: 56, width: 56, borderRadius: ios.radius.card, backgroundColor: COLORS.primary,
     alignItems: "center", justifyContent: "center",
   },
   nameRow: {
-    padding: 12, backgroundColor: COLORS.surface,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    padding: ios.spacing.md, backgroundColor: COLORS.surface,
+    borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border,
   },
   nameInput: {
-    height: 44, backgroundColor: COLORS.bg, borderRadius: 10,
-    paddingHorizontal: 14, fontSize: 15, color: COLORS.text,
+    height: 44, backgroundColor: COLORS.bg, borderRadius: ios.radius.sm,
+    paddingHorizontal: 14, ...fontStyle("body"), color: COLORS.text,
     borderWidth: 1, borderColor: COLORS.border,
   },
   userRow: {
-    flexDirection: "row", alignItems: "center", gap: 12,
-    padding: 14, backgroundColor: COLORS.surface,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    flexDirection: "row", alignItems: "center", gap: ios.spacing.md,
+    padding: ios.spacing.lg, backgroundColor: COLORS.surface,
+    borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border,
   },
-  avatar: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-  userName: { fontSize: 15, fontWeight: "700", color: COLORS.text },
-  userEmail: { fontSize: 12, color: COLORS.textSecondary },
+  avatar: {
+    width: 44, height: 44, borderRadius: 22,
+    alignItems: "center", justifyContent: "center",
+  },
+  avatarInitial: { color: "#fff", ...fontStyle("subhead"), fontWeight: "800" },
+  userName: { ...fontStyle("bodyEmphasized"), color: COLORS.text },
+  userEmail: { ...fontStyle("footnote"), color: COLORS.textSecondary },
   checkbox: {
-    width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: COLORS.border,
+    width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: COLORS.border,
     alignItems: "center", justifyContent: "center",
   },
   checkboxOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },

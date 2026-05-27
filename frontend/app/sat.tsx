@@ -22,6 +22,8 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import { api, clearToken, COLORS } from "../src/api";
+import { useThemedStyles } from "../src/theme";
+import { ios } from "../src/ui/iosTheme";
 import ResponsiveLayout from "../src/ResponsiveLayout";
 import { useBreakpoint } from "../src/useBreakpoint";
 import NotificationsBell from "../src/NotificationsBell";
@@ -96,6 +98,7 @@ export default function SATScreen() {
   const [tab, setTab] = useState<"pendiente" | "resuelta" | "agendada">(initialTab);
   const [yearFilter, setYearFilter] = useState(params.year || "");
   const [monthFilter, setMonthFilter] = useState(params.month || "");
+  const s = useThemedStyles(useS);
   const [items, setItems] = useState<Incident[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [openItem, setOpenItem] = useState<Incident | null>(null);
@@ -272,14 +275,14 @@ export default function SATScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               testID="btn-export-excel"
-              style={[s.copyBtn, { backgroundColor: "#DCFCE7", borderColor: "#10B981" }]}
+              style={[s.copyBtn, { backgroundColor: COLORS.syncedBg, borderColor: "#10B981" }]}
               onPress={async () => {
                 try { await api.satExportExcel(); }
                 catch (e: any) { Alert.alert("Error", e.message || "No se pudo exportar"); }
               }}
             >
-              <Ionicons name="download-outline" size={14} color="#166534" />
-              <Text style={[s.copyBtnText, { color: "#166534" }]} numberOfLines={1}>Exportar Excel</Text>
+              <Ionicons name="download-outline" size={14} color={COLORS.syncedText} />
+              <Text style={[s.copyBtnText, { color: COLORS.syncedText }]} numberOfLines={1}>Exportar Excel</Text>
             </TouchableOpacity>
             </>
           )}
@@ -549,6 +552,7 @@ export default function SATScreen() {
 
 function TabPill({ label, count, active, onPress, testID }:
   { label: string; count: number; active: boolean; onPress: () => void; testID?: string }) {
+  const s = useThemedStyles(useS);
   return (
     <TouchableOpacity testID={testID} style={[s.tabPill, active && s.tabPillOn]} onPress={onPress}>
       <Text style={[s.tabPillText, active && s.tabPillTextOn]}>{label}</Text>
@@ -561,20 +565,21 @@ function TabPill({ label, count, active, onPress, testID }:
 
 function IncidentCard({ item, clientName, onPress }:
   { item: Incident; clientName?: string; onPress: () => void }) {
+  const s = useThemedStyles(useS);
   const d = new Date(item.created_at);
   const dateStr = isNaN(d.getTime())
     ? ""
     : d.toLocaleString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
-  const pending = item.status === "pendiente";
+  const statusColor = item.status === "pendiente" ? COLORS.pillOrangeText : item.status === "agendada" ? COLORS.primary : COLORS.syncedText;
   return (
     <TouchableOpacity
       testID={`sat-item-${item.id}`}
       activeOpacity={0.85}
-      style={[s.card, pending && { borderLeftColor: "#F59E0B", borderLeftWidth: 4 }]}
+      style={[s.card, { borderLeftWidth: 3, borderLeftColor: statusColor }]}
       onPress={onPress}
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-        <View style={[s.statusDot, { backgroundColor: pending ? "#F59E0B" : "#10B981" }]} />
+        <View style={[s.statusDot, { backgroundColor: statusColor }]} />
         <Text style={s.cardClient} numberOfLines={1}>{item.cliente || "— sin cliente —"}</Text>
         <Text style={s.cardDate}>{dateStr}</Text>
       </View>
@@ -618,6 +623,7 @@ function IncidentCard({ item, clientName, onPress }:
 
 function ClientCard({ client, canEditSat, onEdit, onNewIncident, onViewIncidents }:
   { client: Client; canEditSat: boolean; onEdit: () => void; onNewIncident: () => void; onViewIncidents: () => void }) {
+  const s = useThemedStyles(useS);
   return (
     <View testID={`client-${client.id}`} style={s.clientCard}>
       <View style={{ flex: 1 }}>
@@ -687,11 +693,13 @@ function ClientCard({ client, canEditSat, onEdit, onNewIncident, onViewIncidents
 /* ============================ modals ============================ */
 
 function Field({ label, children }: { label: string; children: any }) {
+  const s = useThemedStyles(useS);
   return (<View><Text style={s.fieldLabel}>{label}</Text>{children}</View>);
 }
 
 function ClientPicker({ value, onChange, clients }:
   { value: string | null | undefined; onChange: (id: string | null, name: string) => void; clients: Client[] }) {
+  const s = useThemedStyles(useS);
   const [open, setOpen] = useState(false);
   const selected = value ? clients.find((c) => c.id === value) : null;
   return (
@@ -737,6 +745,7 @@ function IncidentModal({ item, clients, canEditSat, onClose, onChanged }: {
   item: Incident; clients: Client[]; canEditSat: boolean;
   onClose: () => void; onChanged: () => void;
 }) {
+  const s = useThemedStyles(useS);
   const [current, setCurrent] = useState<Incident>(item);
   const [cliente, setCliente] = useState(item.cliente);
   const [direccion, setDireccion] = useState(item.direccion);
@@ -829,12 +838,12 @@ function IncidentModal({ item, clients, canEditSat, onClose, onChanged }: {
             <View style={s.statusRow}>
               <Text style={s.statusLabel}>Estado actual:</Text>
               <View style={[s.statusChip, {
-                backgroundColor: current.status === "pendiente" ? "#FEF3C7" : "#D1FAE5",
-                borderColor: current.status === "pendiente" ? "#F59E0B" : "#10B981",
+                backgroundColor: current.status === "pendiente" ? COLORS.pendingBg : COLORS.syncedBg,
+                borderColor: current.status === "pendiente" ? COLORS.pendingText : "#10B981",
               }]}>
                 <Ionicons name={current.status === "pendiente" ? "time" : "checkmark-done"} size={13}
-                  color={current.status === "pendiente" ? "#B45309" : "#065F46"} />
-                <Text style={{ color: current.status === "pendiente" ? "#B45309" : "#065F46", fontWeight: "900", fontSize: 12 }}>
+                  color={current.status === "pendiente" ? COLORS.pendingText : COLORS.syncedText} />
+                <Text style={{ color: current.status === "pendiente" ? COLORS.pendingText : COLORS.syncedText, fontWeight: "900", fontSize: 12 }}>
                   {current.status === "pendiente" ? "Pendiente" : "Resuelta"}
                 </Text>
               </View>
@@ -863,7 +872,7 @@ function IncidentModal({ item, clients, canEditSat, onClose, onChanged }: {
           <View style={s.modalFooter}>
             {canEditSat && (
               <TouchableOpacity testID="sat-delete" style={s.dangerBtn} onPress={del} disabled={saving}>
-                <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                <Ionicons name="trash-outline" size={16} color={COLORS.errorText} />
               </TouchableOpacity>
             )}
             {canEditSat && (
@@ -883,7 +892,7 @@ function IncidentModal({ item, clients, canEditSat, onClose, onChanged }: {
                   onPress={() => setPendingStatus("pendiente")}
                   disabled={saving}
                 >
-                  <Ionicons name="time-outline" size={16} color="#B45309" />
+                  <Ionicons name="time-outline" size={16} color={COLORS.pendingText} />
                   <Text style={s.pendingBtnText}>Pendiente</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -940,6 +949,7 @@ function IncidentModal({ item, clients, canEditSat, onClose, onChanged }: {
 }
 
 function HistoryItem({ entry }: { entry: HistoryEntry }) {
+  const s = useThemedStyles(useS);
   const when = (() => {
     const d = new Date(entry.created_at);
     return isNaN(d.getTime())
@@ -951,7 +961,7 @@ function HistoryItem({ entry }: { entry: HistoryEntry }) {
   let icon: any = "chatbubble-ellipses";
   if (entry.action === "status_change") {
     const resolved = entry.to_status === "resuelta";
-    accent = resolved ? "#10B981" : "#F59E0B";
+    accent = resolved ? "#10B981" : COLORS.pendingText;
     label = resolved ? "Marcó como RESUELTA" : "Marcó como PENDIENTE";
     icon = resolved ? "checkmark-done" : "time";
   } else if (entry.action === "scheduled") {
@@ -961,7 +971,7 @@ function HistoryItem({ entry }: { entry: HistoryEntry }) {
     label = `Reagendó para ${when2}`;
     icon = "calendar";
   } else if (entry.action === "auto_revive") {
-    accent = "#F59E0B";
+    accent = COLORS.pendingText;
     label = "Reactivada automáticamente";
     icon = "refresh";
   }
@@ -986,6 +996,7 @@ function SchedulePrompt({ currentStatus, saving, onCancel, onConfirm }: {
   onCancel: () => void;
   onConfirm: (iso: string, comment: string) => void;
 }) {
+  const s = useThemedStyles(useS);
   const now = new Date();
   const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -1013,8 +1024,8 @@ function SchedulePrompt({ currentStatus, saving, onCancel, onConfirm }: {
         <TouchableOpacity activeOpacity={1} style={StyleSheet.absoluteFill} onPress={onCancel} />
         <View style={s.promptCard}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 }}>
-            <View style={[s.promptIcon, { backgroundColor: "#E0E7FF", borderColor: "#4F46E5" }]}>
-              <Ionicons name="calendar" size={22} color="#3730A3" />
+            <View style={[s.promptIcon, { backgroundColor: COLORS.statusTerminadoBg, borderColor: "#4F46E5" }]}>
+              <Ionicons name="calendar" size={22} color={COLORS.statusTerminadoFg} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={s.promptTitle}>Reagendar incidencia</Text>
@@ -1054,7 +1065,7 @@ function SchedulePrompt({ currentStatus, saving, onCancel, onConfirm }: {
             placeholderTextColor={COLORS.textDisabled}
             style={[s.input, s.textarea]}
           />
-          {error && <Text style={{ color: "#EF4444", fontSize: 12, fontWeight: "800", marginTop: 6 }}>{error}</Text>}
+          {error && <Text style={{ color: COLORS.errorText, fontSize: 12, fontWeight: "800", marginTop: 6 }}>{error}</Text>}
           <View style={{ flexDirection: "row", gap: 8, marginTop: 14 }}>
             <TouchableOpacity style={[s.cancelBtn, { flex: 1 }]} onPress={onCancel} disabled={saving}>
               <Text style={s.cancelBtnText}>Cancelar</Text>
@@ -1080,6 +1091,7 @@ function SchedulePrompt({ currentStatus, saving, onCancel, onConfirm }: {
 function ClientIncidentsModal({ client, onClose, onOpenIncident }: {
   client: Client; onClose: () => void; onOpenIncident: (inc: Incident) => void;
 }) {
+  const s = useThemedStyles(useS);
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<Incident[]>([]);
 
@@ -1142,6 +1154,7 @@ function StatusCommentPrompt({
   onCancel: () => void;
   onConfirm: (comment: string, facturable?: boolean) => void;
 }) {
+  const s = useThemedStyles(useS);
   const [comment, setComment] = useState("");
   const [error, setError] = useState<string | null>(null);
   const same = currentStatus === targetStatus;
@@ -1167,13 +1180,13 @@ function StatusCommentPrompt({
         <View style={s.promptCard}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 }}>
             <View style={[s.promptIcon, {
-              backgroundColor: resolved ? "#D1FAE5" : "#FEF3C7",
-              borderColor: resolved ? "#10B981" : "#F59E0B",
+              backgroundColor: resolved ? COLORS.syncedBg : COLORS.pendingBg,
+              borderColor: resolved ? "#10B981" : COLORS.pendingText,
             }]}>
               <Ionicons
                 name={resolved ? "checkmark-done" : "time"}
                 size={22}
-                color={resolved ? "#065F46" : "#B45309"}
+                color={resolved ? COLORS.syncedText : COLORS.pendingText}
               />
             </View>
             <View style={{ flex: 1 }}>
@@ -1201,7 +1214,7 @@ function StatusCommentPrompt({
             style={[s.input, s.textarea]}
           />
           {error && (
-            <Text style={{ color: "#EF4444", fontSize: 12, fontWeight: "800", marginTop: 6 }}>{error}</Text>
+            <Text style={{ color: COLORS.errorText, fontSize: 12, fontWeight: "800", marginTop: 6 }}>{error}</Text>
           )}
           {resolved && (
             <>
@@ -1237,13 +1250,13 @@ function StatusCommentPrompt({
               disabled={saving}
             >
               {saving ? (
-                <ActivityIndicator color={resolved ? "#fff" : "#B45309"} />
+                <ActivityIndicator color={resolved ? "#fff" : COLORS.pendingText} />
               ) : (
                 <>
                   <Ionicons
                     name={resolved ? "checkmark-done" : "time-outline"}
                     size={16}
-                    color={resolved ? "#fff" : "#B45309"}
+                    color={resolved ? "#fff" : COLORS.pendingText}
                   />
                   <Text style={resolved ? s.resolvedBtnText : s.pendingBtnText}>
                     {resolved ? "Confirmar resuelta" : "Confirmar pendiente"}
@@ -1262,6 +1275,7 @@ function IncidentCreateModal({ initial, clients, onClose, onCreated }: {
   initial: Partial<Incident>; clients: Client[];
   onClose: () => void; onCreated: () => void;
 }) {
+  const s = useThemedStyles(useS);
   const [cliente, setCliente] = useState(initial.cliente || "");
   const [direccion, setDireccion] = useState(initial.direccion || "");
   const [telefono, setTelefono] = useState(initial.telefono || "");
@@ -1343,6 +1357,7 @@ function IncidentCreateModal({ initial, clients, onClose, onCreated }: {
 function ClientModal({ client, onClose, onSaved }: {
   client: Client | null; onClose: () => void; onSaved: () => void;
 }) {
+  const s = useThemedStyles(useS);
   const [cliente, setCliente] = useState(client?.cliente || "");
   const [direccion, setDireccion] = useState(client?.direccion || "");
   const [contacto, setContacto] = useState(client?.contacto || "");
@@ -1392,7 +1407,7 @@ function ClientModal({ client, onClose, onSaved }: {
           <View style={s.modalFooter}>
             {client && (
               <TouchableOpacity testID="client-delete" style={s.dangerBtn} onPress={del} disabled={saving}>
-                <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                <Ionicons name="trash-outline" size={16} color={COLORS.errorText} />
               </TouchableOpacity>
             )}
             <TouchableOpacity style={s.cancelBtn} onPress={onClose}>
@@ -1413,22 +1428,22 @@ function ClientModal({ client, onClose, onSaved }: {
 
 /* ============================ styles ============================ */
 
-const s = StyleSheet.create({
+const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 30, gap: 8 },
 
   header: {
     flexDirection: "row", alignItems: "center", gap: 8,
-    paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6,
+    paddingHorizontal: ios.spacing.lg, paddingTop: 14, paddingBottom: 6,
     backgroundColor: COLORS.surface,
   },
   subHeader: {
     flexDirection: "row", alignItems: "center", gap: 6,
-    paddingHorizontal: 16, paddingBottom: 10,
+    paddingHorizontal: ios.spacing.lg, paddingBottom: 10,
     backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
   iconBtn: {
-    width: 40, height: 40, borderRadius: 12, backgroundColor: COLORS.bg,
+    width: 40, height: 40, borderRadius: ios.radius.row, backgroundColor: COLORS.bg,
     alignItems: "center", justifyContent: "center",
     borderWidth: 1, borderColor: COLORS.border,
   },
@@ -1436,14 +1451,14 @@ const s = StyleSheet.create({
   viewSelector: {
     flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4,
     paddingHorizontal: 10, paddingVertical: 4, alignSelf: "flex-start",
-    borderRadius: 12, backgroundColor: COLORS.primarySoft,
+    borderRadius: ios.radius.md, backgroundColor: COLORS.primarySoft,
     borderWidth: 1, borderColor: COLORS.primary + "33",
   },
   viewSelectorText: { fontSize: 12, fontWeight: "900", color: COLORS.primary, letterSpacing: 0.3 },
 
   copyBtn: {
     flexDirection: "row", alignItems: "center", gap: 4,
-    paddingHorizontal: 8, height: 32, borderRadius: 8,
+    paddingHorizontal: 8, height: 32, borderRadius: ios.radius.sm,
     backgroundColor: COLORS.primarySoft,
     borderWidth: 1.5, borderColor: COLORS.primary,
   },
@@ -1453,18 +1468,15 @@ const s = StyleSheet.create({
     position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 20,
   },
   viewMenu: {
-    position: "absolute", top: 88, left: 16, width: 280, zIndex: 21,
-    backgroundColor: COLORS.surface, borderRadius: 14,
+    position: "absolute", top: 88, left: ios.spacing.lg, width: 280, zIndex: 21,
+    backgroundColor: COLORS.surface, borderRadius: ios.radius.lg,
     borderWidth: 1, borderColor: COLORS.border,
     padding: 6, gap: 2,
-    ...Platform.select<any>({
-      web: { boxShadow: "0 16px 32px rgba(15,23,42,0.18)" },
-      default: { shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 8 },
-    }),
+    ...ios.shadow.elevated,
   },
   viewMenuItem: {
     flexDirection: "row", alignItems: "center", gap: 10,
-    padding: 10, borderRadius: 10,
+    padding: 10, borderRadius: ios.radius.row,
   },
   viewMenuItemOn: { backgroundColor: COLORS.highlightBg },
   viewMenuTitle: { fontSize: 14, fontWeight: "900", color: COLORS.text },
@@ -1472,19 +1484,19 @@ const s = StyleSheet.create({
 
   tabsRow: {
     flexDirection: "row", gap: 8, alignItems: "center", flexWrap: "wrap",
-    paddingHorizontal: 16, paddingVertical: 12,
+    paddingHorizontal: ios.spacing.lg, paddingVertical: ios.spacing.md,
     backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
   tabPill: {
     flexDirection: "row", alignItems: "center", gap: 6,
-    paddingHorizontal: 14, height: 38, borderRadius: 19,
+    paddingHorizontal: 14, height: 38, borderRadius: ios.radius.pill,
     backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
   },
   tabPillOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   tabPillText: { color: COLORS.text, fontWeight: "800", fontSize: 13 },
   tabPillTextOn: { color: "#fff" },
   tabCountBadge: {
-    minWidth: 22, height: 18, borderRadius: 9, paddingHorizontal: 5,
+    minWidth: 22, height: 18, borderRadius: ios.radius.pill, paddingHorizontal: 5,
     backgroundColor: COLORS.border, alignItems: "center", justifyContent: "center",
   },
   tabCountBadgeOn: { backgroundColor: "rgba(255,255,255,0.3)" },
@@ -1493,7 +1505,7 @@ const s = StyleSheet.create({
 
   addBtn: {
     flexDirection: "row", alignItems: "center", gap: 4,
-    paddingHorizontal: 12, height: 38, borderRadius: 10,
+    paddingHorizontal: ios.spacing.md, height: 38, borderRadius: ios.radius.row,
     backgroundColor: COLORS.primary,
   },
   addBtnText: { color: "#fff", fontWeight: "900", fontSize: 13 },
@@ -1503,12 +1515,9 @@ const s = StyleSheet.create({
 
   // Incident card
   card: {
-    backgroundColor: COLORS.surface, borderRadius: 14,
+    backgroundColor: COLORS.surface, borderRadius: ios.radius.lg,
     borderWidth: 1, borderColor: COLORS.border, padding: 14,
-    ...Platform.select<any>({
-      web: { boxShadow: "0 1px 4px rgba(15,23,42,0.06)" },
-      default: { shadowColor: "#0F172A", shadowOpacity: 0.05, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
-    }),
+    ...ios.shadow.card,
   },
   statusDot: { width: 10, height: 10, borderRadius: 5 },
   cardClient: { flex: 1, fontSize: 15, fontWeight: "900", color: COLORS.text, letterSpacing: -0.2 },
@@ -1521,41 +1530,42 @@ const s = StyleSheet.create({
   // Clients
   clientHeader: {
     flexDirection: "row", alignItems: "center", gap: 10,
-    paddingHorizontal: 16, paddingVertical: 12,
+    paddingHorizontal: ios.spacing.lg, paddingVertical: ios.spacing.md,
     backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
   searchWrap: {
     flex: 1, flexDirection: "row", alignItems: "center", gap: 8,
-    height: 38, paddingHorizontal: 12, borderRadius: 10,
+    height: 38, paddingHorizontal: ios.spacing.md, borderRadius: ios.radius.row,
     backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
   },
   searchInput: { flex: 1, fontSize: 13.5, color: COLORS.text, paddingVertical: 0 },
 
   clientCard: {
     flexDirection: "row", alignItems: "center", gap: 10,
-    backgroundColor: COLORS.surface, borderRadius: 12,
-    borderWidth: 1, borderColor: COLORS.border, padding: 12,
+    backgroundColor: COLORS.surface, borderRadius: ios.radius.md,
+    borderWidth: 1, borderColor: COLORS.border, padding: ios.spacing.md,
+    ...ios.shadow.card,
   },
   clientName: { fontSize: 14, fontWeight: "900", color: COLORS.text, letterSpacing: -0.2 },
   clientChip: {
     flexDirection: "row", alignItems: "center", gap: 4,
-    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: ios.radius.sm,
     backgroundColor: COLORS.bg,
   },
   clientChipText: { fontSize: 11, color: COLORS.textSecondary, fontWeight: "700", maxWidth: 180 },
   clientActionPrimary: {
     flexDirection: "row", alignItems: "center", gap: 4,
-    paddingHorizontal: 10, height: 34, borderRadius: 8,
+    paddingHorizontal: 10, height: 34, borderRadius: ios.radius.sm,
     backgroundColor: COLORS.primary,
   },
   clientActionPrimaryText: { color: "#fff", fontWeight: "900", fontSize: 12 },
   clientActionGhost: {
-    width: 34, height: 34, borderRadius: 8, alignItems: "center", justifyContent: "center",
+    width: 34, height: 34, borderRadius: ios.radius.sm, alignItems: "center", justifyContent: "center",
     backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
   },
   clientActionSecondary: {
     flexDirection: "row", alignItems: "center", gap: 4,
-    paddingHorizontal: 10, height: 34, borderRadius: 8,
+    paddingHorizontal: 10, height: 34, borderRadius: ios.radius.sm,
     backgroundColor: COLORS.navy,
   },
   clientActionSecondaryText: { color: "#fff", fontWeight: "900", fontSize: 12 },
@@ -1563,44 +1573,41 @@ const s = StyleSheet.create({
   // Modal
   sheetRoot: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
   sheet: {
-    backgroundColor: COLORS.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22,
+    backgroundColor: COLORS.surface, borderTopLeftRadius: ios.radius.xl, borderTopRightRadius: ios.radius.xl,
     maxHeight: "92%",
-    ...Platform.select<any>({
-      web: { boxShadow: "0 -10px 40px rgba(15,23,42,0.2)" },
-      default: { shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 16, shadowOffset: { width: 0, height: -8 } },
-    }),
+    ...ios.shadow.modal,
   },
   modalHeader: {
-    flexDirection: "row", alignItems: "center", padding: 18,
+    flexDirection: "row", alignItems: "center", padding: ios.spacing.xl,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
   modalTitle: { fontSize: 19, fontWeight: "900", color: COLORS.text, letterSpacing: -0.4 },
   modalSub: { fontSize: 12, color: COLORS.textSecondary, fontWeight: "600", marginTop: 2 },
   closeBtn: {
-    width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center",
+    width: 36, height: 36, borderRadius: ios.radius.pill, alignItems: "center", justifyContent: "center",
     backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
   },
   fieldLabel: { fontSize: 11.5, fontWeight: "900", color: COLORS.text, marginBottom: 5, letterSpacing: 0.3 },
   input: {
     borderWidth: 1.5, borderColor: COLORS.borderInput,
-    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10,
+    borderRadius: ios.radius.row, paddingHorizontal: ios.spacing.md, paddingVertical: 10,
     fontSize: 14, color: COLORS.text, backgroundColor: COLORS.bg,
   },
   textarea: { minHeight: 92, textAlignVertical: "top" as any, paddingTop: 10 },
 
   pickerBtn: {
     flexDirection: "row", alignItems: "center", gap: 8,
-    paddingHorizontal: 12, height: 44, borderRadius: 10,
+    paddingHorizontal: ios.spacing.md, height: 44, borderRadius: ios.radius.row,
     backgroundColor: COLORS.primarySoft,
     borderWidth: 1.5, borderColor: COLORS.primary,
   },
   pickerList: {
-    maxHeight: 260, marginTop: 6, borderRadius: 10, overflow: "hidden",
+    maxHeight: 260, marginTop: 6, borderRadius: ios.radius.row, overflow: "hidden",
     borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.bg,
   },
   pickerItem: {
     flexDirection: "row", alignItems: "center", gap: 8,
-    paddingHorizontal: 12, paddingVertical: 10,
+    paddingHorizontal: ios.spacing.md, paddingVertical: 10,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
   pickerItemText: { flex: 1, fontSize: 13, color: COLORS.text, fontWeight: "700" },
@@ -1609,7 +1616,7 @@ const s = StyleSheet.create({
   statusLabel: { fontSize: 12, color: COLORS.textSecondary, fontWeight: "800" },
   statusChip: {
     flexDirection: "row", alignItems: "center", gap: 5,
-    paddingHorizontal: 10, height: 26, borderRadius: 13, borderWidth: 1,
+    paddingHorizontal: 10, height: 26, borderRadius: ios.radius.pill, borderWidth: 1,
   },
 
   modalFooter: {
@@ -1618,36 +1625,36 @@ const s = StyleSheet.create({
     flexWrap: "wrap",
   },
   dangerBtn: {
-    width: 42, height: 42, borderRadius: 10, alignItems: "center", justifyContent: "center",
-    backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FEE2E2",
+    width: 42, height: 42, borderRadius: ios.radius.row, alignItems: "center", justifyContent: "center",
+    backgroundColor: COLORS.errorBg, borderWidth: 1, borderColor: COLORS.errorBg,
   },
   pendingBtn: {
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
-    height: 42, borderRadius: 10, backgroundColor: "#FEF3C7",
-    borderWidth: 1.5, borderColor: "#F59E0B", paddingHorizontal: 10, minWidth: 120,
+    height: 42, borderRadius: ios.radius.row, backgroundColor: COLORS.pendingBg,
+    borderWidth: 1.5, borderColor: COLORS.pendingText, paddingHorizontal: 10, minWidth: 120,
   },
-  pendingBtnText: { color: "#B45309", fontWeight: "900", fontSize: 13 },
+  pendingBtnText: { color: COLORS.pendingText, fontWeight: "900", fontSize: 13 },
   resolvedBtn: {
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
-    height: 42, borderRadius: 10, backgroundColor: "#10B981",
+    height: 42, borderRadius: ios.radius.row, backgroundColor: COLORS.primary,
     paddingHorizontal: 10, minWidth: 120,
   },
   resolvedBtnText: { color: "#fff", fontWeight: "900", fontSize: 13 },
   cancelBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
-    height: 42, borderRadius: 10, paddingHorizontal: 18,
+    height: 42, borderRadius: ios.radius.row, paddingHorizontal: 18,
     backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
   },
   cancelBtnText: { color: COLORS.textSecondary, fontWeight: "900", fontSize: 13 },
 
   // History section
   historyBlock: {
-    marginTop: 10, padding: 12, borderRadius: 12,
+    marginTop: 10, padding: ios.spacing.md, borderRadius: ios.radius.md,
     backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
   },
   historyTitle: { fontSize: 13, fontWeight: "900", color: COLORS.text, letterSpacing: 0.3 },
   historyCountPill: {
-    minWidth: 22, height: 18, borderRadius: 9, paddingHorizontal: 6,
+    minWidth: 22, height: 18, borderRadius: ios.radius.pill, paddingHorizontal: 6,
     backgroundColor: COLORS.primarySoft,
     alignItems: "center", justifyContent: "center",
   },
@@ -1657,11 +1664,12 @@ const s = StyleSheet.create({
     lineHeight: 17,
   },
   historyItem: {
-    backgroundColor: COLORS.surface, borderRadius: 10, padding: 10,
+    backgroundColor: COLORS.surface, borderRadius: ios.radius.row, padding: 10,
     borderWidth: 1, borderColor: COLORS.border,
+    paddingLeft: 12,
   },
   historyAvatar: {
-    width: 20, height: 20, borderRadius: 10,
+    width: 24, height: 24, borderRadius: 12,
     alignItems: "center", justifyContent: "center",
   },
   historyUser: { fontSize: 12.5, fontWeight: "900", color: COLORS.text },
@@ -1669,25 +1677,22 @@ const s = StyleSheet.create({
   historyDate: { fontSize: 10.5, color: COLORS.textDisabled, fontWeight: "700" },
   historyComment: {
     fontSize: 13, color: COLORS.text, marginTop: 6, lineHeight: 18,
-    paddingLeft: 26,
+    paddingLeft: 34,
   },
 
   // Status comment prompt
   promptRoot: {
     flex: 1, backgroundColor: "rgba(0,0,0,0.55)",
-    alignItems: "center", justifyContent: "center", padding: 16,
+    alignItems: "center", justifyContent: "center", padding: ios.spacing.lg,
   },
   promptCard: {
     width: "100%", maxWidth: 440,
-    backgroundColor: COLORS.surface, borderRadius: 16, padding: 18,
+    backgroundColor: COLORS.surface, borderRadius: ios.radius.lg, padding: ios.spacing.xl,
     borderWidth: 1, borderColor: COLORS.border,
-    ...Platform.select<any>({
-      web: { boxShadow: "0 20px 50px rgba(15,23,42,0.28)" },
-      default: { shadowColor: "#000", shadowOpacity: 0.25, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 12 },
-    }),
+    ...ios.shadow.modal,
   },
   promptIcon: {
-    width: 44, height: 44, borderRadius: 12,
+    width: 44, height: 44, borderRadius: ios.radius.md,
     alignItems: "center", justifyContent: "center",
     borderWidth: 1.5,
   },
@@ -1695,8 +1700,8 @@ const s = StyleSheet.create({
   promptSub: { fontSize: 12, color: COLORS.textSecondary, fontWeight: "600", marginTop: 2, lineHeight: 17 },
   scheduleBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
-    backgroundColor: COLORS.primary, paddingHorizontal: 16, paddingVertical: 12,
-    borderRadius: 10, marginTop: 8,
+    backgroundColor: COLORS.primary, paddingHorizontal: ios.spacing.lg, paddingVertical: 12,
+    borderRadius: ios.radius.row, marginTop: 8,
   },
   scheduleBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
   sectionLabel: {
@@ -1704,11 +1709,11 @@ const s = StyleSheet.create({
     letterSpacing: 0.5, textTransform: "uppercase",
   },
   factChip: {
-    flex: 1, paddingVertical: 10, borderRadius: 8,
+    flex: 1, paddingVertical: 10, borderRadius: ios.radius.sm,
     alignItems: "center", backgroundColor: COLORS.bg,
     borderWidth: 1, borderColor: COLORS.border,
   },
-  factChipActive: { backgroundColor: "#10B981", borderColor: "#10B981" },
-  factChipNoActive: { backgroundColor: "#6B7280", borderColor: "#6B7280" },
+  factChipActive: { backgroundColor: COLORS.syncedBg, borderColor: COLORS.syncedText },
+  factChipNoActive: { backgroundColor: COLORS.statusAnuladoBg, borderColor: COLORS.statusAnuladoFg },
   factChipText: { fontSize: 13, fontWeight: "700", color: COLORS.text },
 });
