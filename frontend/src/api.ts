@@ -316,7 +316,12 @@ export const api = {
   },
 
   // Budgets (presupuestos)
-  listBudgets: () => request("/budgets"),
+  listBudgets: (materialId?: string) => {
+    const params = new URLSearchParams();
+    if (materialId) params.set("material_id", materialId);
+    const qs = params.toString();
+    return request(`/budgets${qs ? "?" + qs : ""}`);
+  },
   listAcceptedBudgets: () => request("/budgets/accepted"),
   getBudget: (id: string) => request(`/budgets/${id}`),
   createBudget: (body: any) => request("/budgets", { method: "POST", body: JSON.stringify(body) }),
@@ -406,6 +411,14 @@ export const api = {
   chatSendFile: (cid: string, fileBase64: string, fileName: string, fileMime: string) => request(`/chats/${cid}/messages`, { method: "POST", body: JSON.stringify({ text: "", file_base64: fileBase64, file_name: fileName, file_mime: fileMime }) }),
   chatCreate: (body: { participant_ids: string[]; name?: string; project_id?: string; event_id?: string }) => request("/chats", { method: "POST", body: JSON.stringify(body) }),
   chatUnreadTotal: () => request("/chats/unread-total"),
+
+  // Muestrario
+  getMuestrario: () => request("/muestrario"),
+
+  // Solicitudes de presupuesto (cliente)
+  createBudgetRequest: (body: any) => request("/budget-requests", { method: "POST", body: JSON.stringify(body) }, false),
+  listBudgetRequests: () => request("/budget-requests"),
+  updateBudgetRequest: (id: string, body: any) => request(`/budget-requests/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
 };
 
 export const COLORS = {

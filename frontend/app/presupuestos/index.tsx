@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert,
+  View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert, Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -11,7 +11,7 @@ import { useBreakpoint } from "../../src/useBreakpoint";
 import { useThemedStyles } from "../../src/theme";
 import { ios } from "../../src/ui/iosTheme";
 
-type Tab = "pendientes" | "aceptados";
+type Tab = "pendiente" | "en_revision" | "enviado" | "aceptado";
 
 export default function PresupuestosIndex() {
   const router = useRouter();
@@ -20,9 +20,13 @@ export default function PresupuestosIndex() {
   const [me, setMe] = useState<any>(null);
   const [budgets, setBudgets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>("pendientes");
+  const [tab, setTab] = useState<Tab>("pendiente");
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [attachModal, setAttachModal] = useState<string | null>(null);
+  const [projectSearch, setProjectSearch] = useState("");
+  const [projects, setProjects] = useState<any[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
 
   useFocusEffect(useCallback(() => {
     let alive = true;
@@ -38,16 +42,81 @@ export default function PresupuestosIndex() {
     return () => { alive = false; };
   }, []));
 
-  const toggleStatus = async (id: string) => {
+  const statusFlow: Record<string, string> = {
+    pendiente: "en_revision",
+    en_revision: "enviado",
+    enviado: "aceptado",
+  };
+
+  const reverseFlow: Record<string, string> = {
+    en_revision: "pendiente",
+    enviado: "en_revision",
+    aceptado: "enviado",
+  };
+
+  const changeStatus = async (id: string, newStatus: string) => {
     try {
-      const b = budgets.find((x) => x.id === id);
-      if (!b) return;
-      const newStatus = (b.status || "pendiente") === "pendiente" ? "aceptado" : "pendiente";
       const res = await api.setBudgetStatus(id, newStatus);
       setBudgets((arr) => arr.map((x) => x.id === id ? { ...x, status: res.status || newStatus } : x));
     } catch (e: any) {
       Alert.alert("Error", e.message);
     }
+  };
+
+  const advanceStatus = async (id: string) => {
+    const b = budgets.find((x) => x.id === id);
+    if (!b) return;
+    const current = b.status || "pendiente";
+    const next = statusFlow[current];
+    if (!next) return;
+    await changeStatus(id, next);
+  };
+
+  const goBackStatus = async (id: string) => {
+    const b = budgets.find((x) => x.id === id);
+    if (!b) return;
+    const current = b.status || "pendiente";
+    const prev = reverseFlow[current];
+    if (!prev) return;
+    await changeStatus(id, prev);
+  };
+
+  const openAttachModal = async (budgetId: string) => {
+    setAttachModal(budgetId);
+    setProjectSearch("");
+    setLoadingProjects(true);
+    try {
+      const list = await api.listMateriales();
+      setProjects(list || []);
+    } catch (e: any) {
+      Alert.alert("Error", "No se pudieron cargar los proyectos");
+    } finally {
+      setLoadingProjects(false);
+    }
+  };
+
+  const attachToProject = async (budgetId: string, materialId: string) => {
+    try {
+      await api.updateBudget(budgetId, { material_id: materialId });
+      setBudgets((arr) => arr.map((x) => x.id === budgetId ? { ...x, material_id: materialId } : x));
+      setAttachModal(null);
+      Alert.alert("Listo", "Presupuesto vinculado al proyecto");
+    } catch (e: any) {
+      Alert.alert("Error", e.message);
+    }
+  };
+
+  const filteredProjects = projects.filter((p) => {
+    if (!projectSearch.trim()) return true;
+    const q = projectSearch.toLowerCase();
+    return `${p.materiales || ""} ${p.cliente || ""} ${p.n_proyecto || ""}`.toLowerCase().includes(q);
+  });
+
+  const STATUS_LABELS: Record<string, string> = {
+    pendiente: "Pendiente",
+    en_revision: "En revisión",
+    enviado: "Pend. aceptar",
+    aceptado: "Aceptado",
   };
 
   const isAdmin = me?.role === "admin";
@@ -70,8 +139,7 @@ export default function PresupuestosIndex() {
 
   const filtered = budgets.filter((b) => {
     const status = b.status || "pendiente";
-    if (tab === "pendientes" && status !== "pendiente") return false;
-    if (tab === "aceptados" && status !== "aceptado") return false;
+    if (tab !== status) return false;
     if (search.trim()) {
       const q = search.toLowerCase();
       const haystack = `${b.n_proyecto || ""} ${b.cliente || ""} ${b.nombre_instalacion || ""} ${b.created_by_name || b.created_by || ""}`.toLowerCase();
@@ -80,8 +148,7 @@ export default function PresupuestosIndex() {
     return true;
   });
 
-  const pendientes = budgets.filter((b) => (b.status || "pendiente") === "pendiente").length;
-  const aceptados = budgets.filter((b) => b.status === "aceptado").length;
+  const countByStatus = (status: string) => budgets.filter((b) => (b.status || "pendiente") === status).length;
 
   return (
     <ResponsiveLayout active="presupuestos" isAdmin={isAdmin} onLogout={logout} userName={me?.name}>
@@ -150,20 +217,17 @@ export default function PresupuestosIndex() {
 
       {/* Tabs */}
       <View style={s.tabRow}>
-        <TouchableOpacity
-          testID="tab-pendientes"
-          style={[s.tab, tab === "pendientes" && s.tabActive]}
-          onPress={() => setTab("pendientes")}
-        >
-          <Text style={[s.tabText, tab === "pendientes" && s.tabTextActive]}>Pendientes ({pendientes})</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          testID="tab-aceptados"
-          style={[s.tab, tab === "aceptados" && s.tabActive]}
-          onPress={() => setTab("aceptados")}
-        >
-          <Text style={[s.tabText, tab === "aceptados" && s.tabTextActive]}>Aceptados ({aceptados})</Text>
-        </TouchableOpacity>
+        {(["pendiente", "en_revision", "enviado", "aceptado"] as Tab[]).map((t) => (
+          <TouchableOpacity
+            key={t}
+            style={[s.tab, tab === t && s.tabActive]}
+            onPress={() => setTab(t)}
+          >
+            <Text style={[s.tabText, tab === t && s.tabTextActive]}>
+              {STATUS_LABELS[t]} ({countByStatus(t)})
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       {/* Budget list */}
@@ -171,7 +235,7 @@ export default function PresupuestosIndex() {
         {loading ? (
           <ActivityIndicator color={COLORS.primary} />
         ) : filtered.length === 0 ? (
-          <Text style={s.empty}>No hay presupuestos {tab === "pendientes" ? "pendientes" : "aceptados"}</Text>
+          <Text style={s.empty}>No hay presupuestos {STATUS_LABELS[tab]?.toLowerCase() || ""}</Text>
         ) : (
           <View style={{ gap: 10, maxWidth: isWide ? 900 : undefined, alignSelf: "center", width: "100%" }}>
             {filtered.map((b) => (
@@ -190,20 +254,41 @@ export default function PresupuestosIndex() {
                     👤 {b.created_by_name || b.created_by || "—"}
                   </Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  testID={`toggle-status-${b.id}`}
-                  style={[s.statusBtn, b.status === "aceptado" ? s.statusBtnAccepted : s.statusBtnPending]}
-                  onPress={() => toggleStatus(b.id)}
-                >
-                  <Ionicons
-                    name={b.status === "aceptado" ? "checkmark-circle" : "time-outline"}
-                    size={18}
-                    color={b.status === "aceptado" ? "#166534" : "#92400E"}
-                  />
-                  <Text style={[s.statusBtnText, b.status === "aceptado" ? { color: "#166534" } : { color: "#92400E" }]}>
-                    {b.status === "aceptado" ? "Aceptado" : "Pendiente"}
-                  </Text>
-                </TouchableOpacity>
+                {b.status === "aceptado" ? (
+                  <TouchableOpacity
+                    style={[s.attachBtn]}
+                    onPress={() => openAttachModal(b.id)}
+                  >
+                    <Ionicons name="link" size={16} color="#1E40AF" />
+                    <Text style={[s.statusBtnText, { color: "#1E40AF" }]}>Adjuntar</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                    {reverseFlow[b.status || "pendiente"] ? (
+                      <TouchableOpacity style={s.arrowBtn} onPress={() => goBackStatus(b.id)}>
+                        <Ionicons name="chevron-back" size={16} color={COLORS.textSecondary} />
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={[s.arrowBtn, { opacity: 0.3 }]}>
+                        <Ionicons name="chevron-back" size={16} color={COLORS.textDisabled} />
+                      </View>
+                    )}
+                    <View style={[s.statusBtn, b.status === "pendiente" ? s.statusBtnPending : b.status === "enviado" ? { backgroundColor: "#DBEAFE" } : { backgroundColor: "#F3E8FF" }]}>
+                      <Text style={[s.statusBtnText, b.status === "pendiente" ? { color: "#92400E" } : b.status === "en_revision" ? { color: "#6B21A8" } : { color: "#1E40AF" }]}>
+                        {STATUS_LABELS[b.status || "pendiente"]}
+                      </Text>
+                    </View>
+                    {statusFlow[b.status || "pendiente"] ? (
+                      <TouchableOpacity style={s.arrowBtn} onPress={() => advanceStatus(b.id)}>
+                        <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={[s.arrowBtn, { opacity: 0.3 }]}>
+                        <Ionicons name="chevron-forward" size={16} color={COLORS.textDisabled} />
+                      </View>
+                    )}
+                  </View>
+                )}
                 <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} style={{ marginLeft: 4 }} />
               </View>
             ))}
@@ -211,6 +296,58 @@ export default function PresupuestosIndex() {
         )}
       </ScrollView>
     </SafeAreaView>
+    <Modal visible={attachModal !== null} transparent animationType="slide" onRequestClose={() => setAttachModal(null)}>
+      <View style={s.modalOverlay}>
+        <View style={s.modalContent}>
+          <View style={s.modalHeader}>
+            <Text style={s.modalTitle}>Seleccionar proyecto</Text>
+            <TouchableOpacity onPress={() => setAttachModal(null)} style={s.iconBtn}>
+              <Ionicons name="close" size={22} color={COLORS.text} />
+            </TouchableOpacity>
+          </View>
+          <View style={s.searchBox}>
+            <Ionicons name="search" size={18} color={COLORS.textSecondary} />
+            <TextInput
+              style={s.searchInput}
+              value={projectSearch}
+              onChangeText={setProjectSearch}
+              placeholder="Buscar por nombre, número de proyecto..."
+              placeholderTextColor={COLORS.textDisabled}
+            />
+            {projectSearch.length > 0 && (
+              <TouchableOpacity onPress={() => setProjectSearch("")}>
+                <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            )}
+          </View>
+          <ScrollView style={s.modalList}>
+            {loadingProjects ? (
+              <ActivityIndicator color={COLORS.primary} style={{ marginTop: 20 }} />
+            ) : filteredProjects.length === 0 ? (
+              <Text style={s.empty}>No se encontraron proyectos</Text>
+            ) : (
+              filteredProjects.map((p) => (
+                <TouchableOpacity
+                  key={p.id || p._id}
+                  style={s.projectRow}
+                  onPress={() => attachToProject(attachModal!, p.id || p._id)}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.rowTitle} numberOfLines={1}>
+                      {p.materiales || "Sin título"} {p.n_proyecto ? `(#${p.n_proyecto})` : ""}
+                    </Text>
+                    <Text style={s.rowSub} numberOfLines={1}>
+                      {p.cliente || ""} {p.ubicacion ? `· ${p.ubicacion}` : ""}
+                    </Text>
+                  </View>
+                  <Ionicons name="add-circle" size={22} color={COLORS.primary} />
+                </TouchableOpacity>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
     </ResponsiveLayout>
   );
 }
@@ -268,7 +405,7 @@ const useS = () => StyleSheet.create({
   rowCreator: { fontSize: 11, color: COLORS.textDisabled, fontWeight: "600", marginTop: 3 },
   statusBtn: {
     flexDirection: "row", alignItems: "center", gap: 6,
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: ios.radius.pill,
+    paddingHorizontal: 8, paddingVertical: 6, borderRadius: ios.radius.pill,
   },
   statusBtnPending: { backgroundColor: "#FEF3C7" },
   statusBtnAccepted: { backgroundColor: "#DCFCE7" },
@@ -276,4 +413,31 @@ const useS = () => StyleSheet.create({
   denied: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10, padding: 40 },
   deniedTitle: { fontSize: 22, fontWeight: "900", color: COLORS.text },
   deniedTxt: { color: COLORS.textSecondary, textAlign: "center" },
+  attachBtn: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: ios.radius.pill,
+    backgroundColor: "#DBEAFE",
+  },
+  arrowBtn: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: COLORS.bg, alignItems: "center", justifyContent: "center",
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  modalOverlay: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: COLORS.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    maxHeight: "70%", paddingBottom: 30,
+  },
+  modalHeader: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8,
+  },
+  modalTitle: { fontSize: 18, fontWeight: "800", color: COLORS.text },
+  modalList: { flex: 1, paddingHorizontal: 16 },
+  projectRow: {
+    flexDirection: "row", alignItems: "center", padding: 14,
+    backgroundColor: COLORS.bg, borderRadius: ios.radius.md, marginBottom: 8, gap: 10,
+  },
 });

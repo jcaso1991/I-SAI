@@ -72,6 +72,8 @@ export default function MaterialDetail() {
   const [showHistory, setShowHistory] = useState(false);
   const [linkedEvents, setLinkedEvents] = useState<any[]>([]);
   const [showLinkedEvents, setShowLinkedEvents] = useState(false);
+  const [linkedBudgets, setLinkedBudgets] = useState<any[]>([]);
+  const [showLinkedBudgets, setShowLinkedBudgets] = useState(false);
   const [showTechPicker, setShowTechPicker] = useState(false);
   const [showManagerPicker, setShowManagerPicker] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
@@ -139,6 +141,7 @@ export default function MaterialDetail() {
           new Date(new Date().getFullYear() + 1, 0, 1).toISOString()
         ).catch(() => []);
         setLinkedEvents((events || []).filter((e: any) => e.material_id === id));
+        api.listBudgets(id).then(setLinkedBudgets).catch(() => {});
         // if fecha was empty, mark dirty so user sees the default today is pending save
         if (!data.fecha) setDirty(true);
       } catch (e: any) {
@@ -392,6 +395,44 @@ export default function MaterialDetail() {
             ))}
           </View>
           )}
+{linkedBudgets.length > 0 && (
+  <View style={{ padding: 8 }}>
+    <TouchableOpacity
+      style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+      onPress={() => setShowLinkedBudgets(!showLinkedBudgets)}
+      activeOpacity={0.7}
+    >
+      <Text style={s.fieldLabel}>Presupuestos vinculados ({linkedBudgets.length})</Text>
+      <Ionicons name={showLinkedBudgets ? "chevron-up" : "chevron-down"} size={14} color={COLORS.textSecondary} />
+    </TouchableOpacity>
+    {showLinkedBudgets && linkedBudgets.map((b: any) => {
+      const statusLabel: Record<string, string> = {
+        pendiente: "Pendiente", en_revision: "En revisión", enviado: "Pend. aceptar", aceptado: "Aceptado", rechazado: "Rechazado", facturado: "Facturado",
+      };
+      const statusColor: Record<string, string> = {
+        pendiente: "#F59E0B", en_revision: "#8B5CF6", enviado: "#3B82F6", aceptado: "#10B981", rechazado: "#EF4444", facturado: "#6B7280",
+      };
+      return (
+        <View key={b.id} style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.sm, paddingVertical: ios.spacing.xs }}>
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            onPress={() => router.push(`/presupuestos/${b.id}`)}
+            activeOpacity={0.6}
+          >
+            <Text style={{ fontSize: ios.font.footnote.size, color: COLORS.primary, fontWeight: "600" }} numberOfLines={1}>
+              {b.n_proyecto ? `#${b.n_proyecto} · ` : ""}{b.cliente || b.nombre_instalacion || "Sin título"}
+            </Text>
+          </TouchableOpacity>
+          <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: (statusColor[b.status || "pendiente"] || "#F59E0B") + "20" }}>
+            <Text style={{ fontSize: 10, fontWeight: "700", color: statusColor[b.status || "pendiente"] || "#F59E0B" }}>
+              {statusLabel[b.status || "pendiente"] || "Pendiente"}
+            </Text>
+          </View>
+        </View>
+      );
+    })}
+  </View>
+)}
             </>
             )}
 

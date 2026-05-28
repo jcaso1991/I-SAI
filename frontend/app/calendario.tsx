@@ -1751,6 +1751,9 @@ function DraggableEvent({
   const isCompleted = st === "completed";
   const isPending = st === "pending_completion";
 
+  const dynFontSize = height < 30 ? 9 : height < 50 ? 10 : 11;
+  const maxTitleLines = Math.max(1, Math.floor(height / 16));
+
   return (
     <View
       style={{
@@ -1766,7 +1769,7 @@ function DraggableEvent({
       <View
         onLayout={(e) => setBoxWidth(e.nativeEvent.layout.width)}
         style={{
-          flex: 1, borderRadius: ios.radius.sm, padding: 6, overflow: "hidden",
+          flex: 1, borderRadius: ios.radius.sm, padding: 6, overflow: "hidden", minWidth: 0,
           borderLeftWidth: 3,
           backgroundColor: isCompleted ? COLORS.statusCompletedBg : bgTint,
           borderLeftColor: isPending ? COLORS.pendingText : baseColor,
@@ -1795,51 +1798,51 @@ function DraggableEvent({
           </View>
         )}
         {isAdmin ? (
-          <View pointerEvents="none" style={{ padding: 2, paddingRight: (onCopy && boxWidth >= 90) ? 56 : 2 }}>
+          <View pointerEvents="none" style={{ padding: 2, paddingRight: (onCopy && boxWidth >= 90) ? 56 : 2, flex: 1, minWidth: 0 }}>
           {/* Top: assigned user(s) */}
           {event.assigned_users && event.assigned_users.length > 0 && (
-            <Text style={[s.eventAssignee, { color: COLORS.text }]} numberOfLines={1}>
+            <Text style={[s.eventAssignee, { color: COLORS.text, fontSize: dynFontSize }]} numberOfLines={1} adjustsFontSizeToFit>
               👤 {event.assigned_users.map((u) => u.name || u.email.split("@")[0]).join(", ")}
             </Text>
           )}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
             {isRecurring && <Ionicons name="repeat" size={10} color={COLORS.text} />}
-            <Text style={[s.eventTitle, { color: COLORS.text }]} numberOfLines={compact ? 1 : 2}>{event.title}</Text>
+            <Text style={[s.eventTitle, { color: COLORS.text, flex: 1, fontSize: dynFontSize }]} numberOfLines={maxTitleLines} adjustsFontSizeToFit>{event.title}</Text>
           </View>
-          <Text style={s.eventTime}>{fmtTime(new Date(event.start_at))} - {fmtTime(new Date(event.end_at))}</Text>
+          <Text style={[s.eventTime, { fontSize: dynFontSize }]} numberOfLines={1} adjustsFontSizeToFit>{fmtTime(new Date(event.start_at))} - {fmtTime(new Date(event.end_at))}</Text>
           {!compact && event.material && event.material.ubicacion ? (
             <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 1 }} onPress={() => openMaps(`${event.material.ubicacion}, ${event.material.cliente || ""}`)}>
-              <Text style={s.eventMeta} numberOfLines={1}>📍 {event.material.ubicacion}</Text>
+              <Text style={[s.eventMeta, { fontSize: dynFontSize }]} numberOfLines={1} adjustsFontSizeToFit>📍 {event.material.ubicacion}</Text>
               <Ionicons name="navigate-outline" size={12} color={COLORS.primary} />
             </TouchableOpacity>
           ) : null}
           {/* Bottom: manager (gestor) */}
           {event.manager && (
-            <Text style={s.eventManager} numberOfLines={1}>
+            <Text style={[s.eventManager, { fontSize: dynFontSize }]} numberOfLines={1} adjustsFontSizeToFit>
               🧑‍💼 {event.manager.name || event.manager.email.split("@")[0]}
             </Text>
           )}
         </View>
       ) : (
-        <TouchableOpacity onPress={onTap} activeOpacity={0.8} style={{ padding: 2 }}>
+        <TouchableOpacity onPress={onTap} activeOpacity={0.8} style={{ padding: 2, flex: 1, minWidth: 0 }}>
           {event.assigned_users && event.assigned_users.length > 0 && (
-            <Text style={[s.eventAssignee, { color: COLORS.text }]} numberOfLines={1}>
+            <Text style={[s.eventAssignee, { color: COLORS.text, fontSize: dynFontSize }]} numberOfLines={1} adjustsFontSizeToFit>
               👤 {event.assigned_users.map((u) => u.name || u.email.split("@")[0]).join(", ")}
             </Text>
           )}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
             {isRecurring && <Ionicons name="repeat" size={10} color={COLORS.text} />}
-            <Text style={[s.eventTitle, { color: COLORS.text }]} numberOfLines={compact ? 1 : 2}>{event.title}</Text>
+            <Text style={[s.eventTitle, { color: COLORS.text, flex: 1, fontSize: dynFontSize }]} numberOfLines={maxTitleLines} adjustsFontSizeToFit>{event.title}</Text>
           </View>
-          <Text style={s.eventTime}>{fmtTime(new Date(event.start_at))} - {fmtTime(new Date(event.end_at))}</Text>
+          <Text style={[s.eventTime, { fontSize: dynFontSize }]} numberOfLines={1} adjustsFontSizeToFit>{fmtTime(new Date(event.start_at))} - {fmtTime(new Date(event.end_at))}</Text>
           {!compact && event.material && event.material.ubicacion ? (
             <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 1 }} onPress={() => openMaps(`${event.material.ubicacion}, ${event.material.cliente || ""}`)}>
-              <Text style={s.eventMeta} numberOfLines={1}>📍 {event.material.ubicacion}</Text>
+              <Text style={[s.eventMeta, { fontSize: dynFontSize }]} numberOfLines={1} adjustsFontSizeToFit>📍 {event.material.ubicacion}</Text>
               <Ionicons name="navigate-outline" size={12} color={COLORS.primary} />
             </TouchableOpacity>
           ) : null}
           {event.manager && (
-            <Text style={s.eventManager} numberOfLines={1}>
+            <Text style={[s.eventManager, { fontSize: dynFontSize }]} numberOfLines={1} adjustsFontSizeToFit>
               🧑‍💼 {event.manager.name || event.manager.email.split("@")[0]}
             </Text>
           )}
@@ -2337,6 +2340,15 @@ function EventDetailsModal({
     return () => { cancelled = true; };
   }, [event.id]);
 
+  useEffect(() => {
+    const mid = event.material_id;
+    if (mid) {
+      api.listBudgets(mid).then((list: any) => setMaterialBudgets(Array.isArray(list) ? list : [])).catch(() => {});
+    } else {
+      setMaterialBudgets([]);
+    }
+  }, [event.material_id]);
+
   const [uploading, setUploading] = useState(false);
   const [managerId, setManagerId] = useState<string | null>(event.manager_id || null);
   const [managers, setManagers] = useState<Technician[]>([]);
@@ -2358,6 +2370,8 @@ function EventDetailsModal({
   const [budgetObj, setBudgetObj] = useState<any>(null);
   const [budgets, setBudgets] = useState<any[]>([]);
   const [showBudgetList, setShowBudgetList] = useState(false);
+  const [materialBudgets, setMaterialBudgets] = useState<any[]>([]);
+  const [showMaterialBudgets, setShowMaterialBudgets] = useState(false);
 
   const m = event.material;
 
@@ -2819,6 +2833,42 @@ function EventDetailsModal({
                 </TouchableOpacity>
               </View>
             )}
+{/* Presupuestos del proyecto vinculado */}
+{materialBudgets.length > 0 && (
+  <View style={{ marginTop: 8 }}>
+    <TouchableOpacity
+      style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}
+      onPress={() => setShowMaterialBudgets(!showMaterialBudgets)}
+    >
+      <Text style={[s.mLabel, { marginBottom: 0 }]}>PRESUPUESTOS DEL PROYECTO ({materialBudgets.length})</Text>
+      <Ionicons name={showMaterialBudgets ? "chevron-up" : "chevron-down"} size={14} color={COLORS.textSecondary} />
+    </TouchableOpacity>
+    {showMaterialBudgets && materialBudgets.map((b: any) => {
+      const statusColor: Record<string, string> = {
+        pendiente: "#F59E0B", en_revision: "#8B5CF6", enviado: "#3B82F6", aceptado: "#10B981", rechazado: "#EF4444", facturado: "#6B7280",
+      };
+      return (
+        <TouchableOpacity
+          key={b.id}
+          style={{ flexDirection: "row", alignItems: "center", padding: 8, backgroundColor: COLORS.bg, borderRadius: 8, marginBottom: 4, gap: 8 }}
+          onPress={() => { onClose(); router.push(`/presupuestos/${b.id}`); }}
+        >
+          <View style={{ width: 4, height: 28, borderRadius: 2, backgroundColor: statusColor[b.status || "pendiente"] || "#F59E0B" }} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.text }} numberOfLines={1}>
+              {b.n_proyecto ? `#${b.n_proyecto} · ` : ""}{b.cliente || b.nombre_instalacion || "Sin título"}
+            </Text>
+            {b.direccion && <Text style={{ fontSize: 10, color: COLORS.textSecondary }} numberOfLines={1}>📍 {b.direccion}</Text>}
+          </View>
+          <Ionicons name="chevron-forward" size={14} color={COLORS.textSecondary} />
+        </TouchableOpacity>
+      );
+    })}
+  </View>
+)}
+{!editing && materialBudgets.length === 0 && m && (
+  <Text style={{ fontSize: 11, color: COLORS.textDisabled, marginTop: 6 }}>Sin presupuestos en este proyecto</Text>
+)}
             {/* Técnicos asignados — editable por admin, read-only para resto.
                 Usa un dropdown idéntico al de "Gestor del proyecto" para
                 mantener coherencia visual. Permite seleccionar varios. */}
@@ -3334,7 +3384,7 @@ const useS = () =>
   nowDot: { position: "absolute", left: -3, top: -3, width: 7, height: 7, borderRadius: 3.5, backgroundColor: COLORS.primary },
   eventBox: {
     position: "absolute", left: 2, right: 2, borderRadius: ios.radius.sm,
-    padding: 4, borderLeftWidth: 3, overflow: "hidden",
+    padding: 4, borderLeftWidth: 3, overflow: "hidden", minWidth: 0,
   },
   statusBadge: {
     position: "absolute", top: 3, right: 3,

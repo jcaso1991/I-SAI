@@ -27,6 +27,12 @@ export default function DocumentosScreen() {
       icon: "document-text",
       route: "/documentaciones",
     },
+    {
+      title: "Muestrario Salto",
+      subtitle: "Catálogo de productos Salto con personalización",
+      icon: "grid",
+      route: "/muestrario",
+    },
   ];
 
   const content = (
@@ -36,7 +42,7 @@ export default function DocumentosScreen() {
       <View style={s.body}>
         <Text style={s.heading}>Documentos Internos</Text>
         <Text style={s.subtitle}>
-          Accedé al preciario oficial y a la documentación técnica
+          Accedé al preciario, documentación técnica y muestrario de productos
         </Text>
 
         <View style={s.cards}>

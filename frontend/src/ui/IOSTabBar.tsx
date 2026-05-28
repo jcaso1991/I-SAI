@@ -26,6 +26,7 @@ const TAB_PERM_MAP: Record<BottomTab, string | null> = {
   documentaciones: "preciario.view",
   notas: "notas.view",
   ajustes: null,
+
 };
 
 const TAB_ROUTES: Record<BottomTab, string> = {
@@ -42,6 +43,7 @@ const TAB_ROUTES: Record<BottomTab, string> = {
   documentaciones: "/documentaciones",
   notas: "/notas",
   ajustes: "/admin",
+
 };
 
 const LABELS: Record<BottomTab, string> = {
@@ -58,6 +60,7 @@ const LABELS: Record<BottomTab, string> = {
   preciario: "Preciario",
   documentaciones: "Docs. y Software",
   notas: "Notas",
+
 };
 
 let _cachedPerms: string[] | null = null;
@@ -73,6 +76,7 @@ function Icon({ tab, on, size }: { tab: BottomTab; on: boolean; size: number }) 
   if (tab === "sat") return <Ionicons name={on ? "headset" : "headset-outline"} size={size} color={color} />;
   if (tab === "documentos") return <Ionicons name={on ? "folder-open" : "folder-open-outline"} size={size} color={color} />;
   if (tab === "notas") return <Ionicons name={on ? "book" : "book-outline"} size={size} color={color} />;
+
   return <Ionicons name={on ? "settings" : "settings-outline"} size={size} color={color} />;
 }
 

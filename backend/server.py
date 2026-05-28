@@ -3,6 +3,7 @@ from fastapi.responses import RedirectResponse, HTMLResponse, StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 import re
+import json
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
@@ -2703,6 +2704,11 @@ async def get_material(mid: str, user: dict = Depends(require_permission("proyec
     if "materiales.view_hours" in perms_get or es_editor_completo:
         events = await db.events.find({"material_id": mid, "hours": {"$exists": True}}, {"hours": 1}).to_list(1000)
         doc["horas_imputadas"] = round(sum(_safe_float(ev.get("hours")) for ev in events), 1)
+    # Presupuestos vinculados
+    doc["budgets"] = await db.budgets.find(
+        {"material_id": mid},
+        {"_id": 0, "firma_isai": 0, "firma_cliente": 0, "attachments.data": 0},
+    ).sort("updated_at", -1).to_list(200)
     # Ocultar project_status a usuarios sin edición completa
     if not es_editor_completo:
         doc.pop("project_status", None)
@@ -3517,8 +3523,11 @@ async def create_budget(payload: BudgetCreate, user: dict = Depends(current_budg
     return doc
 
 @api_router.get("/budgets")
-async def list_budgets(skip: int = 0, limit: int = 100, user: dict = Depends(current_budget_view)):
-    items = await db.budgets.find({}, {"_id": 0, "firma_isai": 0, "firma_cliente": 0, "attachments.data": 0}).sort("updated_at", -1).skip(skip).limit(limit).to_list(limit)
+async def list_budgets(skip: int = 0, limit: int = 100, material_id: Optional[str] = None, user: dict = Depends(current_budget_view)):
+    query = {}
+    if material_id:
+        query["material_id"] = material_id
+    items = await db.budgets.find(query, {"_id": 0, "firma_isai": 0, "firma_cliente": 0, "attachments.data": 0}).sort("updated_at", -1).skip(skip).limit(limit).to_list(limit)
     return items
 
 @api_router.get("/budgets/accepted")
@@ -3541,7 +3550,7 @@ async def get_budget(bid: str, user: dict = Depends(current_budget_view)):
 
 @api_router.patch("/budgets/{bid}/status")
 async def update_budget_status(bid: str, payload: BudgetStatusUpdate, user: dict = Depends(current_budget_edit)):
-    if payload.status not in ("pendiente", "en_revision", "aceptado", "rechazado", "facturado"):
+    if payload.status not in ("pendiente", "en_revision", "enviado", "aceptado", "rechazado", "facturado"):
         raise HTTPException(422, "Estado inválido")
     b = await db.budgets.find_one({"id": bid})
     if not b:
@@ -3589,6 +3598,19 @@ async def update_budget(bid: str, payload: BudgetPatch, user: dict = Depends(cur
     if res.matched_count == 0:
         raise HTTPException(404, "Presupuesto no encontrado")
     b = await db.budgets.find_one({"id": bid}, {"_id": 0})
+    # Si se vinculó/desvinculó a un proyecto, sincronizar la carpeta
+    if "material_id" in upd:
+        # Si hay nuevo material_id, sincronizar ese proyecto
+        if upd["material_id"]:
+            linked_mat = await db.materiales.find_one({"id": upd["material_id"]}, {"_id": 0})
+            if linked_mat:
+                _fire_and_forget(_sync_project_folder(linked_mat))
+        # Si había un material_id anterior distinto, sincronizar también el proyecto anterior
+        old_mid = old.get("material_id") if old else None
+        if old_mid and old_mid != upd.get("material_id"):
+            old_mat = await db.materiales.find_one({"id": old_mid}, {"_id": 0})
+            if old_mat:
+                _fire_and_forget(_sync_project_folder(old_mat))
     return b
 
 @api_router.delete("/budgets/{bid}")
@@ -3646,7 +3668,7 @@ async def budgets_stats(user: dict = Depends(current_budget_view)):
 
     all_budgets = await db.budgets.find({}, {"status": 1, "created_by": 1, "created_by_name": 1, "updated_at": 1}).to_list(2000)
 
-    by_status = {"pendiente": 0, "en_revision": 0, "aceptado": 0, "rechazado": 0, "facturado": 0}
+    by_status = {"pendiente": 0, "en_revision": 0, "enviado": 0, "aceptado": 0, "rechazado": 0, "facturado": 0}
     by_commercial: dict = {}
     accepted_this_month = 0
 
@@ -3658,7 +3680,7 @@ async def budgets_stats(user: dict = Depends(current_budget_view)):
         email = b.get("created_by", "desconocido")
         name = b.get("created_by_name", email)
         if email not in by_commercial:
-            by_commercial[email] = {"name": name, "pendiente": 0, "en_revision": 0, "aceptado": 0, "rechazado": 0, "facturado": 0, "total": 0}
+            by_commercial[email] = {"name": name, "pendiente": 0, "en_revision": 0, "enviado": 0, "aceptado": 0, "rechazado": 0, "facturado": 0, "total": 0}
         by_commercial[email][st] = by_commercial[email].get(st, 0) + 1
         by_commercial[email]["total"] += 1
 
@@ -5374,6 +5396,23 @@ async def _sync_project_folder(material: dict):
                     att_path.write_bytes(raw)
             except Exception:
                 pass
+
+        # Guardar PDFs de presupuestos vinculados al proyecto
+        mid = material.get("id")
+        if mid:
+            linked = await db.budgets.find(
+                {"material_id": mid},
+                {"_id": 0},
+            ).to_list(200)
+            for budget in linked:
+                try:
+                    bname = (budget.get("n_proyecto") or budget.get("cliente") or budget.get("id", "presupuesto"))[:60]
+                    bname = re.sub(r'[<>:"/\\|?*\r\n\t]', '_', bname)
+                    pdf_bytes = build_budget_pdf(budget)
+                    pdf_path = proj_dir / f"Presupuesto_{bname}.pdf"
+                    pdf_path.write_bytes(pdf_bytes)
+                except Exception:
+                    pass
     except Exception as e:
         logging.warning(f"sync_project_folder error for {material.get('id','')}: {e}")
 
@@ -5519,6 +5558,69 @@ async def delete_documento(
     res = await db.documentos.delete_one({"_id": did})
     if res.deleted_count == 0:
         raise HTTPException(404, "Documento no encontrado")
+    return {"ok": True}
+
+MUESTRARIO_FILE = ROOT_DIR / "salto_products.json"
+
+@api_router.get("/muestrario")
+async def get_muestrario():
+    if not MUESTRARIO_FILE.exists():
+        return {"families": [], "categories": []}
+    data = json.loads(MUESTRARIO_FILE.read_text(encoding="utf-8"))
+    families = data.get("families", [])
+    # Extraer categorías únicas de las familias
+    categories = sorted(set(
+        f.get("category", "Sin categoría").strip()
+        for f in families if f.get("category")
+    ))
+    return {"families": families, "categories": categories}
+
+MYLOCK_API = "https://mylock.saltosystems.com"
+
+@api_router.get("/mylock/products")
+async def mylock_products(product: Optional[str] = None, standard: Optional[str] = None):
+    """Proxy para la API de MyLock - devuelve productos con filtros."""
+    try:
+        params = {}
+        if product: params["product"] = product
+        if standard: params["standard"] = standard
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(f"{MYLOCK_API}/en/home-api/items", params=params)
+            r.raise_for_status()
+            return r.json()
+    except Exception as e:
+        return {"error": str(e), "items": []}
+
+# ---------- Solicitudes de presupuesto (cliente) ----------
+
+class BudgetRequestCreate(BaseModel):
+    client_name: str
+    client_email: str
+    client_phone: str = ""
+    client_address: str = ""
+    client_city: str = ""
+    client_postal: str = ""
+    client_province: str = ""
+    items: list = []  # [{family, variant, image, quantity}]
+
+@api_router.post("/budget-requests")
+async def create_budget_request(payload: BudgetRequestCreate):
+    doc = payload.dict()
+    doc["id"] = str(uuid.uuid4())
+    doc["status"] = "pendiente"
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    await db.budget_requests.insert_one(doc)
+    doc.pop("_id", None)
+    return {"ok": True, "id": doc["id"]}
+
+@api_router.get("/budget-requests")
+async def list_budget_requests(user: dict = Depends(current_user)):
+    items = await db.budget_requests.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return items
+
+@api_router.patch("/budget-requests/{rid}")
+async def update_budget_request(rid: str, payload: dict, user: dict = Depends(current_user)):
+    await db.budget_requests.update_one({"id": rid}, {"$set": payload})
     return {"ok": True}
 
 

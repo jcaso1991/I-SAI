@@ -22,7 +22,7 @@ export default function ResponsiveLayout({
   onLogout,
   userName,
 }: {
-  active: BottomTab;
+  active: string;
   isAdmin?: boolean;
   children: React.ReactNode;
   onLogout?: () => void;
@@ -124,6 +124,7 @@ export default function ResponsiveLayout({
         <Text style={s.sectionLabel}>Navegación</Text>
         <SideLink active={active === "home"} label="Inicio" icon="home" to="/home" accent={ios.colors.brand} />
         <SideLink active={active === "dashboard"} label="Dashboard" icon="stats-chart" to="/dashboard" accent={ios.colors.brand} />
+
         {has("calendario.view") && (
           <SideLink active={active === "calendario"} label="Calendario" icon="calendar" to="/calendario" accent={ios.colors.green} />
         )}
@@ -172,6 +173,7 @@ export default function ResponsiveLayout({
             {canManageRoles && (
               <SideLink active={false} label="Roles y permisos" icon="shield-outline" to="/roles" />
             )}
+            <SideLink active={active === "solicitudes"} label="Solicitudes presupuesto" icon="cart-outline" to="/admin/solicitudes" />
           </>
         )}
         {!canOnedrive && !canManageUsers && !canManageRoles && (
