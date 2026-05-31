@@ -9,6 +9,7 @@ import { useThemedStyles } from "../../src/theme";
 import IOSHeader from "../../src/ui/IOSHeader";
 import { api, COLORS } from "../../src/api";
 import { ios, fontStyle } from "../../src/ui/iosTheme";
+import { useNotasActions, useShareNota } from "../../src/useNotasActions";
 
 interface Nota {
   id: string; titulo: string; contenido: string; fecha: string | null; updated_at: string;
@@ -105,13 +106,12 @@ export default function NotasIndexScreen() {
   const [changingDateLibre, setChangingDateLibre] = useState<string | null>(null);
   const [newDateLibre, setNewDateLibre] = useState("");
 
-  const [shareNota, setShareNota] = useState<Nota | null>(null);
-  const [usersList, setUsersList] = useState<any[]>([]);
-  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [linkMaterial, setLinkMaterial] = useState(false);
   const [materialId, setMaterialId] = useState("");
   const [matSearch, setMatSearch] = useState("");
   const [materialesList, setMaterialesList] = useState<any[]>([]);
+
+  const { shareNota, setShareNota, usersList, selectedUsers, openShare, toggleUser, sendToChat } = useShareNota();
 
   const loadAll = useCallback(async () => {
     const items = await api.listNotas();
@@ -147,6 +147,8 @@ export default function NotasIndexScreen() {
 
   useFocusEffect(useCallback(() => { loadAll(); }, [loadAll]));
 
+  const { toggleMarcada: toggleMarcadaApi, handleDelete, cambiarFecha: cambiarFechaApi, guardarNota } = useNotasActions(loadAll);
+
   const nuevaNota = () => { setEditando({ id: "", titulo: "", contenido: "", fecha: null, updated_at: "" } as Nota); setTitulo(""); setContenido(""); setLinkMaterial(false); setMaterialId(""); setMatSearch(""); setEditColor(null); setEditPriority(null); setEditTags(""); };
   const guardarLibre = async () => {
     if (!titulo.trim() && !contenido.trim()) return;
@@ -155,24 +157,19 @@ export default function NotasIndexScreen() {
     if (notaEdit?.id) {
       setNotasLibres((prev) => prev.map((n) => n.id === notaEdit.id ? { ...n, titulo: titulo.trim(), contenido: contenido.trim() } : n));
     }
-    try {
-      const body: any = { titulo: titulo.trim(), contenido: contenido.trim(), material_id: linkMaterial ? materialId || undefined : undefined };
-      if (editColor) body.color = editColor;
-      if (editPriority) body.priority = editPriority;
-      if (editTags.trim()) body.tags = editTags.split(",").map((t: string) => t.trim()).filter(Boolean);
-      if (notaEdit?.id) {
-        await api.updateNota(notaEdit.id, body);
-      } else {
-        const created = await api.createNota(body);
-        if (created) setNotasLibres((prev) => [created, ...prev]);
-      }
-      loadAll();
-    } catch (e: any) { Alert.alert("Error", e.message); loadAll(); }
+    const body: any = { titulo: titulo.trim(), contenido: contenido.trim(), material_id: linkMaterial ? materialId || undefined : undefined };
+    if (editColor) body.color = editColor;
+    if (editPriority) body.priority = editPriority;
+    if (editTags.trim()) body.tags = editTags.split(",").map((t: string) => t.trim()).filter(Boolean);
+    if (notaEdit?.id) {
+      await guardarNota(body, notaEdit.id);
+    } else {
+      const created = await guardarNota(body);
+      if (created) setNotasLibres((prev) => [created, ...prev]);
+    }
+    loadAll();
   };
-  const eliminarLibre = async (id: string) => {
-    if (Platform.OS === "web" && !window.confirm("¿Borrar?")) return;
-    try { await api.deleteNota(id); loadAll(); } catch (e: any) { Alert.alert("Error", e.message); }
-  };
+  const eliminarLibre = async (id: string) => { handleDelete(id); };
 
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDow = (new Date(year, month, 1).getDay() + 6) % 7;
@@ -257,31 +254,26 @@ export default function NotasIndexScreen() {
         return copy;
       });
     }
-    try {
-      const body: any = { titulo: tituloDia.trim(), contenido: contenidoDia.trim() };
-      if (editColorDia) body.color = editColorDia;
-      if (editPriorityDia) body.priority = editPriorityDia;
-      if (editTagsDia.trim()) body.tags = editTagsDia.split(",").map((t: string) => t.trim()).filter(Boolean);
-      if (updatedNota?.id) {
-        await api.updateNota(updatedNota.id, body);
-      } else {
-        const created = await api.createNota({ ...body, fecha: day || undefined, material_id: linkMaterial ? materialId || undefined : undefined });
-        if (created && day) {
-          setNotasCalendario((prev) => {
-            const copy = { ...prev };
-            copy[day] = [...(copy[day] || []), created];
-            return copy;
-          });
-        }
+    const body: any = { titulo: tituloDia.trim(), contenido: contenidoDia.trim() };
+    if (editColorDia) body.color = editColorDia;
+    if (editPriorityDia) body.priority = editPriorityDia;
+    if (editTagsDia.trim()) body.tags = editTagsDia.split(",").map((t: string) => t.trim()).filter(Boolean);
+    if (updatedNota?.id) {
+      await guardarNota(body, updatedNota.id);
+    } else {
+      const created = await guardarNota({ ...body, fecha: day || undefined, material_id: linkMaterial ? materialId || undefined : undefined });
+      if (created && day) {
+        setNotasCalendario((prev) => {
+          const copy = { ...prev };
+          copy[day] = [...(copy[day] || []), created];
+          return copy;
+        });
       }
-      loadAll();
-    } catch (e: any) { Alert.alert("Error", e.message); loadAll(); }
+    }
+    loadAll();
   };
 
-  const eliminarDia = async (notaId: string) => {
-    if (Platform.OS === "web" && !window.confirm("¿Borrar?")) return;
-    try { await api.deleteNota(notaId); loadAll(); } catch (e: any) { Alert.alert("Error", e.message); }
-  };
+  const eliminarDia = async (notaId: string) => { handleDelete(notaId); };
 
   const toggleMarcada = async (nota: Nota) => {
     const newVal = !(nota as any).marcada;
@@ -293,53 +285,19 @@ export default function NotasIndexScreen() {
       }
       return copy;
     });
-    try {
-      await api.updateNota(nota.id, { marcada: newVal });
-    } catch { loadAll(); }
+    await toggleMarcadaApi(nota);
   };
 
   const cambiarFecha = async () => {
     if (!changingDate || !newDate.trim()) return;
-    const iso = newDate.trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) { Alert.alert("Formato", "Usa YYYY-MM-DD (ej: 2025-05-14)"); return; }
-    try {
-      await api.updateNota(changingDate, { fecha: iso });
-      setChangingDate(null); setNewDate(""); loadAll();
-    } catch (e: any) { Alert.alert("Error", e.message); }
+    await cambiarFechaApi(changingDate, newDate.trim());
+    setChangingDate(null); setNewDate("");
   };
 
   const cambiarFechaLibre = async () => {
     if (!changingDateLibre || !newDateLibre.trim()) return;
-    const iso = newDateLibre.trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) { Alert.alert("Formato", "Usa YYYY-MM-DD (ej: 2025-05-14)"); return; }
-    try {
-      await api.updateNota(changingDateLibre, { fecha: iso });
-      setChangingDateLibre(null); setNewDateLibre(""); loadAll();
-    } catch (e: any) { Alert.alert("Error", e.message); }
-  };
-
-  const openShare = async (nota: Nota) => {
-    setShareNota(nota);
-    setSelectedUsers([]);
-    try {
-      const users = await api.listUsers();
-      setUsersList(users || []);
-    } catch { setUsersList([]); }
-  };
-
-  const toggleUser = (uid: string) => {
-    setSelectedUsers((p) => p.includes(uid) ? p.filter((x) => x !== uid) : [...p, uid]);
-  };
-
-  const sendToChat = async () => {
-    if (!shareNota || selectedUsers.length === 0) return;
-    try {
-      const body = shareNota.titulo || shareNota.contenido || "";
-      const chat = await api.chatCreate({ participant_ids: selectedUsers, name: shareNota.titulo?.slice(0, 50) || "Nota compartida" });
-      await api.chatSend(chat.id, body);
-      setShareNota(null); setSelectedUsers([]);
-      Alert.alert("Enviado", "Nota compartida por chat.");
-    } catch (e: any) { Alert.alert("Error", e.message); }
+    await cambiarFechaApi(changingDateLibre, newDateLibre.trim());
+    setChangingDateLibre(null); setNewDateLibre("");
   };
 
   // --- Note card component ---

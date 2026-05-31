@@ -2875,7 +2875,7 @@ async def dashboard(user: dict = Depends(current_user)):
             "created_at": {"$gte": month_start.isoformat(), "$lt": month_end.isoformat()}
         })
         resolved = await db.sat_incidents.count_documents({
-            "status": "resuelta",
+            "status": {"$in": ["resuelta_facturar", "resuelta_garantia"]},
             "created_at": {"$gte": month_start.isoformat(), "$lt": month_end.isoformat()},
         })
         mes = month_start.strftime("%b").capitalize()
@@ -3242,7 +3242,7 @@ async def dashboard(user: dict = Depends(current_user)):
     # ---- 5. SAT health ----
     # Tiempo medio de resolución (horas)
     resolved_incidents = await db.sat_incidents.find(
-        {"status": {"$in": ["resuelta", "cerrada"]}, "resolved_at": {"$exists": True, "$ne": None}, "created_at": {"$exists": True}},
+        {"status": {"$in": ["resuelta", "cerrada", "resuelta_facturar", "resuelta_garantia"]}, "resolved_at": {"$exists": True, "$ne": None}, "created_at": {"$exists": True}},
         {"_id": 0, "created_at": 1, "resolved_at": 1, "history": 1, "cliente": 1, "client_name": 1, "lat": 1, "lng": 1, "direccion": 1}
     ).to_list(5000)
     resolution_hours = []
@@ -4280,10 +4280,10 @@ async def seed_demo_data():
 
     sat_incidents_demo = [
         ("demo-sat-incident-hotel-pendiente", "demo-sat-client-hotel-aurora", "Hotel Aurora", "C/ Marina 48", "600 111 222", "Fallo intermitente en sirena de parking durante prueba semanal.", "pendiente", None, None, None, 0),
-        ("demo-sat-incident-taller-resuelta", "demo-sat-client-talleres-meridian", "Talleres Meridian", "Poligono Norte nave 12", "600 222 333", "Pulsador golpeado en zona de carga. Sustituido y probado.", "resuelta", None, True, sat_id, -3),
+        ("demo-sat-incident-taller-resuelta", "demo-sat-client-talleres-meridian", "Talleres Meridian", "Poligono Norte nave 12", "600 222 333", "Pulsador golpeado en zona de carga. Sustituido y probado.", "resuelta_facturar", None, True, sat_id, -3),
         ("demo-sat-incident-logistica-agendada", "demo-sat-client-logistica-eurosur", "Logistica Eurosur", "Centro logistico Sur", "600 333 444", "Detector lineal con falsas alarmas en muelle 4. Visita programada.", "agendada", now + timedelta(days=2, hours=9), None, None, -1),
         ("demo-sat-incident-colegio-pendiente", "demo-sat-client-colegio-san-mateo", "Colegio San Mateo", "Av. Educacion 22", "600 444 555", "Revision de senaletica de evacuacion tras inspeccion interna.", "pendiente", None, None, None, -2),
-        ("demo-sat-incident-reformas-resuelta", "demo-sat-client-reformas-horizonte", "Reformas Horizonte", "C/ Norte 7", "600 555 666", "Central sin alimentacion auxiliar. Bateria sustituida.", "resuelta", None, False, sat_id, -7),
+        ("demo-sat-incident-reformas-resuelta", "demo-sat-client-reformas-horizonte", "Reformas Horizonte", "C/ Norte 7", "600 555 666", "Central sin alimentacion auxiliar. Bateria sustituida.", "resuelta_garantia", None, False, sat_id, -7),
         ("demo-sat-incident-clinica-agendada", "demo-sat-client-clinica-norte", "Clinica Norte", "Paseo Salud 3", "600 666 777", "Comprobar sectorizacion de zona consultas antes de auditoria.", "agendada", now + timedelta(days=5, hours=10), None, None, -4),
     ]
     for incident_demo_id, client_id_demo, cliente, direccion, telefono, observaciones, status, scheduled_for, facturable, resolved_by, created_offset in sat_incidents_demo:
@@ -4296,14 +4296,14 @@ async def seed_demo_data():
             "user_name": cliente,
             "created_at": created_at,
         }]
-        if status == "resuelta":
+        if status in {"resuelta_facturar", "resuelta_garantia"}:
             history.append({
                 "id": f"{incident_demo_id}-history-resolved",
                 "action": "status_change",
                 "from_status": "pendiente",
-                "to_status": "resuelta",
+                "to_status": status,
                 "comment": "Caso resuelto en visita demo.",
-                "facturable": facturable,
+                "facturable": status == "resuelta_facturar",
                 "user_id": sat_id,
                 "user_name": "SAT Demo",
                 "created_at": now_iso,
@@ -4335,7 +4335,7 @@ async def seed_demo_data():
                 "facturable": facturable,
                 "created_at": created_at,
                 "updated_at": now_iso,
-                "resolved_at": now_iso if status == "resuelta" else None,
+                "resolved_at": now_iso if status in {"resuelta_facturar", "resuelta_garantia"} else None,
                 "resolved_by": resolved_by,
                 "history": history,
                 "demo_seed": True,
@@ -4370,7 +4370,7 @@ class SATUpdateIn(BaseModel):
     telefono: Optional[str] = None
     observaciones: Optional[str] = None
     comentarios_sat: Optional[str] = None
-    status: Optional[str] = None  # "pendiente" | "resuelta"
+    status: Optional[str] = None  # "pendiente" | "resuelta_facturar" | "resuelta_garantia" | "agendada"
 
 _sat_rl: dict = {}  # IP → list of epoch timestamps
 
@@ -4453,8 +4453,11 @@ async def sat_list(
     await _sat_auto_revive(now_iso)
 
     q: dict = {}
-    if status in {"pendiente", "resuelta", "agendada"}:
-        q["status"] = status
+    if status in {"pendiente", "resuelta", "agendada", "resuelta_facturar", "resuelta_garantia"}:
+        if status == "resuelta":
+            q["status"] = {"$in": ["resuelta_facturar", "resuelta_garantia"]}
+        else:
+            q["status"] = status
     if client_id:
         # Match by client_id OR by cliente name (case-insensitive) for incidents
         # submitted via the public form that didn't have client_id linked.
@@ -4538,14 +4541,16 @@ async def sat_update(iid: str, body: SATUpdateIn, user: dict = Depends(require_p
     if body.telefono is not None: patch["telefono"] = body.telefono.strip()
     if body.observaciones is not None: patch["observaciones"] = body.observaciones.strip()
     if body.comentarios_sat is not None: patch["comentarios_sat"] = body.comentarios_sat
-    if body.status in {"pendiente", "resuelta"}:
+    if body.status in {"pendiente", "resuelta_facturar", "resuelta_garantia"}:
         patch["status"] = body.status
-        if body.status == "resuelta" and existing.get("status") != "resuelta":
+        if body.status in {"resuelta_facturar", "resuelta_garantia"} and existing.get("status") not in {"resuelta_facturar", "resuelta_garantia"}:
             patch["resolved_at"] = datetime.now(timezone.utc).isoformat()
             patch["resolved_by"] = user.get("id")
+            patch["facturable"] = body.status == "resuelta_facturar"
         elif body.status == "pendiente":
             patch["resolved_at"] = None
             patch["resolved_by"] = None
+            patch["facturable"] = None
     await db.sat_incidents.update_one({"id": iid}, {"$set": patch})
     doc = await db.sat_incidents.find_one({"id": iid}, {"_id": 0})
     return doc
@@ -4558,9 +4563,8 @@ async def sat_delete(iid: str, admin: dict = Depends(require_permission("sat.edi
     return {"ok": True}
 
 class SATStatusChangeIn(BaseModel):
-    status: str  # "pendiente" | "resuelta"
+    status: str  # "pendiente" | "resuelta_facturar" | "resuelta_garantia"
     comment: str = Field("", max_length=4000)
-    facturable: Optional[bool] = None  # required when status == "resuelta"
 
 @api_router.post("/sat/incidents/{iid}/status")
 async def sat_change_status(iid: str, body: SATStatusChangeIn, user: dict = Depends(require_permission("sat.edit"))):
@@ -4570,10 +4574,8 @@ async def sat_change_status(iid: str, body: SATStatusChangeIn, user: dict = Depe
     existing = await db.sat_incidents.find_one({"id": iid})
     if not existing:
         raise HTTPException(404, "Incidencia no encontrada")
-    if body.status not in {"pendiente", "resuelta"}:
+    if body.status not in {"pendiente", "resuelta_facturar", "resuelta_garantia"}:
         raise HTTPException(400, "Estado inválido")
-    if body.status == "resuelta" and body.facturable is None:
-        raise HTTPException(400, "Debes indicar si la incidencia es facturable o no")
 
     now = datetime.now(timezone.utc).isoformat()
     prev = existing.get("status") or "pendiente"
@@ -4583,7 +4585,7 @@ async def sat_change_status(iid: str, body: SATStatusChangeIn, user: dict = Depe
         "from_status": prev,
         "to_status": body.status,
         "comment": (body.comment or "").strip(),
-        "facturable": body.facturable if body.status == "resuelta" else None,
+        "facturable": True if body.status == "resuelta_facturar" else (False if body.status == "resuelta_garantia" else None),
         "user_id": user.get("id"),
         "user_name": user.get("name") or user.get("email") or "usuario",
         "created_at": now,
@@ -4592,10 +4594,10 @@ async def sat_change_status(iid: str, body: SATStatusChangeIn, user: dict = Depe
         "status": body.status,
         "updated_at": now,
     }
-    if body.status == "resuelta" and prev != "resuelta":
+    if body.status in {"resuelta_facturar", "resuelta_garantia"} and prev not in {"resuelta_facturar", "resuelta_garantia"}:
         patch["resolved_at"] = now
         patch["resolved_by"] = user.get("id")
-        patch["facturable"] = body.facturable
+        patch["facturable"] = body.status == "resuelta_facturar"
     elif body.status == "pendiente":
         patch["resolved_at"] = None
         patch["resolved_by"] = None

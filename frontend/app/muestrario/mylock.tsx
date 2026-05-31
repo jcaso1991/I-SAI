@@ -3,13 +3,13 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Image,
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { COLORS } from "../../src/api";
+import { COLORS, getToken } from "../../src/api";
 import ResponsiveLayout from "../../src/ResponsiveLayout";
 import { useBreakpoint } from "../../src/useBreakpoint";
 import { useThemedStyles } from "../../src/theme";
 import { ios } from "../../src/ui/iosTheme";
 
-const BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL || "http://localhost:8000";
+const BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL || "";
 const MYLOCK_BASE = "https://mylock.saltosystems.com";
 
 export default function MyLockScreen() {
@@ -25,7 +25,7 @@ export default function MyLockScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const token = localStorage?.getItem?.("token") || "";
+        const token = await getToken();
         const headers: Record<string, string> = {};
         if (token) headers["Authorization"] = `Bearer ${token}`;
         const res = await fetch(`${BACKEND}/api/mylock/products`, { headers });

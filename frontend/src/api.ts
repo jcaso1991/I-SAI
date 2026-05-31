@@ -199,7 +199,7 @@ export const api = {
       return res.json();
     });
   },
-  satList: (status?: "pendiente" | "resuelta" | "agendada", year?: string, month?: string) => {
+  satList: (status?: "pendiente" | "resuelta" | "agendada" | "resuelta_facturar" | "resuelta_garantia", year?: string, month?: string) => {
     const params = new URLSearchParams();
     if (status) params.set("status", status);
     if (year && year !== "todos") params.set("year", year);
@@ -210,10 +210,10 @@ export const api = {
   satGet: (id: string) => request(`/sat/incidents/${id}`),
   satUpdate: (id: string, body: any) =>
     request(`/sat/incidents/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
-  satChangeStatus: (id: string, status: "pendiente" | "resuelta", comment: string, facturable?: boolean) =>
+  satChangeStatus: (id: string, status: "pendiente" | "resuelta_facturar" | "resuelta_garantia", comment: string) =>
     request(`/sat/incidents/${id}/status`, {
       method: "POST",
-      body: JSON.stringify({ status, comment, facturable }),
+      body: JSON.stringify({ status, comment }),
     }),
   satScheduleIncident: (id: string, scheduledFor: string, comment: string) =>
     request(`/sat/incidents/${id}/schedule`, {

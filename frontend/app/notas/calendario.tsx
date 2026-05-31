@@ -9,6 +9,7 @@ import { useThemedStyles } from "../../src/theme";
 import IOSHeader from "../../src/ui/IOSHeader";
 import { api, COLORS } from "../../src/api";
 import { ios, fontStyle } from "../../src/ui/iosTheme";
+import { useNotasActions, useShareNota } from "../../src/useNotasActions";
 
 interface Nota {
   id: string; titulo: string; contenido: string; fecha: string | null; updated_at: string;
@@ -50,14 +51,12 @@ export default function CalendarioNotasScreen() {
   const [editPriority, setEditPriority] = useState<string | null>(null);
   const [editTags, setEditTags] = useState<string>("");
 
-  const [shareNota, setShareNota] = useState<Nota | null>(null);
-  const [usersList, setUsersList] = useState<any[]>([]);
-  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
-
   const [linkMaterial, setLinkMaterial] = useState(false);
   const [materialId, setMaterialId] = useState("");
   const [matSearch, setMatSearch] = useState("");
   const [materialesList, setMaterialesList] = useState<any[]>([]);
+
+  const { shareNota, setShareNota, usersList, selectedUsers, openShare, toggleUser, sendToChat } = useShareNota();
 
   const loadDay = useCallback(async (fecha: string) => {
     const items = await api.listNotas(fecha);
@@ -67,6 +66,12 @@ export default function CalendarioNotasScreen() {
   useFocusEffect(useCallback(() => {
     if (selectedDay) loadDay(selectedDay);
   }, [selectedDay]));
+
+  const refreshActual = useCallback(async () => {
+    if (selectedDay) await loadDay(selectedDay);
+  }, [selectedDay, loadDay]);
+
+  const { toggleMarcada: toggleMarcadaApi, handleDelete, guardarNota } = useNotasActions(refreshActual);
 
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDow = (new Date(year, month, 1).getDay() + 6) % 7;
@@ -109,61 +114,24 @@ export default function CalendarioNotasScreen() {
     if (!titulo.trim() && !contenido.trim()) return;
     const notaActual = notaEdit;
     setNotaEdit(null);
-    try {
-      const body: any = { titulo: titulo.trim(), contenido: contenido.trim(), material_id: linkMaterial ? materialId || undefined : undefined };
-      if (editColor) body.color = editColor;
-      if (editPriority) body.priority = editPriority;
-      if (editTags.trim()) body.tags = editTags.split(",").map((t: string) => t.trim()).filter(Boolean);
-      if (notaActual?.id) {
-        await api.updateNota(notaActual.id, body);
-      } else {
-        await api.createNota({ ...body, fecha: selectedDay! });
-      }
-      if (selectedDay) loadDay(selectedDay);
-    } catch (e: any) {
-      Alert.alert("Error", e.message);
+    const body: any = { titulo: titulo.trim(), contenido: contenido.trim(), material_id: linkMaterial ? materialId || undefined : undefined };
+    if (editColor) body.color = editColor;
+    if (editPriority) body.priority = editPriority;
+    if (editTags.trim()) body.tags = editTags.split(",").map((t: string) => t.trim()).filter(Boolean);
+    if (notaActual?.id) {
+      await guardarNota(body, notaActual.id);
+    } else {
+      await guardarNota({ ...body, fecha: selectedDay! });
     }
+    if (selectedDay) loadDay(selectedDay);
   };
 
-  const eliminar = (id: string) => {
-    const performDelete = async () => {
-      try { await api.deleteNota(id); if (selectedDay) loadDay(selectedDay); } catch (e: any) { Alert.alert("Error", e?.message || ""); }
-    };
-    if (Platform.OS === "web" && typeof (window as any).confirm === "function") {
-      if ((window as any).confirm("¿Eliminar esta nota?")) performDelete();
-      return;
-    }
-    Alert.alert("Eliminar", "¿Borrar esta nota?", [
-      { text: "Cancelar", style: "cancel" },
-      { text: "Eliminar", style: "destructive", onPress: performDelete },
-    ]);
-  };
+  const eliminar = (id: string) => { handleDelete(id); };
 
   const toggleMarcada = async (nota: Nota) => {
     const newVal = !nota.marcada;
     setNotas((prev) => prev.map((n) => n.id === nota.id ? { ...n, marcada: newVal } as any : n));
-    try { await api.updateNota(nota.id, { marcada: newVal }); } catch { if (selectedDay) loadDay(selectedDay); }
-  };
-
-  const openShare = async (nota: Nota) => {
-    setShareNota(nota);
-    setSelectedUsers([]);
-    try { const users = await api.listUsers(); setUsersList(users || []); } catch { setUsersList([]); }
-  };
-
-  const toggleUser = (uid: string) => {
-    setSelectedUsers((p) => p.includes(uid) ? p.filter((x) => x !== uid) : [...p, uid]);
-  };
-
-  const sendToChat = async () => {
-    if (!shareNota || selectedUsers.length === 0) return;
-    try {
-      const body = shareNota.titulo || shareNota.contenido || "";
-      const chat = await api.chatCreate({ participant_ids: selectedUsers, name: shareNota.titulo?.slice(0, 50) || "Nota compartida" });
-      await api.chatSend(chat.id, body);
-      setShareNota(null); setSelectedUsers([]);
-      Alert.alert("Enviado", "Nota compartida por chat.");
-    } catch (e: any) { Alert.alert("Error", e.message); }
+    await toggleMarcadaApi(nota);
   };
 
   const filteredNotas = useMemo(() => {

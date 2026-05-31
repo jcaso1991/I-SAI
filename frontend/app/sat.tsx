@@ -11,7 +11,7 @@
  *   - botón de subir Excel si tiene permiso sat.edit para reimportar el catálogo.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView,
   TextInput, Modal, Platform, Alert,
@@ -35,12 +35,14 @@ type Incident = {
   telefono: string;
   observaciones: string;
   comentarios_sat: string;
-  status: "pendiente" | "resuelta" | "agendada";
+  status: "pendiente" | "resuelta" | "agendada" | "resuelta_facturar" | "resuelta_garantia";
   created_at: string;
   scheduled_for?: string | null;
   client_id?: string | null;
   history?: HistoryEntry[];
   facturable?: boolean | null;
+  lat?: number | null;
+  lng?: number | null;
 };
 
 type HistoryEntry = {
@@ -98,7 +100,9 @@ export default function SATScreen() {
   const [tab, setTab] = useState<"pendiente" | "resuelta" | "agendada">(initialTab);
   const [yearFilter, setYearFilter] = useState(params.year || "");
   const [monthFilter, setMonthFilter] = useState(params.month || "");
+  const [showSinDireccion, setShowSinDireccion] = useState(false);
   const s = useThemedStyles(useS);
+  const [allIncidents, setAllIncidents] = useState<Incident[]>([]);
   const [items, setItems] = useState<Incident[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [openItem, setOpenItem] = useState<Incident | null>(null);
@@ -110,10 +114,17 @@ export default function SATScreen() {
   const [copied, setCopied] = useState(false);
   const [importing, setImporting] = useState(false);
 
-  const load = useCallback(async () => {
+  const loadAll = useCallback(async () => {
     try {
-      const [its, cls] = await Promise.all([api.satList(tab, yearFilter, monthFilter), api.satClientList()]);
-      setItems(its); setClients(cls);
+      const [its, cls] = await Promise.all([api.satList(), api.satClientList()]);
+      setAllIncidents(its); setItems(its); setClients(cls);
+    } catch {}
+  }, []);
+
+  const loadFiltered = useCallback(async () => {
+    try {
+      const its = await api.satList(tab, yearFilter, monthFilter);
+      setItems(its);
     } catch {}
   }, [tab, yearFilter, monthFilter]);
 
@@ -124,7 +135,7 @@ export default function SATScreen() {
         const u = await api.me();
         if (!alive) return;
         setMe(u);
-        await load();
+        await loadAll();
       } catch (e: any) {
         if (/401|Invalid|expired/i.test(e?.message || "")) {
           await clearToken();
@@ -133,7 +144,9 @@ export default function SATScreen() {
       } finally { if (alive) setLoading(false); }
     })();
     return () => { alive = false; };
-  }, [load]));
+  }, [loadAll]));
+
+  useEffect(() => { loadFiltered(); }, [loadFiltered]);
 
   useFocusEffect(useCallback(() => {
     if (!params.openIncident) return;
@@ -193,16 +206,22 @@ export default function SATScreen() {
         Alert.alert("Importación completada",
           `Creados: ${res.created}\nActualizados: ${res.updated}\nOmitidos: ${res.skipped}`);
       }
-      await load();
+      await loadAll();
     } catch (e: any) {
       Alert.alert("Error", e?.message || "No se pudo importar el Excel");
     } finally { setImporting(false); }
   };
 
-  const pendingCount = items.filter((i) => i.status === "pendiente").length;
-  const resolvedCount = items.filter((i) => i.status === "resuelta").length;
-  const scheduledCount = items.filter((i) => i.status === "agendada").length;
-  const visibleIncidents = items.filter((i) => i.status === tab);
+  const pendingCount = allIncidents.filter((i) => i.status === "pendiente").length;
+  const resolvedCount = allIncidents.filter((i) => i.status === "resuelta" || i.status === "resuelta_facturar" || i.status === "resuelta_garantia").length;
+  const scheduledCount = allIncidents.filter((i) => i.status === "agendada").length;
+  const visibleIncidents = useMemo(() => {
+    let filtered = items.filter((i) => tab === "resuelta" ? (i.status === "resuelta" || i.status === "resuelta_facturar" || i.status === "resuelta_garantia") : i.status === tab);
+    if (showSinDireccion) {
+      filtered = filtered.filter((i) => !i.direccion || i.direccion.trim() === "");
+    }
+    return filtered;
+  }, [items, tab, showSinDireccion]);
   const visibleClients = clients.filter((c) => {
     if (!clientSearch.trim()) return true;
     const q = clientSearch.trim().toLowerCase();
@@ -261,7 +280,7 @@ export default function SATScreen() {
             <>
             <TouchableOpacity
               testID="btn-copy-sat-url"
-              style={[s.copyBtn, copied && { backgroundColor: "#10B981", borderColor: "#10B981" }]}
+              style={[s.copyBtn, copied && { backgroundColor: COLORS.syncedText, borderColor: COLORS.syncedText }]}
               onPress={copyLink}
             >
               <Ionicons
@@ -275,7 +294,7 @@ export default function SATScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               testID="btn-export-excel"
-              style={[s.copyBtn, { backgroundColor: COLORS.syncedBg, borderColor: "#10B981" }]}
+              style={[s.copyBtn, { backgroundColor: COLORS.syncedBg, borderColor: COLORS.syncedText }]}
               onPress={async () => {
                 try { await api.satExportExcel(); }
                 catch (e: any) { Alert.alert("Error", e.message || "No se pudo exportar"); }
@@ -283,6 +302,14 @@ export default function SATScreen() {
             >
               <Ionicons name="download-outline" size={14} color={COLORS.syncedText} />
               <Text style={[s.copyBtnText, { color: COLORS.syncedText }]} numberOfLines={1}>Exportar Excel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              testID="btn-mapa-sat"
+              style={[s.copyBtn, { backgroundColor: COLORS.primarySoft, borderColor: COLORS.primary }]}
+              onPress={() => router.push("/mapa-sat")}
+            >
+              <Ionicons name="map-outline" size={14} color={COLORS.primary} />
+              <Text style={[s.copyBtnText, { color: COLORS.primary }]} numberOfLines={1}>Ver en mapa</Text>
             </TouchableOpacity>
             </>
           )}
@@ -368,6 +395,20 @@ export default function SATScreen() {
                   active={tab === "resuelta"} onPress={() => setTab("resuelta")}
                   testID="tab-resueltas"
                 />
+                <TouchableOpacity
+                  testID="filter-sin-direccion"
+                  style={[s.tabPill, showSinDireccion && { backgroundColor: COLORS.errorBg, borderColor: COLORS.errorText }]}
+                  onPress={() => setShowSinDireccion((v) => !v)}
+                >
+                  <Ionicons
+                    name="close-circle"
+                    size={14}
+                    color={showSinDireccion ? COLORS.errorText : COLORS.textSecondary}
+                  />
+                  <Text style={[s.tabPillText, showSinDireccion && { color: COLORS.errorText }]}>
+                    Sin dirección
+                  </Text>
+                </TouchableOpacity>
               </ScrollView>
               {canEditSat && (
                 <TouchableOpacity
@@ -388,26 +429,28 @@ export default function SATScreen() {
             ) : visibleIncidents.length === 0 ? (
               <View style={s.center}>
                 <Ionicons
-                  name={tab === "pendiente" ? "mail-unread-outline" : "checkmark-done-circle-outline"}
+                  name={tab === "pendiente" ? "mail-unread-outline" : tab === "agendada" ? "calendar-outline" : "checkmark-done-circle-outline"}
                   size={56} color={COLORS.textDisabled}
                 />
                 <Text style={s.emptyTitle}>
-                  {tab === "pendiente" ? "No hay avisos pendientes" : "Aún no hay avisos resueltos"}
+                  {tab === "pendiente" ? "No hay avisos pendientes" : tab === "agendada" ? "No hay avisos agendados" : "Aún no hay avisos resueltos"}
                 </Text>
                 <Text style={s.emptyMsg}>
                   {tab === "pendiente"
                     ? "Copia la URL del cliente y compártela para que empiecen a llegar avisos."
+                    : tab === "agendada"
+                    ? "Cuando reagendes una incidencia aparecerá aquí."
                     : "Cuando marques una incidencia como resuelta aparecerá aquí."}
                 </Text>
               </View>
             ) : (
               <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 80, gap: 12 }}>
                 {tab === "resuelta" ? (
-                  // Split into facturable / no facturable
+                  // Split into facturable / garantia
                   <>
                     {(() => {
-                      const fact = visibleIncidents.filter((i) => i.facturable === true);
-                      const nofact = visibleIncidents.filter((i) => i.facturable === false);
+                      const fact = visibleIncidents.filter((i) => i.status === "resuelta" || i.status === "resuelta_facturar");
+                      const garantia = visibleIncidents.filter((i) => i.status === "resuelta_garantia");
                       return (
                         <>
                           <Text style={s.sectionLabel}>💰 Facturables ({fact.length})</Text>
@@ -417,10 +460,10 @@ export default function SATScreen() {
                             <IncidentCard key={it.id} item={it} clientName={clients.find((c) => c.id === it.client_id)?.cliente} onPress={() => setOpenItem(it)} />
                           ))}
                           <View style={{ height: 16 }} />
-                          <Text style={s.sectionLabel}>🚫 No facturables ({nofact.length})</Text>
-                          {nofact.length === 0 ? (
-                            <Text style={{ color: COLORS.textSecondary, fontSize: 12, fontStyle: "italic" }}>Ninguna incidencia no facturable</Text>
-                          ) : nofact.map((it) => (
+                          <Text style={s.sectionLabel}>🛡️ Garantía ({garantia.length})</Text>
+                          {garantia.length === 0 ? (
+                            <Text style={{ color: COLORS.textSecondary, fontSize: 12, fontStyle: "italic" }}>Ninguna incidencia en garantía</Text>
+                          ) : garantia.map((it) => (
                             <IncidentCard key={it.id} item={it} clientName={clients.find((c) => c.id === it.client_id)?.cliente} onPress={() => setOpenItem(it)} />
                           ))}
                         </>
@@ -512,7 +555,7 @@ export default function SATScreen() {
           clients={clients}
           canEditSat={canEditSat}
           onClose={() => setOpenItem(null)}
-          onChanged={() => { setOpenItem(null); load(); }}
+          onChanged={() => { setOpenItem(null); loadAll(); }}
         />
       )}
       {creatingIncident && (
@@ -520,21 +563,21 @@ export default function SATScreen() {
           initial={creatingIncident}
           clients={clients}
           onClose={() => setCreatingIncident(null)}
-          onCreated={() => { setCreatingIncident(null); setTab("pendiente"); load(); }}
+          onCreated={() => { setCreatingIncident(null); setTab("pendiente"); loadAll(); }}
         />
       )}
       {editingClient && (
         <ClientModal
           client={editingClient}
           onClose={() => setEditingClient(null)}
-          onSaved={() => { setEditingClient(null); load(); }}
+          onSaved={() => { setEditingClient(null); loadAll(); }}
         />
       )}
       {showNewClient && (
         <ClientModal
           client={null}
           onClose={() => setShowNewClient(false)}
-          onSaved={() => { setShowNewClient(false); load(); }}
+          onSaved={() => { setShowNewClient(false); loadAll(); }}
         />
       )}
       {viewingClientIncidents && (
@@ -570,7 +613,10 @@ function IncidentCard({ item, clientName, onPress }:
   const dateStr = isNaN(d.getTime())
     ? ""
     : d.toLocaleString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
-  const statusColor = item.status === "pendiente" ? COLORS.pillOrangeText : item.status === "agendada" ? COLORS.primary : COLORS.syncedText;
+  const statusColor = item.status === "pendiente" ? COLORS.pillOrangeText : item.status === "agendada" ? COLORS.primary : item.status === "resuelta" || item.status === "resuelta_facturar" ? COLORS.pillPurpleText : COLORS.syncedText;
+  const noDireccion = !item.direccion || item.direccion.trim() === "";
+  const noCoordenadas = item.lat == null || item.lng == null;
+  const sinLocalizacion = noDireccion || noCoordenadas;
   return (
     <TouchableOpacity
       testID={`sat-item-${item.id}`}
@@ -579,6 +625,9 @@ function IncidentCard({ item, clientName, onPress }:
       onPress={onPress}
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        {sinLocalizacion && (
+          <Ionicons name="close-circle" size={18} color={COLORS.errorText} />
+        )}
         <View style={[s.statusDot, { backgroundColor: statusColor }]} />
         <Text style={s.cardClient} numberOfLines={1}>{item.cliente || "— sin cliente —"}</Text>
         <Text style={s.cardDate}>{dateStr}</Text>
@@ -755,11 +804,12 @@ function IncidentModal({ item, clients, canEditSat, onClose, onChanged }: {
   const [clientId, setClientId] = useState<string | null>(item.client_id || null);
   const [saving, setSaving] = useState(false);
   // Pending status change → triggers the comment prompt.
-  const [pendingStatus, setPendingStatus] = useState<"pendiente" | "resuelta" | null>(null);
+  const [pendingStatus, setPendingStatus] = useState<"pendiente" | "resuelta_facturar" | "resuelta_garantia" | null>(null);
+  const [showResolveOptions, setShowResolveOptions] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
 
   // Apply the status change after user has written a comment.
-  const applyStatusChange = async (status: "pendiente" | "resuelta", comment: string, facturable?: boolean) => {
+  const applyStatusChange = async (status: "pendiente" | "resuelta_facturar" | "resuelta_garantia", comment: string) => {
     setSaving(true);
     try {
       await api.satUpdate(item.id, {
@@ -767,7 +817,7 @@ function IncidentModal({ item, clients, canEditSat, onClose, onChanged }: {
         comentarios_sat: comentarios,
         client_id: clientId,
       });
-      const updated = await api.satChangeStatus(item.id, status, comment, facturable);
+      const updated = await api.satChangeStatus(item.id, status, comment);
       setCurrent(updated);
       setPendingStatus(null);
       onChanged();
@@ -838,13 +888,13 @@ function IncidentModal({ item, clients, canEditSat, onClose, onChanged }: {
             <View style={s.statusRow}>
               <Text style={s.statusLabel}>Estado actual:</Text>
               <View style={[s.statusChip, {
-                backgroundColor: current.status === "pendiente" ? COLORS.pendingBg : COLORS.syncedBg,
-                borderColor: current.status === "pendiente" ? COLORS.pendingText : "#10B981",
+                backgroundColor: current.status === "pendiente" ? COLORS.pendingBg : current.status === "agendada" ? COLORS.primarySoft : current.status === "resuelta_facturar" ? COLORS.pillPurpleBg : COLORS.syncedBg,
+                borderColor: current.status === "pendiente" ? COLORS.pendingText : current.status === "agendada" ? COLORS.primary : current.status === "resuelta_facturar" ? COLORS.pillPurpleText : COLORS.syncedText,
               }]}>
-                <Ionicons name={current.status === "pendiente" ? "time" : "checkmark-done"} size={13}
-                  color={current.status === "pendiente" ? COLORS.pendingText : COLORS.syncedText} />
-                <Text style={{ color: current.status === "pendiente" ? COLORS.pendingText : COLORS.syncedText, fontWeight: "900", fontSize: 12 }}>
-                  {current.status === "pendiente" ? "Pendiente" : "Resuelta"}
+                <Ionicons name={current.status === "pendiente" ? "time" : current.status === "agendada" ? "calendar" : "checkmark-done"} size={13}
+                  color={current.status === "pendiente" ? COLORS.pendingText : current.status === "agendada" ? COLORS.primary : current.status === "resuelta_facturar" ? COLORS.pillPurpleText : COLORS.syncedText} />
+                <Text style={{ color: current.status === "pendiente" ? COLORS.pendingText : current.status === "agendada" ? COLORS.primary : current.status === "resuelta_facturar" ? COLORS.pillPurpleText : COLORS.syncedText, fontWeight: "900", fontSize: 12 }}>
+                  {current.status === "pendiente" ? "Pendiente" : current.status === "agendada" ? "Agendada" : current.status === "resuelta_facturar" ? "Facturable" : "Garantía"}
                 </Text>
               </View>
             </View>
@@ -860,7 +910,7 @@ function IncidentModal({ item, clients, canEditSat, onClose, onChanged }: {
               </View>
               {history.length === 0 ? (
                 <Text style={s.historyEmpty}>
-                  Aún no hay cambios. Cada vez que alguien marque la incidencia como pendiente o resuelta se registrará aquí junto con su comentario.
+                  Aún no hay cambios. Cada vez que alguien cambie el estado de la incidencia se registrará aquí junto con su comentario.
                 </Text>
               ) : (
                 <View style={{ gap: 8 }}>
@@ -898,7 +948,7 @@ function IncidentModal({ item, clients, canEditSat, onClose, onChanged }: {
                 <TouchableOpacity
                   testID="sat-resolved"
                   style={[s.resolvedBtn, saving && { opacity: 0.6 }]}
-                  onPress={() => setPendingStatus("resuelta")}
+                  onPress={() => setShowResolveOptions(true)}
                   disabled={saving}
                 >
                   <Ionicons name="checkmark-done" size={16} color="#fff" />
@@ -910,6 +960,41 @@ function IncidentModal({ item, clients, canEditSat, onClose, onChanged }: {
         </View>
       </View>
 
+      {/* Resolve options modal — choose between facturar or garantia */}
+      {showResolveOptions && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setShowResolveOptions(false)}>
+          <View style={s.promptRoot}>
+            <TouchableOpacity activeOpacity={1} style={StyleSheet.absoluteFill} onPress={() => setShowResolveOptions(false)} />
+            <View style={s.promptCard}>
+              <Text style={s.promptTitle}>Marcar como resuelta</Text>
+              <Text style={[s.promptSub, { marginBottom: 12 }]}>¿Qué tipo de resolución aplica?</Text>
+              <TouchableOpacity
+                style={[s.resolveOptionBtn, { backgroundColor: COLORS.pillPurpleBg, borderColor: COLORS.pillPurpleText }]}
+                onPress={() => { setShowResolveOptions(false); setPendingStatus("resuelta_facturar"); }}
+              >
+                <Ionicons name="cash-outline" size={20} color={COLORS.pillPurpleText} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.resolveOptionTitle, { color: COLORS.pillPurpleText }]}>Resuelta (facturar)</Text>
+                  <Text style={s.resolveOptionSub}>Se facturará al cliente</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={COLORS.pillPurpleText} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.resolveOptionBtn, { backgroundColor: COLORS.syncedBg, borderColor: COLORS.syncedText }]}
+                onPress={() => { setShowResolveOptions(false); setPendingStatus("resuelta_garantia"); }}
+              >
+                <Ionicons name="shield-checkmark-outline" size={20} color={COLORS.syncedText} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.resolveOptionTitle, { color: COLORS.syncedText }]}>Resuelta (garantía)</Text>
+                  <Text style={s.resolveOptionSub}>Cubierto por garantía</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={COLORS.syncedText} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
+
       {/* Comment prompt modal — appears before any status change */}
       {pendingStatus && (
         <StatusCommentPrompt
@@ -917,7 +1002,7 @@ function IncidentModal({ item, clients, canEditSat, onClose, onChanged }: {
           currentStatus={current.status}
           saving={saving}
           onCancel={() => setPendingStatus(null)}
-          onConfirm={(comment, facturable) => applyStatusChange(pendingStatus, comment, facturable)}
+          onConfirm={(comment) => applyStatusChange(pendingStatus, comment)}
         />
       )}
       {showSchedule && (
@@ -960,9 +1045,12 @@ function HistoryItem({ entry }: { entry: HistoryEntry }) {
   let label = "Dejó un comentario";
   let icon: any = "chatbubble-ellipses";
   if (entry.action === "status_change") {
-    const resolved = entry.to_status === "resuelta";
-    accent = resolved ? "#10B981" : COLORS.pendingText;
-    label = resolved ? "Marcó como RESUELTA" : "Marcó como PENDIENTE";
+    const resolved = entry.to_status === "resuelta_facturar" || entry.to_status === "resuelta_garantia" || entry.to_status === "resuelta";
+    const isFacturable = entry.to_status === "resuelta_facturar";
+    accent = resolved ? (isFacturable ? COLORS.pillPurpleText : COLORS.syncedText) : COLORS.pendingText;
+    label = resolved
+      ? (isFacturable ? "Marcó como RESUELTA (facturable)" : entry.to_status === "resuelta_garantia" ? "Marcó como RESUELTA (garantía)" : "Marcó como RESUELTA")
+      : "Marcó como PENDIENTE";
     icon = resolved ? "checkmark-done" : "time";
   } else if (entry.action === "scheduled") {
     accent = "#4F46E5";
@@ -1037,13 +1125,27 @@ function SchedulePrompt({ currentStatus, saving, onCancel, onConfirm }: {
           <View style={{ flexDirection: "row", gap: 8 }}>
             <View style={{ flex: 1 }}>
               <Text style={s.fieldLabel}>Fecha *</Text>
-              <TextInput
-                testID="schedule-date"
-                value={date} onChangeText={setDate}
-                placeholder="AAAA-MM-DD"
-                placeholderTextColor={COLORS.textDisabled}
-                style={s.input}
-              />
+              {Platform.OS === "web" ? (
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e: any) => setDate(e.target.value)}
+                  style={{
+                    width: "100%", height: 44, fontSize: 14, color: COLORS.text,
+                    backgroundColor: COLORS.bg, border: `1px solid ${COLORS.border}`,
+                    borderRadius: 10, paddingHorizontal: 14, outline: "none",
+                    fontFamily: "inherit",
+                  } as any}
+                />
+              ) : (
+                <TextInput
+                  testID="schedule-date"
+                  value={date} onChangeText={setDate}
+                  placeholder="AAAA-MM-DD"
+                  placeholderTextColor={COLORS.textDisabled}
+                  style={s.input}
+                />
+              )}
             </View>
             <View style={{ flex: 1 }}>
               <Text style={s.fieldLabel}>Hora *</Text>
@@ -1148,29 +1250,28 @@ function ClientIncidentsModal({ client, onClose, onOpenIncident }: {
 function StatusCommentPrompt({
   targetStatus, currentStatus, saving, onCancel, onConfirm,
 }: {
-  targetStatus: "pendiente" | "resuelta";
+  targetStatus: "pendiente" | "resuelta_facturar" | "resuelta_garantia";
   currentStatus: string;
   saving: boolean;
   onCancel: () => void;
-  onConfirm: (comment: string, facturable?: boolean) => void;
+  onConfirm: (comment: string) => void;
 }) {
   const s = useThemedStyles(useS);
   const [comment, setComment] = useState("");
   const [error, setError] = useState<string | null>(null);
   const same = currentStatus === targetStatus;
-  const resolved = targetStatus === "resuelta";
-  const [facturable, setFacturable] = useState<boolean | null>(null);
+  const resolved = targetStatus === "resuelta_facturar" || targetStatus === "resuelta_garantia";
+  const isFacturable = targetStatus === "resuelta_facturar";
+  const accentColor = isFacturable ? COLORS.pillPurpleText : COLORS.syncedText;
+  const accentBg = isFacturable ? COLORS.pillPurpleBg : COLORS.syncedBg;
+  const label = isFacturable ? "Facturable" : "Garantía";
 
   const handleConfirm = () => {
     if (!comment.trim()) {
       setError("Escribe un comentario para registrar el cambio.");
       return;
     }
-    if (resolved && facturable === null) {
-      setError("Selecciona si la incidencia es facturable o no facturable.");
-      return;
-    }
-    onConfirm(comment.trim(), resolved ? facturable ?? undefined : undefined);
+    onConfirm(comment.trim());
   };
 
   return (
@@ -1180,18 +1281,18 @@ function StatusCommentPrompt({
         <View style={s.promptCard}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 }}>
             <View style={[s.promptIcon, {
-              backgroundColor: resolved ? COLORS.syncedBg : COLORS.pendingBg,
-              borderColor: resolved ? "#10B981" : COLORS.pendingText,
+              backgroundColor: resolved ? accentBg : COLORS.pendingBg,
+              borderColor: resolved ? accentColor : COLORS.pendingText,
             }]}>
               <Ionicons
                 name={resolved ? "checkmark-done" : "time"}
                 size={22}
-                color={resolved ? COLORS.syncedText : COLORS.pendingText}
+                color={resolved ? accentColor : COLORS.pendingText}
               />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={s.promptTitle}>
-                {resolved ? "Marcar como resuelta" : "Marcar como pendiente"}
+                {resolved ? `Marcar como resuelta (${label})` : "Marcar como pendiente"}
               </Text>
               <Text style={s.promptSub}>
                 {same
@@ -1216,25 +1317,6 @@ function StatusCommentPrompt({
           {error && (
             <Text style={{ color: COLORS.errorText, fontSize: 12, fontWeight: "800", marginTop: 6 }}>{error}</Text>
           )}
-          {resolved && (
-            <>
-              <Text style={[s.fieldLabel, { marginTop: 8 }]}>¿Es facturable?</Text>
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                <TouchableOpacity
-                  style={[s.factChip, facturable === true && s.factChipActive]}
-                  onPress={() => { setFacturable(true); if (error) setError(null); }}
-                >
-                  <Text style={[s.factChipText, facturable === true && { color: "#fff" }]}>💰 Facturable</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.factChip, facturable === false && s.factChipNoActive]}
-                  onPress={() => { setFacturable(false); if (error) setError(null); }}
-                >
-                  <Text style={[s.factChipText, facturable === false && { color: "#fff" }]}>🚫 No facturable</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
           <View style={{ flexDirection: "row", gap: 8, marginTop: 14 }}>
             <TouchableOpacity style={[s.cancelBtn, { flex: 1 }]} onPress={onCancel} disabled={saving}>
               <Text style={s.cancelBtnText}>Cancelar</Text>
@@ -1243,6 +1325,7 @@ function StatusCommentPrompt({
               testID="status-comment-confirm"
               style={[
                 resolved ? s.resolvedBtn : s.pendingBtn,
+                resolved ? { backgroundColor: accentColor } : {},
                 { flex: 1 },
                 saving && { opacity: 0.6 },
               ]}
@@ -1259,7 +1342,7 @@ function StatusCommentPrompt({
                     color={resolved ? "#fff" : COLORS.pendingText}
                   />
                   <Text style={resolved ? s.resolvedBtnText : s.pendingBtnText}>
-                    {resolved ? "Confirmar resuelta" : "Confirmar pendiente"}
+                    {resolved ? `Confirmar resuelta` : "Confirmar pendiente"}
                   </Text>
                 </>
               )}
@@ -1716,4 +1799,13 @@ const useS = () => StyleSheet.create({
   factChipActive: { backgroundColor: COLORS.syncedBg, borderColor: COLORS.syncedText },
   factChipNoActive: { backgroundColor: COLORS.statusAnuladoBg, borderColor: COLORS.statusAnuladoFg },
   factChipText: { fontSize: 13, fontWeight: "700", color: COLORS.text },
+
+  // Resolve options modal
+  resolveOptionBtn: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    padding: 14, borderRadius: ios.radius.md, borderWidth: 1.5,
+    marginBottom: 8,
+  },
+  resolveOptionTitle: { fontSize: 15, fontWeight: "900", letterSpacing: -0.2 },
+  resolveOptionSub: { fontSize: 11, color: COLORS.textSecondary, fontWeight: "600", marginTop: 2 },
 });
