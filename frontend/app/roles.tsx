@@ -9,6 +9,7 @@
  * Access: anyone with `roles.manage` permission (admin principal by default).
  */
 import { useCallback, useState } from "react";
+import { useThemedStyles } from "../src/theme";
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Alert, Modal, KeyboardAvoidingView, Platform,
@@ -33,6 +34,7 @@ type Role = {
 };
 
 export default function RolesScreen() {
+  const s = useThemedStyles(useS);
   const router = useRouter();
   const [roles, setRoles] = useState<Role[]>([]);
   const [perms, setPerms] = useState<Permission[]>([]);
@@ -186,6 +188,7 @@ export default function RolesScreen() {
 function CreateRoleModal({ visible, permissions, notifications, onClose, onDone }: {
   visible: boolean; permissions: Permission[]; notifications: NotifPref[]; onClose: () => void; onDone: () => void;
 }) {
+  const s = useThemedStyles(useS);
   const [name, setName] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [notifSelected, setNotifSelected] = useState<string[]>([]);
@@ -273,6 +276,7 @@ function CreateRoleModal({ visible, permissions, notifications, onClose, onDone 
 function EditRoleModal({ role, permissions, notifications, onClose, onDone }: {
   role: Role | null; permissions: Permission[]; notifications: NotifPref[]; onClose: () => void; onDone: () => void;
 }) {
+  const s = useThemedStyles(useS);
   const [name, setName] = useState(role?.name || "");
   const [selected, setSelected] = useState<string[]>(role?.permissions || []);
   const [notifSelected, setNotifSelected] = useState<string[]>(role?.notification_prefs || []);
@@ -366,6 +370,7 @@ function EditRoleModal({ role, permissions, notifications, onClose, onDone }: {
 function PermissionList({ permissions, selected, onToggle }: {
   permissions: Permission[]; selected: string[]; onToggle: (k: string) => void;
 }) {
+  const s = useThemedStyles(useS);
   // Group by module preserving order
   const groups: { [mod: string]: Permission[] } = {};
   const order: string[] = [];
@@ -409,6 +414,7 @@ function PermissionList({ permissions, selected, onToggle }: {
 function NotificationList({ notifications, selected, onToggle }: {
   notifications: NotifPref[]; selected: string[]; onToggle: (k: string) => void;
 }) {
+  const s = useThemedStyles(useS);
   const groups: { [mod: string]: NotifPref[] } = {};
   const order: string[] = [];
   for (const n of notifications) {
@@ -447,7 +453,7 @@ function NotificationList({ notifications, selected, onToggle }: {
   );
 }
 
-const s = StyleSheet.create({
+const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",

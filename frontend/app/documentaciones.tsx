@@ -1,7 +1,7 @@
-import { useCallback, useState } from "react";
-import { View, Text, TouchableOpacity, FlatList, Alert, StyleSheet, Platform, Modal, TextInput } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { View, Text, TextInput, TouchableOpacity, FlatList, Alert, StyleSheet, Modal, ActivityIndicator, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect } from "expo-router";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import ResponsiveLayout from "../src/ResponsiveLayout";
 import { useBreakpoint } from "../src/useBreakpoint";
@@ -25,6 +25,7 @@ export default function DocumentacionesScreen() {
   const [docs, setDocs] = useState<DocItem[]>([]);
   const [viewingFile, setViewingFile] = useState<string | null>(null);
   const [viewingTitle, setViewingTitle] = useState("");
+  const [loadingPdf, setLoadingPdf] = useState(false);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
 
@@ -42,7 +43,7 @@ export default function DocumentacionesScreen() {
     finally { setLoading(false); }
   }, [seccion]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useEffect(() => { load(); }, [load]);
 
   const uploadFile = async () => {
     if (!puedeGestionar) { Alert.alert("Permiso", "No tienes permiso para subir documentos."); return; }
@@ -72,6 +73,7 @@ export default function DocumentacionesScreen() {
   };
 
   const verPDF = async (id: string, title: string) => {
+    setLoadingPdf(true);
     try {
       const t = await getToken();
       const res = await fetch(`${BACKEND_URL}/api/documentos/${id}/file`, {
@@ -83,6 +85,7 @@ export default function DocumentacionesScreen() {
       setViewingFile(blobUrl);
       setViewingTitle(title);
     } catch (e: any) { Alert.alert("Error", e.message); }
+    finally { setLoadingPdf(false); }
   };
 
   const descargar = async (id: string) => {
@@ -153,8 +156,12 @@ export default function DocumentacionesScreen() {
               keyExtractor={(item) => item._id}
               renderItem={({ item }) => (
                 <View style={s.docRow}>
-                  <TouchableOpacity style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10 }} onPress={() => verPDF(item._id, item.titulo || item.filename)}>
-                    <Ionicons name="document-text" size={22} color={COLORS.primary} />
+                  <TouchableOpacity style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10 }} onPress={() => verPDF(item._id, item.titulo || item.filename)} disabled={loadingPdf}>
+                    {loadingPdf ? (
+                      <ActivityIndicator size="small" color={COLORS.primary} />
+                    ) : (
+                      <Ionicons name="document-text" size={22} color={COLORS.primary} />
+                    )}
                     <View style={{ flex: 1 }}>
                       <Text style={s.docTitle} numberOfLines={1}>{item.titulo || item.filename}</Text>
                       <Text style={s.docMeta}>{item.filename} · {item.created_at?.slice(0, 10)}</Text>

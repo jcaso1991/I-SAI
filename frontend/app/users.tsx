@@ -1,4 +1,5 @@
 import { useCallback, useState, useEffect } from "react";
+import { useThemedStyles } from "../src/theme";
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Alert, Modal, KeyboardAvoidingView, Platform,
@@ -19,6 +20,7 @@ const USER_COLOR_PALETTE = [
 ];
 
 export default function Users() {
+  const s = useThemedStyles(useS);
   const router = useRouter();
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -221,6 +223,7 @@ export default function Users() {
 
 // ---------------- Create ----------------
 function CreateUserModal({ visible, roles, onClose, onDone }: { visible: boolean; roles: Role[]; onClose: () => void; onDone: () => void }) {
+  const s = useThemedStyles(useS);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -344,6 +347,7 @@ function CreateUserModal({ visible, roles, onClose, onDone }: { visible: boolean
 
 // ---------------- Edit ----------------
 function EditUserModal({ user, roles, onClose, onDone }: { user: User | null; roles: Role[]; onClose: () => void; onDone: () => void }) {
+  const s = useThemedStyles(useS);
   const [name, setName] = useState(user?.name || "");
   const [roleId, setRoleId] = useState<string>(user?.role_id || "");
   const [color, setColor] = useState<string>(user?.color || USER_COLOR_PALETTE[0]);
@@ -456,6 +460,7 @@ function EditUserModal({ user, roles, onClose, onDone }: { user: User | null; ro
 
 // ---------------- Reset password ----------------
 function ResetPasswordModal({ user, onClose, onDone }: { user: User | null; onClose: () => void; onDone: () => void }) {
+  const s = useThemedStyles(useS);
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -516,7 +521,7 @@ function ResetPasswordModal({ user, onClose, onDone }: { user: User | null; onCl
   );
 }
 
-const s = StyleSheet.create({
+const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
