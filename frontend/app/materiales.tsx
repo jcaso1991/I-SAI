@@ -16,25 +16,25 @@ import { useThemedStyles, useTheme } from "../src/theme";
 import { ios } from "../src/ui/iosTheme";
 
 const STATUS_COLORS: Record<string, string> = {
-  pendiente: "#F59E0B",
-  planificado: "#06B6D4",
-  a_facturar: "#3B82F6",
-  facturado: "#10B981",
-  terminado: "#8B5CF6",
-  bloqueado: "#F97316",
-  anulado: "#64748B",
-  en_curso: "#06B6D4",
-  completado: "#22C55E",
-  cancelado: "#DC2626",
+  pendiente: COLORS.pendingText,
+  planificado: COLORS.pillBlueText,
+  a_facturar: COLORS.primary,
+  facturado: COLORS.syncedText,
+  terminado: COLORS.pillPurpleText,
+  bloqueado: COLORS.pillOrangeText,
+  anulado: COLORS.textSecondary,
+  en_curso: COLORS.pillBlueText,
+  completado: COLORS.syncedText,
+  cancelado: COLORS.errorText,
 };
 
 const STATUS_BADGES: Record<string, { bg: string; fg: string; label: string }> = {
-  a_facturar: { bg: "rgba(59,130,246,0.15)", fg: "#3B82F6", label: "Facturar" },
-  planificado: { bg: "rgba(6,182,212,0.15)", fg: "#06B6D4", label: "Planif." },
-  facturado: { bg: "rgba(16,185,129,0.15)", fg: "#10B981", label: "Facturado" },
-  terminado: { bg: "rgba(139,92,246,0.15)", fg: "#8B5CF6", label: "Terminado" },
-  bloqueado: { bg: "rgba(249,115,22,0.15)", fg: "#F97316", label: "Bloqueado" },
-  anulado: { bg: "rgba(100,116,139,0.15)", fg: "#64748B", label: "Anulado" },
+  a_facturar: { bg: COLORS.pillBlueBg, fg: COLORS.primary, label: "Facturar" },
+  planificado: { bg: COLORS.pillBlueBg, fg: COLORS.pillBlueText, label: "Planif." },
+  facturado: { bg: COLORS.syncedBg, fg: COLORS.syncedText, label: "Facturado" },
+  terminado: { bg: COLORS.pillPurpleBg, fg: COLORS.pillPurpleText, label: "Terminado" },
+  bloqueado: { bg: COLORS.pillOrangeBg, fg: COLORS.pillOrangeText, label: "Bloqueado" },
+  anulado: { bg: COLORS.statusAnuladoBg, fg: COLORS.textSecondary, label: "Anulado" },
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -165,7 +165,7 @@ export default function Materiales() {
   const renderItem = ({ item }: any) => {
     const pending = item.sync_status === "pending";
     const projectStatus = item.project_status || "pendiente";
-    const statusColor = STATUS_COLORS[projectStatus] || "#F59E0B";
+    const statusColor = STATUS_COLORS[projectStatus] || COLORS.pendingText;
     const st = esEditorCompleto && item.project_status && item.project_status !== "pendiente" ? STATUS_BADGES[item.project_status] : null;
     const horasPrev = parseFloat(item.horas_prev) || 0;
     const horasImp = parseFloat(item.horas_imputadas) || 0;
@@ -195,7 +195,7 @@ export default function Materiales() {
             </View>
             {item.ubicacion ? (
               <View style={s.cardAddressRow}>
-                <Ionicons name="location-outline" size={10} color="#64748B" />
+                <Ionicons name="location-outline" size={10} color={COLORS.textSecondary} />
                 <Text style={s.cardAddress} numberOfLines={1}>{item.ubicacion}</Text>
               </View>
             ) : null}
@@ -217,14 +217,14 @@ export default function Materiales() {
                   <Text style={[s.cardBadgeText, { color: st.fg }]}>{st.label}</Text>
                 </View>
               )}
-              <View style={[s.cardBadge, { backgroundColor: pending ? "rgba(245,158,11,0.15)" : "rgba(16,185,129,0.15)" }]}>
-                <Text style={[s.cardBadgeText, { color: pending ? "#F59E0B" : "#10B981" }]}>
+              <View style={[s.cardBadge, { backgroundColor: pending ? COLORS.pendingBg : COLORS.syncedBg }]}>
+                <Text style={[s.cardBadgeText, { color: pending ? COLORS.pendingText : COLORS.syncedText }]}>
                   {pending ? "PEND" : "SINC"}
                 </Text>
               </View>
             </View>
             <TouchableOpacity style={s.cardMoreBtn}>
-              <Ionicons name="ellipsis-horizontal" size={16} color="#64748B" />
+              <Ionicons name="ellipsis-horizontal" size={16} color={COLORS.textSecondary} />
             </TouchableOpacity>
           </View>
         </View>
@@ -248,8 +248,8 @@ export default function Materiales() {
             value={yearFilter}
             onChange={(e: any) => setYearFilter(e.target.value)}
             style={{
-              width: "100%", fontSize: 12, fontWeight: "600", color: "#F1F5F9",
-              backgroundColor: "rgba(255,255,255,0.03)", borderWidth: 1, borderColor: "rgba(255,255,255,0.06)",
+              width: "100%", fontSize: 12, fontWeight: "600", color: COLORS.text,
+              backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
               borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, marginBottom: 4,
               outline: "none", fontFamily: "inherit",
             } as any}
@@ -268,11 +268,11 @@ export default function Materiales() {
               setYearFilter(years[(idx + 1) % years.length]);
             }}
           >
-            <Ionicons name="calendar-outline" size={14} color="#3B82F6" />
-            <Text style={{ flex: 1, color: "#F1F5F9", fontSize: 13, fontWeight: "600" }}>
+            <Ionicons name="calendar-outline" size={14} color={COLORS.primary} />
+            <Text style={{ flex: 1, color: COLORS.text, fontSize: 13, fontWeight: "600" }}>
               {yearFilter === "todos" ? "Todos los años" : yearFilter}
             </Text>
-            <Ionicons name="chevron-down" size={12} color="#64748B" />
+            <Ionicons name="chevron-down" size={12} color={COLORS.textSecondary} />
           </TouchableOpacity>
         )}
 
@@ -282,13 +282,13 @@ export default function Materiales() {
           activeOpacity={0.7}
         >
           <View style={s.totalKpiHeader}>
-            <Ionicons name="layers-outline" size={14} color="#3B82F6" />
+            <Ionicons name="layers-outline" size={14} color={COLORS.primary} />
             <Text style={s.totalKpiLabel}>TOTAL</Text>
           </View>
           <Text style={s.totalKpiNumber}>{totalProyectos}</Text>
           <View style={s.totalKpiPills}>
             {Object.entries(totalByStatus).sort(([a], [b]) => a.localeCompare(b)).map(([st, count]) => {
-              const color = STATUS_COLORS[st] || "#64748B";
+              const color = STATUS_COLORS[st] || COLORS.textSecondary;
               const active = statusFilterIds.includes(st);
               return (
                 <TouchableOpacity
@@ -319,7 +319,7 @@ export default function Materiales() {
               activeOpacity={0.7}
             >
               <View style={[s.managerDot, { backgroundColor: mgr.color }]} />
-              <Text style={[s.managerName, managerFilterIds.includes(mgr.id) && { color: "#F1F5F9", fontWeight: "700" }]} numberOfLines={1}>
+              <Text style={[s.managerName, managerFilterIds.includes(mgr.id) && { color: COLORS.text, fontWeight: "700" }]} numberOfLines={1}>
                 {mgr.name.split(" ")[0]}
               </Text>
               <Text style={s.managerTotal}>{mgr.total}</Text>
@@ -342,14 +342,14 @@ export default function Materiales() {
     return (
       <View style={s.mobileStats}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
-          <Text style={{ fontSize: 12, fontWeight: "600", color: "#64748B" }}>Año:</Text>
+          <Text style={{ fontSize: 12, fontWeight: "600", color: COLORS.textSecondary }}>Año:</Text>
           {Platform.OS === "web" ? (
             <select
               value={yearFilter}
               onChange={(e: any) => setYearFilter(e.target.value)}
               style={{
-                fontSize: 12, fontWeight: "600", color: "#F1F5F9",
-                backgroundColor: "rgba(255,255,255,0.03)", borderWidth: 1, borderColor: "rgba(255,255,255,0.06)",
+                fontSize: 12, fontWeight: "600", color: COLORS.text,
+                backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
                 borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10,
                 outline: "none",
               } as any}
@@ -362,8 +362,8 @@ export default function Materiales() {
           ) : (
             <TouchableOpacity
               style={{
-                flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.03)",
-                borderWidth: 1, borderColor: "rgba(255,255,255,0.06)", borderRadius: 10,
+                flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surface,
+                borderWidth: 1, borderColor: COLORS.border, borderRadius: 10,
                 paddingVertical: 6, paddingHorizontal: 10, gap: 6,
               }}
               onPress={() => {
@@ -372,7 +372,7 @@ export default function Materiales() {
                 setYearFilter(years[(idx + 1) % years.length]);
               }}
             >
-              <Text style={{ fontSize: 12, fontWeight: "600", color: "#F1F5F9" }}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: COLORS.text }}>
                 {yearFilter === "todos" ? "Todos" : yearFilter}
               </Text>
             </TouchableOpacity>
@@ -385,13 +385,13 @@ export default function Materiales() {
           activeOpacity={0.7}
         >
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 }}>
-            <Ionicons name="layers-outline" size={14} color="#3B82F6" />
-            <Text style={{ fontSize: 11, fontWeight: "700", color: "#3B82F6", letterSpacing: 1, textTransform: "uppercase", flex: 1 }}>TOTAL</Text>
-            <Text style={{ fontSize: 20, fontWeight: "800", color: "#F1F5F9" }}>{totalProyectos}</Text>
+            <Ionicons name="layers-outline" size={14} color={COLORS.primary} />
+            <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.primary, letterSpacing: 1, textTransform: "uppercase", flex: 1 }}>TOTAL</Text>
+            <Text style={{ fontSize: 20, fontWeight: "800", color: COLORS.text }}>{totalProyectos}</Text>
           </View>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
             {Object.entries(totalByStatus).sort(([a], [b]) => a.localeCompare(b)).map(([st, count]) => {
-              const color = STATUS_COLORS[st] || "#64748B";
+              const color = STATUS_COLORS[st] || COLORS.textSecondary;
               const active = statusFilterIds.includes(st);
               return (
                 <TouchableOpacity
@@ -411,16 +411,16 @@ export default function Materiales() {
         </TouchableOpacity>
 
         <View style={{ marginTop: 8 }}>
-          <Text style={{ fontSize: 10, fontWeight: "700", color: "#64748B", letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>RESPONSABLES</Text>
+          <Text style={{ fontSize: 10, fontWeight: "700", color: COLORS.textSecondary, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>RESPONSABLES</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={{ flexDirection: "row", gap: 8, paddingRight: 8 }}>
               {managerStats.map((mgr) => (
                 <TouchableOpacity
                   key={mgr.id}
                   style={{
-                    backgroundColor: managerFilterIds.includes(mgr.id) ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.03)",
+                    backgroundColor: managerFilterIds.includes(mgr.id) ? COLORS.border : COLORS.surface,
                     borderRadius: 14, borderWidth: 1,
-                    borderColor: managerFilterIds.includes(mgr.id) ? mgr.color : "rgba(255,255,255,0.06)",
+                    borderColor: managerFilterIds.includes(mgr.id) ? mgr.color : COLORS.border,
                     padding: 12, minWidth: 150,
                   }}
                   onPress={() => {
@@ -431,10 +431,10 @@ export default function Materiales() {
                 >
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 }}>
                     <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: mgr.color }} />
-                    <Text style={{ fontSize: 13, fontWeight: "700", color: "#F1F5F9" }} numberOfLines={1}>
+                    <Text style={{ fontSize: 13, fontWeight: "700", color: COLORS.text }} numberOfLines={1}>
                       {mgr.name.split(" ")[0]}
                     </Text>
-                    <Text style={{ fontSize: 11, color: "#64748B", fontWeight: "600" }}>{mgr.total}</Text>
+                    <Text style={{ fontSize: 11, color: COLORS.textSecondary, fontWeight: "600" }}>{mgr.total}</Text>
                   </View>
                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
                     {Object.entries(mgr.by_status as Record<string, { count: number; label: string; color: string }>).map(([st, info]) => (
@@ -487,13 +487,13 @@ export default function Materiales() {
               </View>
               <View style={s.headerRight}>
                 <TouchableOpacity style={s.headerIcon}>
-                  <Ionicons name="search-outline" size={18} color="#64748B" />
+                  <Ionicons name="search-outline" size={18} color={COLORS.textSecondary} />
                 </TouchableOpacity>
                 <TouchableOpacity style={s.headerIcon}>
-                  <Ionicons name="notifications-outline" size={18} color="#64748B" />
+                  <Ionicons name="notifications-outline" size={18} color={COLORS.textSecondary} />
                 </TouchableOpacity>
                 <TouchableOpacity style={s.headerIcon}>
-                  <Ionicons name="settings-outline" size={18} color="#64748B" />
+                  <Ionicons name="settings-outline" size={18} color={COLORS.textSecondary} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -503,8 +503,8 @@ export default function Materiales() {
             {stats && (
               <View style={s.kpiStrip}>
                 <View style={s.kpiCard}>
-                  <View style={[s.kpiIconWrap, { backgroundColor: "rgba(59,130,246,0.15)" }]}>
-                    <Ionicons name="folder-outline" size={14} color="#3B82F6" />
+                  <View style={[s.kpiIconWrap, { backgroundColor: COLORS.pillBlueBg }]}>
+                    <Ionicons name="folder-outline" size={14} color={COLORS.primary} />
                   </View>
                   <Text style={s.kpiNumber}>{stats.total}</Text>
                   <Text style={s.kpiLabel}>Total</Text>
@@ -518,15 +518,15 @@ export default function Materiales() {
                   testID="stat-pending"
                   activeOpacity={0.75}
                 >
-                  <View style={[s.kpiIconWrap, { backgroundColor: "rgba(245,158,11,0.15)" }]}>
-                    <Ionicons name="time-outline" size={14} color="#F59E0B" />
+                  <View style={[s.kpiIconWrap, { backgroundColor: COLORS.pendingBg }]}>
+                    <Ionicons name="time-outline" size={14} color={COLORS.pendingText} />
                   </View>
                   <Text style={s.kpiNumber}>{stats.pending}</Text>
                   <Text style={s.kpiLabel}>Pendientes</Text>
                 </TouchableOpacity>
                 <View style={s.kpiCard}>
-                  <View style={[s.kpiIconWrap, { backgroundColor: "rgba(16,185,129,0.15)" }]}>
-                    <Ionicons name="checkmark-circle-outline" size={14} color="#10B981" />
+                  <View style={[s.kpiIconWrap, { backgroundColor: COLORS.syncedBg }]}>
+                    <Ionicons name="checkmark-circle-outline" size={14} color={COLORS.syncedText} />
                   </View>
                   <Text style={s.kpiNumber}>{stats.synced}</Text>
                   <Text style={s.kpiLabel}>Sincronizados</Text>
@@ -536,18 +536,18 @@ export default function Materiales() {
 
             <View style={s.searchRow}>
               <View style={s.searchBox}>
-                <Ionicons name="search-outline" size={16} color="#64748B" />
+                <Ionicons name="search-outline" size={16} color={COLORS.textSecondary} />
                 <TextInput
                   testID="input-search"
                   style={s.searchInput}
                   value={q}
                   onChangeText={setQ}
                   placeholder="Buscar cliente, proyecto, ubicación..."
-                  placeholderTextColor="#475569"
+                  placeholderTextColor={COLORS.textDisabled}
                 />
                 {q.length > 0 && (
                   <TouchableOpacity onPress={() => setQ("")}>
-                    <Ionicons name="close-circle" size={16} color="#64748B" />
+                    <Ionicons name="close-circle" size={16} color={COLORS.textSecondary} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -556,14 +556,14 @@ export default function Materiales() {
                 style={[s.actionChip, pendingOnly && s.actionChipActive]}
                 onPress={() => setPendingOnly(!pendingOnly)}
               >
-                <Ionicons name="time-outline" size={14} color={pendingOnly ? "#fff" : "#64748B"} />
+                <Ionicons name="time-outline" size={14} color={pendingOnly ? "#fff" : COLORS.textSecondary} />
               </TouchableOpacity>
               <TouchableOpacity
                 testID="btn-filter-manager"
                 style={[s.actionChip, managerFilterIds.length > 0 && s.actionChipActive]}
                 onPress={() => { setShowManagerFilter((v) => !v); setShowStatusFilter(false); }}
               >
-                <Ionicons name="people-outline" size={14} color={managerFilterIds.length > 0 ? "#fff" : "#64748B"} />
+                <Ionicons name="people-outline" size={14} color={managerFilterIds.length > 0 ? "#fff" : COLORS.textSecondary} />
               </TouchableOpacity>
               {esEditorCompleto && (
                 <TouchableOpacity
@@ -571,36 +571,36 @@ export default function Materiales() {
                   style={[s.actionChip, statusFilterIds.length > 0 && s.actionChipActive]}
                   onPress={() => { setShowStatusFilter((v) => !v); setShowManagerFilter(false); }}
                 >
-                  <Ionicons name="flag-outline" size={14} color={statusFilterIds.length > 0 ? "#fff" : "#64748B"} />
+                  <Ionicons name="flag-outline" size={14} color={statusFilterIds.length > 0 ? "#fff" : COLORS.textSecondary} />
                 </TouchableOpacity>
               )}
               <TouchableOpacity
-                style={[s.actionChip, { borderColor: "rgba(16,185,129,0.25)" }]}
+                style={[s.actionChip, { borderColor: COLORS.syncedText }]}
                 onPress={async () => {
                   try { await api.exportProjectsExcel(); }
                   catch (e: any) { Alert.alert("Error", "No se pudo exportar"); }
                 }}
               >
-                <Ionicons name="download-outline" size={13} color="#10B981" />
+                <Ionicons name="download-outline" size={13} color={COLORS.syncedText} />
               </TouchableOpacity>
               <TouchableOpacity
-                style={[s.actionChip, { borderColor: "rgba(59,130,246,0.25)" }]}
+                style={[s.actionChip, { borderColor: COLORS.primary }]}
                 onPress={() => router.push("/mapa")}
               >
-                <Ionicons name="map-outline" size={13} color="#3B82F6" />
+                <Ionicons name="map-outline" size={13} color={COLORS.primary} />
               </TouchableOpacity>
               <TouchableOpacity
-                style={[s.actionChip, { borderColor: "rgba(245,158,11,0.25)" }]}
+                style={[s.actionChip, { borderColor: COLORS.pendingText }]}
                 onPress={() => router.push("/archivos")}
               >
-                <Ionicons name="folder-open-outline" size={13} color="#F59E0B" />
+                <Ionicons name="folder-open-outline" size={13} color={COLORS.pendingText} />
               </TouchableOpacity>
               {(managerFilterIds.length > 0 || statusFilterIds.length > 0) && (
                 <TouchableOpacity
-                  style={[s.actionChip, { borderColor: "rgba(239,68,68,0.25)" }]}
+                  style={[s.actionChip, { borderColor: COLORS.errorText }]}
                   onPress={() => { clearManagerFilter(); setStatusFilterIds([]); }}
                 >
-                  <Ionicons name="close-outline" size={14} color="#EF4444" />
+                  <Ionicons name="close-outline" size={14} color={COLORS.errorText} />
                 </TouchableOpacity>
               )}
             </View>
@@ -622,7 +622,7 @@ export default function Materiales() {
                         style={[s.filterChip, on && s.filterChipActive]}
                         onPress={() => toggleManagerFilter(mgr.id)}
                       >
-                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: (mgr as any).color || "#3B82F6" }} />
+                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: (mgr as any).color || COLORS.primary }} />
                         <Text style={[s.filterChipText, on && s.filterChipTextActive]} numberOfLines={1}>{mgr.name || mgr.email}</Text>
                       </TouchableOpacity>
                     );
@@ -654,12 +654,12 @@ export default function Materiales() {
 
             {loading ? (
               <View style={s.centerBox}>
-                <ActivityIndicator color="#3B82F6" size="large" />
+                <ActivityIndicator color={COLORS.primary} size="large" />
               </View>
             ) : items.length === 0 ? (
               <View style={s.centerBox}>
-                <Ionicons name="cube-outline" size={48} color="#475569" />
-                <Text style={{ color: "#64748B", fontSize: 15, fontWeight: "500", marginTop: 8 }}>Sin resultados</Text>
+                <Ionicons name="cube-outline" size={48} color={COLORS.textDisabled} />
+                <Text style={{ color: COLORS.textSecondary, fontSize: 15, fontWeight: "500", marginTop: 8 }}>Sin resultados</Text>
               </View>
             ) : (
               <ScrollView
@@ -670,7 +670,7 @@ export default function Materiales() {
                   <RefreshControl
                     refreshing={refreshing}
                     onRefresh={() => { setRefreshing(true); load(); }}
-                    tintColor="#3B82F6"
+                    tintColor={COLORS.primary}
                   />
                 }
               >
@@ -692,7 +692,7 @@ const useS = () =>
   StyleSheet.create({
     root: {
       flex: 1,
-      backgroundColor: "#0A0E1A",
+      backgroundColor: COLORS.bg,
     },
     container: {
       flex: 1,
@@ -701,9 +701,9 @@ const useS = () =>
     leftPanel: {
       flex: 0.2,
       maxWidth: 280,
-      backgroundColor: "rgba(255,255,255,0.02)",
+      backgroundColor: COLORS.surface,
       borderRightWidth: 1,
-      borderRightColor: "rgba(255,255,255,0.06)",
+      borderRightColor: COLORS.border,
     },
     leftPanelContent: {
       padding: 16,
@@ -713,10 +713,10 @@ const useS = () =>
     teamSelector: {
       flexDirection: "row",
       alignItems: "center",
-      backgroundColor: "rgba(255,255,255,0.03)",
+      backgroundColor: COLORS.surface,
       borderRadius: 16,
       borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.06)",
+      borderColor: COLORS.border,
       paddingVertical: 12,
       paddingHorizontal: 14,
       gap: 10,
@@ -728,18 +728,18 @@ const useS = () =>
       flex: 1,
     },
     teamSelectorText: {
-      color: "#F1F5F9",
+      color: COLORS.text,
       fontSize: 13,
       fontWeight: "600",
       flex: 1,
     },
     totalKpiCard: {
-      backgroundColor: "rgba(255,255,255,0.03)",
+      backgroundColor: COLORS.surface,
       borderRadius: 20,
       borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.06)",
+      borderColor: COLORS.border,
       padding: 16,
-      shadowColor: "#3B82F6",
+      shadowColor: COLORS.primary,
       shadowOffset: { width: 0, height: 0 },
       shadowOpacity: 0.15,
       shadowRadius: 20,
@@ -754,14 +754,14 @@ const useS = () =>
     totalKpiLabel: {
       fontSize: 11,
       fontWeight: "700",
-      color: "#3B82F6",
+      color: COLORS.primary,
       letterSpacing: 1,
       textTransform: "uppercase",
     },
     totalKpiNumber: {
       fontSize: 32,
       fontWeight: "800",
-      color: "#F1F5F9",
+      color: COLORS.text,
       marginBottom: 12,
     },
     totalKpiPills: {
@@ -784,7 +784,7 @@ const useS = () =>
     managerSectionTitle: {
       fontSize: 10,
       fontWeight: "700",
-      color: "#64748B",
+      color: COLORS.textSecondary,
       letterSpacing: 1,
       textTransform: "uppercase",
       marginBottom: 6,
@@ -798,7 +798,7 @@ const useS = () =>
       gap: 10,
     },
     managerRowActive: {
-      backgroundColor: "rgba(255,255,255,0.05)",
+      backgroundColor: COLORS.surface,
     },
     managerDot: {
       width: 8,
@@ -809,20 +809,20 @@ const useS = () =>
       flex: 1,
       fontSize: 13,
       fontWeight: "600",
-      color: "#94A3B8",
+      color: COLORS.textSecondary,
     },
     managerTotal: {
       fontSize: 12,
       fontWeight: "700",
-      color: "#64748B",
+      color: COLORS.textSecondary,
     },
     newProjectBtn: {
-      backgroundColor: "#3B82F6",
+      backgroundColor: COLORS.primary,
       borderRadius: 16,
       paddingVertical: 14,
       alignItems: "center",
       marginTop: 4,
-      shadowColor: "#3B82F6",
+      shadowColor: COLORS.primary,
       shadowOffset: { width: 0, height: 0 },
       shadowOpacity: 0.3,
       shadowRadius: 20,
@@ -850,11 +850,11 @@ const useS = () =>
     headerTitle: {
       fontSize: 28,
       fontWeight: "800",
-      color: "#F1F5F9",
+      color: COLORS.text,
     },
     headerSubtitle: {
       fontSize: 13,
-      color: "#64748B",
+      color: COLORS.textSecondary,
       fontWeight: "500",
       marginTop: 2,
     },
@@ -866,9 +866,9 @@ const useS = () =>
       width: 38,
       height: 38,
       borderRadius: 12,
-      backgroundColor: "rgba(255,255,255,0.03)",
+      backgroundColor: COLORS.surface,
       borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.06)",
+      borderColor: COLORS.border,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -878,14 +878,14 @@ const useS = () =>
       gap: 12,
     },
     totalKpiCardMobile: {
-      backgroundColor: "rgba(255,255,255,0.03)",
+      backgroundColor: COLORS.surface,
       borderRadius: 16,
       borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.06)",
+      borderColor: COLORS.border,
       padding: 14,
     },
     newProjectBtnMobile: {
-      backgroundColor: "#3B82F6",
+      backgroundColor: COLORS.primary,
       borderRadius: 14,
       paddingVertical: 12,
       alignItems: "center",
@@ -900,17 +900,17 @@ const useS = () =>
     },
     kpiCard: {
       flex: 1,
-      backgroundColor: "rgba(255,255,255,0.03)",
+      backgroundColor: COLORS.surface,
       borderRadius: 16,
       borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.06)",
+      borderColor: COLORS.border,
       padding: 14,
       gap: 6,
       alignItems: "flex-start",
     },
     kpiCardActive: {
-      borderColor: "#F59E0B",
-      backgroundColor: "rgba(245,158,11,0.08)",
+      borderColor: COLORS.pendingText,
+      backgroundColor: COLORS.pendingBg,
     },
     kpiIconWrap: {
       width: 28,
@@ -922,12 +922,12 @@ const useS = () =>
     kpiNumber: {
       fontSize: 22,
       fontWeight: "800",
-      color: "#F1F5F9",
+      color: COLORS.text,
     },
     kpiLabel: {
       fontSize: 11,
       fontWeight: "600",
-      color: "#64748B",
+      color: COLORS.textSecondary,
       textTransform: "uppercase",
       letterSpacing: 0.5,
     },
@@ -943,32 +943,32 @@ const useS = () =>
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
-      backgroundColor: "rgba(255,255,255,0.03)",
+      backgroundColor: COLORS.surface,
       borderRadius: 14,
       borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.06)",
+      borderColor: COLORS.border,
       paddingHorizontal: 14,
       height: 40,
     },
     searchInput: {
       flex: 1,
       fontSize: 14,
-      color: "#F1F5F9",
+      color: COLORS.text,
       outlineStyle: "none" as any,
     },
     actionChip: {
       height: 36,
       width: 36,
       borderRadius: 10,
-      backgroundColor: "rgba(255,255,255,0.03)",
+      backgroundColor: COLORS.surface,
       borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.06)",
+      borderColor: COLORS.border,
       alignItems: "center",
       justifyContent: "center",
     },
     actionChipActive: {
-      backgroundColor: "#3B82F6",
-      borderColor: "#3B82F6",
+      backgroundColor: COLORS.primary,
+      borderColor: COLORS.primary,
     },
     filterChipsRow: {
       paddingHorizontal: 24,
@@ -986,21 +986,21 @@ const useS = () =>
       paddingHorizontal: 12,
       paddingVertical: 6,
       borderRadius: 10,
-      backgroundColor: "rgba(255,255,255,0.03)",
+      backgroundColor: COLORS.surface,
       borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.06)",
+      borderColor: COLORS.border,
     },
     filterChipActive: {
-      backgroundColor: "rgba(59,130,246,0.15)",
-      borderColor: "#3B82F6",
+      backgroundColor: COLORS.pillBlueBg,
+      borderColor: COLORS.primary,
     },
     filterChipText: {
       fontSize: 12,
       fontWeight: "600",
-      color: "#94A3B8",
+      color: COLORS.textSecondary,
     },
     filterChipTextActive: {
-      color: "#F1F5F9",
+      color: COLORS.text,
       fontWeight: "800",
     },
     centerBox: {
@@ -1019,10 +1019,10 @@ const useS = () =>
     },
     card: {
       flexDirection: "row",
-      backgroundColor: "rgba(255,255,255,0.03)",
+      backgroundColor: COLORS.surface,
       borderRadius: 18,
       borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.06)",
+      borderColor: COLORS.border,
       overflow: "hidden",
     },
     cardBar: {
@@ -1039,14 +1039,14 @@ const useS = () =>
       width: 36,
       height: 36,
       borderRadius: 18,
-      backgroundColor: "rgba(59,130,246,0.15)",
+      backgroundColor: COLORS.pillBlueBg,
       alignItems: "center",
       justifyContent: "center",
     },
     cardAvatarText: {
       fontSize: 12,
       fontWeight: "700",
-      color: "#3B82F6",
+      color: COLORS.primary,
     },
     cardInfo: {
       flex: 1,
@@ -1061,13 +1061,13 @@ const useS = () =>
       fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
       fontSize: 13,
       fontWeight: "700",
-      color: "#F1F5F9",
+      color: COLORS.text,
       letterSpacing: 0.3,
     },
     cardClient: {
       fontSize: 13,
       fontWeight: "600",
-      color: "#94A3B8",
+      color: COLORS.textSecondary,
       flexShrink: 1,
     },
     cardAddressRow: {
@@ -1077,7 +1077,7 @@ const useS = () =>
     },
     cardAddress: {
       fontSize: 11,
-      color: "#64748B",
+      color: COLORS.textSecondary,
       fontWeight: "500",
     },
     cardMetaRow: {
@@ -1087,14 +1087,14 @@ const useS = () =>
       flexWrap: "wrap",
     },
     cardMetaTag: {
-      backgroundColor: "rgba(255,255,255,0.04)",
+      backgroundColor: COLORS.surface,
       borderRadius: 6,
       paddingHorizontal: 8,
       paddingVertical: 2,
     },
     cardMetaText: {
       fontSize: 10,
-      color: "#94A3B8",
+      color: COLORS.textSecondary,
       fontWeight: "600",
     },
     cardRight: {

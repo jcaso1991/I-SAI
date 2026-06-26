@@ -124,6 +124,9 @@ export default function ResponsiveLayout({
         <Text style={s.sectionLabel}>Navegación</Text>
         <SideLink active={active === "home"} label="Inicio" icon="home" to="/home" accent={ios.colors.brand} />
         <SideLink active={active === "dashboard"} label="Dashboard" icon="stats-chart" to="/dashboard" accent={ios.colors.brand} />
+        {has("dashboard.view") && (
+          <SideLink active={false} label="Ventas y Beneficios" icon="cash" to="/dashboard/ventas-beneficios" accent={ios.colors.orange} />
+        )}
 
         {has("calendario.view") && (
           <SideLink active={active === "calendario"} label="Calendario" icon="calendar" to="/calendario" accent={ios.colors.green} />
@@ -162,16 +165,10 @@ export default function ResponsiveLayout({
           <>
             <Text style={s.sectionLabel}>Administración</Text>
             {canOnedrive && (
-              <SideLink active={active === "ajustes"} label="OneDrive" icon="cloud-outline" to="/admin" />
+              <SideLink active={active === "ajustes"} label="Ajustes" icon="cloud-outline" to="/admin" />
             )}
             {!canOnedrive && (
               <SideLink active={active === "ajustes"} label="Ajustes" icon="settings-outline" to="/admin" />
-            )}
-            {canManageUsers && (
-              <SideLink active={false} label="Usuarios" icon="people-outline" to="/users" />
-            )}
-            {canManageRoles && (
-              <SideLink active={false} label="Roles y permisos" icon="shield-outline" to="/roles" />
             )}
             <SideLink active={active === "solicitudes"} label="Solicitudes presupuesto" icon="cart-outline" to="/admin/solicitudes" />
           </>

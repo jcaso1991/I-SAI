@@ -78,6 +78,14 @@ export default function MaterialDetail() {
   const [showManagerPicker, setShowManagerPicker] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [impVentaMat, setImpVentaMat] = useState("");
+  const [impVentaMO, setImpVentaMO] = useState("");
+  const [costePrevMat, setCostePrevMat] = useState("");
+  const [costePrevMO, setCostePrevMO] = useState("");
+  const [costeRealMat, setCosteRealMat] = useState("");
+  const [costeRealMO, setCosteRealMO] = useState("");
+  const [beneficioInicial, setBeneficioInicial] = useState("");
+  const [beneficioReal, setBeneficioReal] = useState("");
 
   const s = useThemedStyles(useS);
   const { has } = usePermissions();
@@ -133,6 +141,14 @@ export default function MaterialDetail() {
         setComentarios(data.comentarios || "");
         setManagerId(data.manager_id || "");
         setProjectStatus(data.project_status || "pendiente");
+        setImpVentaMat(data.importe_venta_prev_materiales != null ? String(data.importe_venta_prev_materiales) : "");
+        setImpVentaMO(data.importe_venta_prev_mano_de_obra != null ? String(data.importe_venta_prev_mano_de_obra) : "");
+        setCostePrevMat(data.coste_prev_materiales != null ? String(data.coste_prev_materiales) : "");
+        setCostePrevMO(data.coste_prev_mano_de_obra != null ? String(data.coste_prev_mano_de_obra) : "");
+        setCosteRealMat(data.coste_real_materiales != null ? String(data.coste_real_materiales) : "");
+        setCosteRealMO(data.coste_real_mano_de_obra != null ? String(data.coste_real_mano_de_obra) : "");
+        setBeneficioInicial(data.beneficio_inicial != null ? String(data.beneficio_inicial) : "");
+        setBeneficioReal(data.beneficio_real != null ? String(data.beneficio_real) : "");
         setTechs(tlist);
         setManagers(mlist);
         // Load linked events
@@ -172,6 +188,14 @@ export default function MaterialDetail() {
         comentarios: comentarios || null,
         manager_id: managerId || null,
         project_status: projectStatus || null,
+        importe_venta_prev_materiales: impVentaMat ? parseFloat(impVentaMat) : null,
+        importe_venta_prev_mano_de_obra: impVentaMO ? parseFloat(impVentaMO) : null,
+        coste_prev_materiales: costePrevMat ? parseFloat(costePrevMat) : null,
+        coste_prev_mano_de_obra: costePrevMO ? parseFloat(costePrevMO) : null,
+        coste_real_materiales: costeRealMat ? parseFloat(costeRealMat) : null,
+        coste_real_mano_de_obra: costeRealMO ? parseFloat(costeRealMO) : null,
+        beneficio_inicial: beneficioInicial ? parseFloat(beneficioInicial) : null,
+        beneficio_real: beneficioReal ? parseFloat(beneficioReal) : null,
       } : {
         entrega_recogida: entrega || "",
         total_parcial: tp || "",
@@ -242,6 +266,109 @@ export default function MaterialDetail() {
               value={m.horas_imputadas != null ? String(m.horas_imputadas) : "—"}
             />
             <ReadRow label="Comercial" value={m.comercial} />
+
+            <Text style={[s.fieldLabel, { marginTop: ios.spacing.lg }]}>Importe venta previsto</Text>
+            <View style={s.finRow}>
+              <View style={s.finCol}>
+                <Text style={s.finSubLabel}>Materiales</Text>
+                <TextInput
+                  style={s.finInput}
+                  value={impVentaMat}
+                  onChangeText={(v) => { if (puedeEditar) { setImpVentaMat(v); setDirty(true); } }}
+                  placeholder="0"
+                  placeholderTextColor={COLORS.textDisabled}
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={s.finCol}>
+                <Text style={s.finSubLabel}>Mano de obra</Text>
+                <TextInput
+                  style={s.finInput}
+                  value={impVentaMO}
+                  onChangeText={(v) => { if (puedeEditar) { setImpVentaMO(v); setDirty(true); } }}
+                  placeholder="0"
+                  placeholderTextColor={COLORS.textDisabled}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+
+            <Text style={s.fieldLabel}>Coste previsto</Text>
+            <View style={s.finRow}>
+              <View style={s.finCol}>
+                <Text style={s.finSubLabel}>Materiales</Text>
+                <TextInput
+                  style={s.finInput}
+                  value={costePrevMat}
+                  onChangeText={(v) => { if (puedeEditar) { setCostePrevMat(v); setDirty(true); } }}
+                  placeholder="0"
+                  placeholderTextColor={COLORS.textDisabled}
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={s.finCol}>
+                <Text style={s.finSubLabel}>Mano de obra</Text>
+                <TextInput
+                  style={s.finInput}
+                  value={costePrevMO}
+                  onChangeText={(v) => { if (puedeEditar) { setCostePrevMO(v); setDirty(true); } }}
+                  placeholder="0"
+                  placeholderTextColor={COLORS.textDisabled}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+
+            <Text style={s.fieldLabel}>Coste real</Text>
+            <View style={s.finRow}>
+              <View style={s.finCol}>
+                <Text style={s.finSubLabel}>Materiales</Text>
+                <TextInput
+                  style={s.finInput}
+                  value={costeRealMat}
+                  onChangeText={(v) => { if (puedeEditar) { setCosteRealMat(v); setDirty(true); } }}
+                  placeholder="0"
+                  placeholderTextColor={COLORS.textDisabled}
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={s.finCol}>
+                <Text style={s.finSubLabel}>Mano de obra</Text>
+                <TextInput
+                  style={s.finInput}
+                  value={costeRealMO}
+                  onChangeText={(v) => { if (puedeEditar) { setCosteRealMO(v); setDirty(true); } }}
+                  placeholder="0"
+                  placeholderTextColor={COLORS.textDisabled}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+
+            <View style={s.finRow}>
+              <View style={s.finCol}>
+                <Text style={s.fieldLabel}>% Beneficio inicial</Text>
+                <TextInput
+                  style={s.finInput}
+                  value={beneficioInicial}
+                  onChangeText={(v) => { if (puedeEditar) { setBeneficioInicial(v); setDirty(true); } }}
+                  placeholder="%"
+                  placeholderTextColor={COLORS.textDisabled}
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={s.finCol}>
+                <Text style={s.fieldLabel}>% Beneficio real</Text>
+                <TextInput
+                  style={s.finInput}
+                  value={beneficioReal}
+                  onChangeText={(v) => { if (puedeEditar) { setBeneficioReal(v); setDirty(true); } }}
+                  placeholder="%"
+                  placeholderTextColor={COLORS.textDisabled}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
           </View>
 
           <View style={s.section}>
@@ -895,4 +1022,19 @@ const useS = () => StyleSheet.create({
     backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
   },
   statusChipTxt: { fontSize: ios.font.caption.size, fontWeight: "700", color: COLORS.textSecondary },
+  finRow: {
+    flexDirection: "row", gap: ios.spacing.md,
+  },
+  finCol: {
+    flex: 1,
+  },
+  finSubLabel: {
+    fontSize: ios.font.caption.size, color: COLORS.textDisabled,
+    marginBottom: 4, marginTop: 4,
+  },
+  finInput: {
+    height: 44, backgroundColor: COLORS.bg,
+    borderWidth: 2, borderColor: COLORS.borderInput, borderRadius: ios.radius.md,
+    paddingHorizontal: ios.spacing.md, fontSize: ios.font.callout.size, color: COLORS.text,
+  },
 });

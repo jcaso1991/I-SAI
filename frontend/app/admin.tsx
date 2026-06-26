@@ -1,12 +1,12 @@
 import { useCallback, useState } from "react";
 import {
-  View, Text, TouchableOpacity, StyleSheet, ScrollView,
+  View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Alert, Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { api, COLORS } from "../src/api";
+import { api, COLORS, getToken } from "../src/api";
 import BottomNav from "../src/BottomNav";
 import ResponsiveLayout from "../src/ResponsiveLayout";
 import { useTheme, useThemedStyles } from "../src/theme";
@@ -19,13 +19,50 @@ export default function Admin() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
+  const [precios, setPrecios] = useState<any>({});
+  const [draftPrecios, setDraftPrecios] = useState<any>({});
+  const [preciosDirty, setPreciosDirty] = useState(false);
+  const [savingPrecios, setSavingPrecios] = useState(false);
   const s = useThemedStyles(useS);
+
+  const loadPrecios = async () => {
+    try {
+      const p = await api.getPrecios();
+      setPrecios(p || {});
+      setDraftPrecios(p || {});
+    } catch {}
+  };
+
+  const savePrecios = async () => {
+    setSavingPrecios(true);
+    try {
+      const payload: any = {};
+      for (const k of Object.keys(draftPrecios)) {
+        const v = draftPrecios[k];
+        payload[k] = v !== "" && v != null ? parseFloat(v) : null;
+      }
+      const updated = await api.updatePrecios(payload);
+      setPrecios(updated);
+      setDraftPrecios(updated || {});
+      setPreciosDirty(false);
+    } catch (e: any) {
+      Alert.alert("Error", e.message);
+    } finally {
+      setSavingPrecios(false);
+    }
+  };
+
+  const discardPrecios = () => {
+    setDraftPrecios({ ...precios });
+    setPreciosDirty(false);
+  };
 
   const load = async () => {
     try {
       const [st, me] = await Promise.all([api.onedriveStatus(), api.me()]);
       setStatus(st);
       setUser(me);
+      loadPrecios();
     } catch (e: any) {
       Alert.alert("Error", e.message);
     } finally {
@@ -190,6 +227,63 @@ export default function Admin() {
           </View>
         </View>
 
+        {/* Precios mano de obra técnico */}
+        <View style={s.card}>
+          <View style={s.cardHeader}>
+            <View style={[s.iconCircle, { backgroundColor: COLORS.syncedBg }]}>
+              <Ionicons name="cash" size={22} color={COLORS.syncedText} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.cardTitle}>Precio mano de obra técnico</Text>
+              <Text style={s.cardSub}>Define los precios por hora de cada tipo de servicio</Text>
+            </View>
+          </View>
+          {[
+            { field: "precio_obra", label: "Precio mano de obra técnico obras" },
+            { field: "precio_sat", label: "Precio mano de obra técnico SAT" },
+            { field: "precio_sat_remoto", label: "Precio mano de obra SAT remoto" },
+            { field: "precio_sat_desplazamiento", label: "Precio técnico SAT desplazamiento" },
+            { field: "precio_sat_guardia_desplazamiento", label: "Precio técnico SAT guardia desplazamiento" },
+            { field: "precio_guardia", label: "Precio técnico mano de obra guardia" },
+            { field: "precio_sat_guardia_remoto", label: "Precio técnico SAT guardia remoto" },
+          ].map((item) => (
+            <View key={item.field} style={{ flexDirection: "row", alignItems: "center", marginTop: 12, gap: 10 }}>
+              <Text style={[s.cardSub, { flex: 1 }]}>{item.label}</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <TextInput
+                  style={s.priceInput}
+                  value={draftPrecios[item.field] != null ? String(draftPrecios[item.field]) : ""}
+                  onChangeText={(v) => { setDraftPrecios((prev: any) => ({ ...prev, [item.field]: v })); setPreciosDirty(true); }}
+                  placeholder="0.00"
+                  placeholderTextColor={COLORS.textDisabled}
+                  keyboardType="numeric"
+                />
+                <Text style={s.cardSub}>€/h</Text>
+              </View>
+            </View>
+          ))}
+          {preciosDirty && (
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
+              <TouchableOpacity
+                style={[s.btnPrimary, { flex: 1 }]}
+                onPress={savePrecios}
+                disabled={savingPrecios}
+              >
+                {savingPrecios ? <ActivityIndicator color="#fff" /> : (
+                  <>
+                    <Ionicons name="save" size={18} color="#fff" />
+                    <Text style={s.btnPrimaryText}>GUARDAR</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.btnSecondary, { flex: 1 }]} onPress={discardPrecios}>
+                <Ionicons name="close-circle" size={18} color={COLORS.navy} />
+                <Text style={s.btnSecondaryText}>DESCARTAR</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
         {/* Presentación pública para clientes */}
         <View style={s.card} testID="portfolio-card">
           <View style={s.cardHeader}>
@@ -232,6 +326,33 @@ export default function Admin() {
           >
             <Ionicons name="eye-outline" size={20} color="#fff" />
             <Text style={s.btnPrimaryText}>VER INFO APP</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Descargar PDF de funcionalidades */}
+        <View style={s.card}>
+          <View style={s.cardHeader}>
+            <View style={[s.iconCircle, { backgroundColor: COLORS.pillBlueBg }]}>
+              <Ionicons name="document-text" size={22} color={COLORS.pillBlueText} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.cardTitle}>Documentación PDF</Text>
+              <Text style={s.cardSub}>
+                Descarga un PDF completo con todas las funcionalidades, módulos, permisos, flujos de trabajo y arquitectura de I-SAI.
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={[s.btnPrimary, { marginTop: 12 }]}
+            onPress={async () => {
+              const token = await getToken();
+              if (!token) { Alert.alert("Error", "No hay sesión activa"); return; }
+              const base = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/+$/, "");
+              window.open(`${base}/api/config/pdf-funcionalidades?token=${encodeURIComponent(token)}`, "_blank");
+            }}
+          >
+            <Ionicons name="download" size={20} color="#fff" />
+            <Text style={s.btnPrimaryText}>DESCARGAR PDF</Text>
           </TouchableOpacity>
         </View>
 
@@ -438,4 +559,10 @@ const useS = () =>
     flexDirection: "row", gap: 6,
   },
   btnGhostText: { color: COLORS.primary, fontWeight: "700", ...fontStyle("callout") },
+  priceInput: {
+    width: 80, height: 36, backgroundColor: COLORS.bg,
+    borderWidth: 2, borderColor: COLORS.borderInput, borderRadius: ios.radius.md,
+    paddingHorizontal: ios.spacing.sm, fontSize: ios.font.callout.size, color: COLORS.text,
+    textAlign: "right",
+  },
 });

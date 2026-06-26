@@ -216,6 +216,13 @@ function TodayRow({ dash, router }: { dash: any; router: any }) {
         <Text style={s.kpiValue}>{dash.today?.pending_budgets || 0}</Text>
         <Text style={s.kpiLabel}>Presup. pendientes</Text>
       </TouchableOpacity>
+      <TouchableOpacity style={s.kpiCard} onPress={() => router.push("/dashboard/ventas-beneficios")}>
+        <View style={[s.kpiIconCircle, { backgroundColor: COLORS.pillOrangeBg }]}>
+          <Ionicons name="cash-outline" size={20} color={COLORS.pillOrangeText} />
+        </View>
+        <Text style={s.kpiValue}>€</Text>
+        <Text style={s.kpiLabel}>Ventas y Beneficios</Text>
+      </TouchableOpacity>
     </View>
   );
 }

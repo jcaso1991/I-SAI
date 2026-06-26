@@ -3,6 +3,7 @@ from fastapi.responses import RedirectResponse, HTMLResponse, StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 import re
+import html
 import json
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
@@ -80,7 +81,7 @@ def _decrypt_onedrive_token(token_enc: str) -> str:
 
 # Microsoft user-authentication redirect URIs
 MS_AUTH_REDIRECT_URI = os.environ.get('MS_AUTH_REDIRECT_URI', 'http://localhost:8000/api/auth/microsoft/callback')
-FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:8081')
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:8082')
 CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '')
 TRUST_PROXY_HEADERS = os.environ.get('TRUST_PROXY_HEADERS', 'false').lower() == 'true'
 
@@ -170,6 +171,15 @@ class Material(BaseModel):
     direccion: Optional[str] = None
     # attachments (PDFs, presupuestos)
     attachments: Optional[List[dict]] = None
+    # financial
+    importe_venta_prev_materiales: Optional[float] = None
+    importe_venta_prev_mano_de_obra: Optional[float] = None
+    coste_prev_materiales: Optional[float] = None
+    coste_prev_mano_de_obra: Optional[float] = None
+    coste_real_materiales: Optional[float] = None
+    coste_real_mano_de_obra: Optional[float] = None
+    beneficio_inicial: Optional[float] = None
+    beneficio_real: Optional[float] = None
     # meta
     sync_status: str = "synced"  # synced | pending | error
     updated_at: Optional[str] = None
@@ -184,6 +194,14 @@ class MaterialUpdate(BaseModel):
     comentarios: Optional[str] = None
     manager_id: Optional[str] = None
     project_status: Optional[str] = None
+    importe_venta_prev_materiales: Optional[float] = None
+    importe_venta_prev_mano_de_obra: Optional[float] = None
+    coste_prev_materiales: Optional[float] = None
+    coste_prev_mano_de_obra: Optional[float] = None
+    coste_real_materiales: Optional[float] = None
+    coste_real_mano_de_obra: Optional[float] = None
+    beneficio_inicial: Optional[float] = None
+    beneficio_real: Optional[float] = None
 
 class OneDriveStatus(BaseModel):
     connected: bool
@@ -430,7 +448,9 @@ def _clean(v):
     if isinstance(v, datetime):
         return v.strftime("%Y-%m-%d")
     s = str(v).strip()
-    return s if s and s.lower() != "nan" else None
+    if not s or s.lower() == "nan":
+        return None
+    return html.escape(s, quote=True)
 
 def _safe_float(v) -> float:
     """Parse float safely, returning 0 on any error."""
@@ -3417,6 +3437,154 @@ async def dashboard(user: dict = Depends(current_user)):
         "geo_distribution": geo_distribution,
     }
 
+@api_router.get("/dashboard/financiero")
+async def dashboard_financiero(user: dict = Depends(current_user), year: str = Query(None)):
+    perms = await get_user_permissions(user)
+    if "dashboard.view" not in perms:
+        raise HTTPException(403, "No tienes permiso para ver el panel de datos")
+
+    proyectos = await db.materiales.find(
+        {"project_status": {"$nin": ["anulado"]}, "horas_imputadas": {"$gt": 0}},
+        {"_id": 0, "id": 1, "materiales": 1, "cliente": 1, "ubicacion": 1,
+         "project_status": 1, "gestor": 1, "manager_name": 1,
+         "importe_venta_prev_materiales": 1, "importe_venta_prev_mano_de_obra": 1,
+         "coste_prev_materiales": 1, "coste_prev_mano_de_obra": 1,
+         "coste_real_materiales": 1, "coste_real_mano_de_obra": 1,
+         "beneficio_inicial": 1, "beneficio_real": 1,
+         "horas_prev": 1, "horas_imputadas": 1,
+         "updated_at": 1}
+    ).to_list(10000)
+
+    def _project_year(p):
+        ua = p.get("updated_at")
+        if ua:
+            try:
+                return ua[:4]
+            except Exception:
+                pass
+        return "2025"
+
+    # Year-over-year comparison
+    yearly: dict[str, dict] = {}
+    for p in proyectos:
+        py = _project_year(p)
+        if py not in yearly:
+            yearly[py] = {"venta": 0.0, "coste_real": 0.0, "margen": 0.0, "count": 0}
+        venta_mat = p.get("importe_venta_prev_materiales") or 0
+        venta_mo = p.get("importe_venta_prev_mano_de_obra") or 0
+        coste_real_mat = p.get("coste_real_materiales") or 0
+        coste_real_mo = p.get("coste_real_mano_de_obra") or 0
+        venta_total = venta_mat + venta_mo
+        coste_real_total = coste_real_mat + coste_real_mo
+        if venta_total > 0 or coste_real_total > 0:
+            yearly[py]["venta"] += venta_total
+            yearly[py]["coste_real"] += coste_real_total
+            yearly[py]["margen"] += venta_total - coste_real_total
+            yearly[py]["count"] += 1
+
+    comparativa = []
+    for y in sorted(yearly.keys()):
+        ydata = yearly[y]
+        if ydata["count"] > 0:
+            comparativa.append({
+                "year": int(y),
+                "venta": round(ydata["venta"], 2),
+                "coste_real": round(ydata["coste_real"], 2),
+                "margen": round(ydata["margen"], 2),
+                "margen_pct": round(ydata["margen"] / ydata["venta"] * 100, 1) if ydata["venta"] > 0 else 0,
+                "proyectos": ydata["count"],
+            })
+
+    # Filter by year if requested
+    if year:
+        proyectos = [p for p in proyectos if _project_year(p) == year]
+
+    resumen = {
+        "total_venta_prevista": 0.0,
+        "total_coste_previsto": 0.0,
+        "total_coste_real": 0.0,
+        "total_margen_previsto": 0.0,
+        "total_margen_real": 0.0,
+        "total_proyectos": 0,
+        "proyectos_con_datos": 0,
+        "beneficio_medio_inicial": 0.0,
+        "beneficio_medio_real": 0.0,
+    }
+    detalle = []
+    perdidas = []
+
+    for p in proyectos:
+        venta_mat = p.get("importe_venta_prev_materiales") or 0
+        venta_mo = p.get("importe_venta_prev_mano_de_obra") or 0
+        coste_prev_mat = p.get("coste_prev_materiales") or 0
+        coste_prev_mo = p.get("coste_prev_mano_de_obra") or 0
+        coste_real_mat = p.get("coste_real_materiales") or 0
+        coste_real_mo = p.get("coste_real_mano_de_obra") or 0
+        ben_inicial = p.get("beneficio_inicial") or 0
+        ben_real = p.get("beneficio_real") or 0
+
+        venta_total = venta_mat + venta_mo
+        coste_prev_total = coste_prev_mat + coste_prev_mo
+        coste_real_total = coste_real_mat + coste_real_mo
+        margen_previsto = venta_total - coste_prev_total
+        margen_real = venta_total - coste_real_total
+        desviacion_euros = margen_real - margen_previsto
+
+        has_data = venta_total > 0 or coste_prev_total > 0 or coste_real_total > 0
+
+        if has_data:
+            resumen["total_venta_prevista"] += venta_total
+            resumen["total_coste_previsto"] += coste_prev_total
+            resumen["total_coste_real"] += coste_real_total
+            resumen["total_margen_previsto"] += margen_previsto
+            resumen["total_margen_real"] += margen_real
+            resumen["proyectos_con_datos"] += 1
+
+        proyecto = {
+            "id": p.get("id"),
+            "materiales": p.get("materiales", ""),
+            "cliente": p.get("cliente", ""),
+            "ubicacion": p.get("ubicacion", ""),
+            "project_status": p.get("project_status", "pendiente"),
+            "gestor": p.get("manager_name") or p.get("gestor", ""),
+            "year": _project_year(p),
+            "venta_mat": venta_mat, "venta_mo": venta_mo, "venta_total": venta_total,
+            "coste_prev_mat": coste_prev_mat, "coste_prev_mo": coste_prev_mo, "coste_prev_total": coste_prev_total,
+            "coste_real_mat": coste_real_mat, "coste_real_mo": coste_real_mo, "coste_real_total": coste_real_total,
+            "margen_previsto": margen_previsto, "margen_real": margen_real,
+            "ben_inicial": ben_inicial, "ben_real": ben_real,
+            "desviacion_euros": desviacion_euros,
+        }
+        if has_data:
+            detalle.append(proyecto)
+
+        if has_data and margen_real < margen_previsto:
+            perdidas.append(proyecto)
+
+    if resumen["proyectos_con_datos"] > 0:
+        resumen["beneficio_medio_inicial"] = round(
+            (resumen["total_margen_previsto"] / resumen["total_venta_prevista"] * 100)
+            if resumen["total_venta_prevista"] > 0 else 0, 1
+        )
+        resumen["beneficio_medio_real"] = round(
+            (resumen["total_margen_real"] / resumen["total_venta_prevista"] * 100)
+            if resumen["total_venta_prevista"] > 0 else 0, 1
+        )
+
+    detalle.sort(key=lambda x: x["margen_real"], reverse=True)
+    perdidas.sort(key=lambda x: x["desviacion_euros"])
+    resumen["total_proyectos"] = len(proyectos)
+
+    return {
+        "resumen": resumen,
+        "detalle": detalle,
+        "perdidas": perdidas[:20],
+        "proyectos_sin_datos": resumen["total_proyectos"] - resumen["proyectos_con_datos"],
+        "comparativa": comparativa,
+        "year": year,
+        "years_disponibles": sorted(list(yearly.keys())),
+    }
+
 # ---------------- Budgets (Presupuestos) ----------------
 async def current_budget_view(user: dict = Depends(current_user)):
     perms = await get_user_permissions(user)
@@ -5624,8 +5792,147 @@ async def update_budget_request(rid: str, payload: dict, user: dict = Depends(cu
     return {"ok": True}
 
 
+class PreciosManoObra(BaseModel):
+    precio_obra: Optional[float] = None
+    precio_sat: Optional[float] = None
+    precio_sat_remoto: Optional[float] = None
+    precio_sat_desplazamiento: Optional[float] = None
+    precio_sat_guardia_desplazamiento: Optional[float] = None
+    precio_guardia: Optional[float] = None
+    precio_sat_guardia_remoto: Optional[float] = None
+
+@api_router.get("/config/precios", response_model=PreciosManoObra)
+async def get_precios():
+    doc = await db.config.find_one({"_id": "precios_mano_obra"})
+    if doc:
+        return PreciosManoObra(**{k: v for k, v in doc.items() if k != "_id"})
+    return PreciosManoObra()
+
+@api_router.put("/config/precios", response_model=PreciosManoObra)
+async def update_precios(payload: PreciosManoObra, user: dict = Depends(current_user)):
+    perms = await get_user_permissions(user)
+    if "users.manage" not in perms and "roles.manage" not in perms:
+        raise HTTPException(403, "Requiere permisos de administración")
+    update = {k: v for k, v in payload.dict().items() if v is not None}
+    if update:
+        await db.config.update_one(
+            {"_id": "precios_mano_obra"},
+            {"$set": update},
+            upsert=True
+        )
+    doc = await db.config.find_one({"_id": "precios_mano_obra"})
+    if doc:
+        return PreciosManoObra(**{k: v for k, v in doc.items() if k != "_id"})
+    return PreciosManoObra()
+
+@api_router.get("/config/pdf-funcionalidades")
+async def descargar_pdf_funcionalidades(request: Request, token: str = Query(None)):
+    user = None
+    if token:
+        try:
+            payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            email = payload.get("email")
+            user = await db.users.find_one({"email": email})
+        except Exception:
+            pass
+    if not user:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            try:
+                payload = pyjwt.decode(auth_header[7:], JWT_SECRET, algorithms=[JWT_ALGORITHM])
+                email = payload.get("email")
+                user = await db.users.find_one({"email": email})
+            except Exception:
+                pass
+    if not user:
+        raise HTTPException(401, "Autenticación requerida")
+    import tempfile, os
+    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+    tmp.close()
+    generar_pdf(tmp.name)
+    def iterfile():
+        with open(tmp.name, "rb") as f:
+            yield from f
+        os.unlink(tmp.name)
+    return StreamingResponse(iterfile(), media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=I-SAI_Funcionalidades.pdf"})
+
+@api_router.post("/consent/register")
+async def register_consent(payload: dict, user: dict = Depends(current_user)):
+    doc = {
+        "user_id": user["id"],
+        "user_email": user["email"],
+        "document": payload.get("document", ""),
+        "version": payload.get("version", "1.0"),
+        "ip": payload.get("ip", "unknown"),
+        "accepted_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.consentimientos.insert_one(doc)
+    return {"ok": True, "id": doc["user_email"]}
+
+@api_router.get("/consent/history")
+async def get_consent_history(user: dict = Depends(current_user)):
+    items = await db.consentimientos.find(
+        {"user_id": user["id"]},
+        {"_id": 0}
+    ).sort("accepted_at", -1).to_list(50)
+    return items
+
+@api_router.get("/admin/backup-encrypted")
+async def download_encrypted_backup(user: dict = Depends(require_permission("users.manage"))):
+    from cryptography.fernet import Fernet
+    import base64, hashlib
+    key = base64.urlsafe_b64encode(hashlib.sha256(JWT_SECRET.encode()).digest())
+    fernet = Fernet(key)
+    collections = [
+        "users", "roles", "materiales", "events", "plans", "budgets",
+        "budget_templates", "budget_versions", "budget_requests",
+        "sat_incidents", "sat_clients", "chats", "messages", "notas",
+        "documentos", "notifications", "guards", "stamps",
+        "preciario_descuentos", "project_history", "onedrive_tokens",
+        "sync_meta", "config", "consentimientos",
+    ]
+    dump = {}
+    for coll_name in collections:
+        try:
+            rows = await db[coll_name].find({}, {"_id": 0, "password": 0}).to_list(50000)
+            dump[coll_name] = rows
+        except Exception:
+            dump[coll_name] = []
+    import gzip
+    json_bytes = json.dumps(dump, default=str, ensure_ascii=False).encode("utf-8")
+    compressed = gzip.compress(json_bytes)
+    encrypted = fernet.encrypt(compressed)
+    b64 = base64.b64encode(encrypted).decode("ascii")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    return StreamingResponse(
+        iter([b64.encode("utf-8")]),
+        media_type="text/plain",
+        headers={"Content-Disposition": f"attachment; filename=isai_backup_{timestamp}.enc"}
+    )
+
+from pdf_funcionalidades import generar_pdf
+
 app.include_router(api_router)
-cors_origins = [FRONTEND_URL]
+@app.middleware("http")
+async def csrf_protection_middleware(request: Request, call_next):
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        origin = request.headers.get("Origin", "")
+        referer = request.headers.get("Referer", "")
+        allowed = cors_origins
+        check = origin or referer
+        if check:
+            ok = any(check.startswith(o.rstrip("/")) for o in allowed)
+            if not ok and "localhost" not in check:
+                return Response("CSRF validation failed", status_code=403)
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+cors_origins = ["http://localhost:8082", FRONTEND_URL]
 if CORS_ORIGINS:
     cors_origins.extend(o.strip() for o in CORS_ORIGINS.split(',') if o.strip())
 

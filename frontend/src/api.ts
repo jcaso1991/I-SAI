@@ -419,6 +419,10 @@ export const api = {
   createBudgetRequest: (body: any) => request("/budget-requests", { method: "POST", body: JSON.stringify(body) }, false),
   listBudgetRequests: () => request("/budget-requests"),
   updateBudgetRequest: (id: string, body: any) => request(`/budget-requests/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+
+  // Precios mano de obra
+  getPrecios: () => request("/config/precios", {}, false),
+  updatePrecios: (body: any) => request("/config/precios", { method: "PUT", body: JSON.stringify(body) }),
 };
 
 export const COLORS = {

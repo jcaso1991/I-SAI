@@ -202,6 +202,13 @@ export default function DashboardScreen({
                 onPress={() => router.push("/sat")}
               />
             )}
+            <DashboardTile
+              testID="circle-financiero"
+              icon="cash"
+              title="Ventas y Beneficios"
+              accent={'#8B5CF6'}
+              onPress={() => router.push("/dashboard/ventas-beneficios")}
+            />
           </View>
           {showNotas && pendingNotes.length > 0 && (
             <View style={{ marginTop: 16, paddingHorizontal: 4 }}>
