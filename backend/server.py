@@ -95,6 +95,14 @@ DEMO_ADMIN_PASSWORD = os.environ.get('DEMO_ADMIN_PASSWORD', '')
 DEMO_ADMIN_NAME = os.environ.get('DEMO_ADMIN_NAME', 'Administrador')
 DEMO_USER_PASSWORD = os.environ.get('DEMO_USER_PASSWORD', '')
 
+# SMTP configuration for email notifications
+SMTP_HOST = os.environ.get('SMTP_HOST', '')
+SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))
+SMTP_USER = os.environ.get('SMTP_USER', '')
+SMTP_PASS = os.environ.get('SMTP_PASS', '')
+SMTP_FROM = os.environ.get('SMTP_FROM', '')
+EMAIL_NOTIFICATIONS_ENABLED = os.environ.get('EMAIL_NOTIFICATIONS_ENABLED', 'false').lower() == 'true'
+
 # Auto-sync config
 AUTO_IMPORT_INTERVAL_SEC = 300  # re-import OneDrive file every 5 min on read
 AUTO_PUSH_DELAY_SEC = 6         # debounce pushes: wait 6s after last edit
@@ -106,6 +114,9 @@ db = client[DB_NAME]
 # In-memory one-time auth codes for Microsoft mobile login (no JWT in URL)
 # code -> {jwt, state, expires_at}
 _auth_codes: dict = {}
+
+# Cache for dashboard/financiero endpoint
+_financiero_cache: dict = {}
 
 def _cleanup_expired_codes():
     now = time.time()
@@ -136,6 +147,7 @@ class UserOut(BaseModel):
     role_id: Optional[str] = None
     role_name: Optional[str] = None
     permissions: Optional[List[str]] = None
+    homepage: Optional[str] = None
 
 class TokenOut(BaseModel):
     access_token: str
@@ -180,6 +192,8 @@ class Material(BaseModel):
     coste_real_mano_de_obra: Optional[float] = None
     beneficio_inicial: Optional[float] = None
     beneficio_real: Optional[float] = None
+    # historial de horas imputadas desde eventos
+    historial_horas: Optional[List[dict]] = None
     # meta
     sync_status: str = "synced"  # synced | pending | error
     updated_at: Optional[str] = None
@@ -307,11 +321,11 @@ SAT_PERMS = ["sat.view", "sat.edit", "sat.export", "chat.view", "chat.edit"]
 
 # System roles seeded on startup. Admin role can NEVER be modified or deleted.
 DEFAULT_ROLES = [
-    {"key": "admin", "name": "Administrador principal", "permissions": ALL_PERMS, "notification_prefs": ALL_NOTIFS, "system": True, "locked": True},
-    {"key": "gestor", "name": "Gestor", "permissions": NON_ADMIN_PERMS, "notification_prefs": ALL_NOTIFS, "system": True, "locked": False},
-    {"key": "tecnico", "name": "Técnico", "permissions": TECNICO_PERMS, "notification_prefs": ["event_completed", "event_pending_completion", "chat_message"], "system": True, "locked": False},
-    {"key": "comercial", "name": "Comercial", "permissions": COMERCIAL_PERMS, "notification_prefs": ["event_completed", "chat_message"], "system": True, "locked": False},
-    {"key": "sat", "name": "SAT", "permissions": SAT_PERMS, "notification_prefs": ["sat_new", "sat_revived", "chat_message"], "system": True, "locked": False},
+    {"key": "admin", "name": "Administrador principal", "permissions": ALL_PERMS, "notification_prefs": ALL_NOTIFS, "tipos_mano_obra": ["obra", "sat", "sat_remoto", "sat_desplazamiento", "sat_guardia_desplazamiento", "guardia", "sat_guardia_remoto", "desplazamiento_obra"], "system": True, "locked": True},
+    {"key": "gestor", "name": "Gestor", "permissions": NON_ADMIN_PERMS, "notification_prefs": ALL_NOTIFS, "tipos_mano_obra": ["obra", "desplazamiento_obra"], "system": True, "locked": False},
+    {"key": "tecnico", "name": "Técnico", "permissions": TECNICO_PERMS, "notification_prefs": ["event_completed", "event_pending_completion", "chat_message"], "tipos_mano_obra": ["obra", "sat", "sat_desplazamiento"], "system": True, "locked": False},
+    {"key": "comercial", "name": "Comercial", "permissions": COMERCIAL_PERMS, "notification_prefs": ["event_completed", "chat_message"], "tipos_mano_obra": [], "system": True, "locked": False},
+    {"key": "sat", "name": "SAT", "permissions": SAT_PERMS, "notification_prefs": ["sat_new", "sat_revived", "chat_message"], "tipos_mano_obra": ["sat", "sat_remoto", "sat_desplazamiento", "sat_guardia_desplazamiento"], "system": True, "locked": False},
 ]
 
 # Map legacy `role` field -> new role key
@@ -331,18 +345,21 @@ class RoleOut(BaseModel):
     locked: bool = False
     created_at: Optional[str] = None
     notification_prefs: List[str] = []
+    tipos_mano_obra: Optional[List[str]] = None
 
 
 class RoleCreate(BaseModel):
     name: str
     permissions: List[str] = []
     notification_prefs: List[str] = []
+    tipos_mano_obra: Optional[List[str]] = None
 
 
 class RoleUpdate(BaseModel):
     name: Optional[str] = None
     permissions: Optional[List[str]] = None
     notification_prefs: Optional[List[str]] = None
+    tipos_mano_obra: Optional[List[str]] = None
 
 
 async def ensure_default_roles_and_migrate():
@@ -351,23 +368,18 @@ async def ensure_default_roles_and_migrate():
     for r in DEFAULT_ROLES:
         existing = await db.roles.find_one({"key": r["key"]})
         if not existing:
-            await db.roles.insert_one({
-                "id": str(uuid.uuid4()),
-                "key": r["key"],
-                "name": r["name"],
-                "permissions": r["permissions"],
-                "notification_prefs": r.get("notification_prefs", []),
-                "system": r["system"],
-                "locked": r.get("locked", False),
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            })
+            r["id"] = str(uuid.uuid4())
+            r["created_at"] = datetime.now(timezone.utc).isoformat()
+            await db.roles.insert_one(r)
         else:
-            # Always force admin role to have ALL permissions (locked, source of truth).
-            if r["key"] == "admin":
-                await db.roles.update_one(
-                    {"key": "admin"},
-                    {"$set": {"permissions": ALL_PERMS, "system": True, "locked": True, "name": existing.get("name") or r["name"]}},
-                )
+            await db.roles.update_one({"key": r["key"]}, {"$set": {"tipos_mano_obra": r.get("tipos_mano_obra", existing.get("tipos_mano_obra", []))}})
+    for r in DEFAULT_ROLES:
+        existing = await db.roles.find_one({"key": r["key"]})
+        if existing and r["key"] == "admin":
+            await db.roles.update_one(
+                {"key": "admin"},
+                {"$set": {"permissions": ALL_PERMS, "system": True, "locked": True, "name": existing.get("name") or r["name"]}},
+            )
     # 2. Migrate users without role_id
     users_no_role = await db.users.find(
         {"$or": [{"role_id": {"$exists": False}}, {"role_id": None}]},
@@ -409,6 +421,7 @@ async def get_user_role_info(user: dict) -> dict:
         "role_name": role.get("name") if role else None,
         "permissions": role.get("permissions", []) if role else [],
         "notification_prefs": role.get("notification_prefs", []) if role else [],
+        "tipos_mano_obra": role.get("tipos_mano_obra", []) if role else [],
     }
 
 
@@ -419,6 +432,49 @@ async def should_notify_user(user_id: str, notif_type: str) -> bool:
         return False
     info = await get_user_role_info(user)
     return notif_type in info.get("notification_prefs", [])
+
+
+def _send_email_notification(to_email: str, subject: str, body: str):
+    """Envía un email de notificación si SMTP está configurado. Si no, loguea."""
+    if not EMAIL_NOTIFICATIONS_ENABLED:
+        logging.getLogger(__name__).info(f"[EMAIL] Notificación deshabilitada. Se habría enviado a {to_email}: {subject}")
+        return
+    if not SMTP_HOST or not SMTP_USER or not SMTP_PASS or not SMTP_FROM:
+        logging.getLogger(__name__).info(f"[EMAIL] Configuración SMTP incompleta. Se habría enviado a {to_email}: {subject}")
+        return
+    import smtplib
+    from email.message import EmailMessage
+    try:
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = SMTP_FROM
+        msg["To"] = to_email
+        msg.set_content(body)
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as srv:
+            srv.starttls()
+            srv.login(SMTP_USER, SMTP_PASS)
+            srv.send_message(msg)
+        logging.getLogger(__name__).info(f"[EMAIL] Enviado a {to_email}: {subject}")
+    except Exception as e:
+        logging.getLogger(__name__).error(f"[EMAIL] Error enviando a {to_email}: {e}")
+
+
+async def _notificar_email_manager_completado(manager_id: str, titulo_evento: str, nombre_tecnico: str, proyecto_id: Optional[str]):
+    """Busca el email del manager y envía notificación de evento completado."""
+    try:
+        manager = await db.users.find_one({"id": manager_id}, {"_id": 0, "email": 1, "name": 1})
+        if not manager or not manager.get("email"):
+            return
+        email_to = manager["email"]
+        subject = f"Evento completado: {titulo_evento}"
+        body = f"Hola {manager.get('name') or email_to},\n\n"
+        body += f"{nombre_tecnico} ha marcado como completado el evento «{titulo_evento}».\n"
+        if proyecto_id:
+            body += f"Proyecto: {proyecto_id}\n"
+        body += "\nPodés revisarlo en I-SAI.\n"
+        _send_email_notification(email_to, subject, body)
+    except Exception as e:
+        logging.getLogger(__name__).error(f"[EMAIL] Error en notificación de completado: {e}")
 
 
 def require_permission(perm: str):
@@ -780,7 +836,7 @@ async def register(payload: UserRegister):
     }
     await db.users.insert_one(user)
     token = create_jwt(user)
-    return TokenOut(access_token=token, user=UserOut(id=user["id"], email=user["email"], name=user["name"], role=user["role"], color=user.get("color")))
+    return TokenOut(access_token=token, user=UserOut(id=user["id"], email=user["email"], name=user["name"], role=user["role"], color=user.get("color"), homepage=user.get("homepage")))
 
 @api_router.post("/auth/login", response_model=TokenOut)
 async def login(payload: UserLogin):
@@ -795,6 +851,7 @@ async def login(payload: UserLogin):
             id=user["id"], email=user["email"], name=user.get("name"),
             role=user.get("role", "user"), color=user.get("color"),
             role_id=info["role_id"], role_name=info["role_name"], permissions=info["permissions"],
+            homepage=user.get("homepage"),
         ),
     )
 
@@ -838,7 +895,24 @@ async def me(user: dict = Depends(current_user)):
         id=user["id"], email=user["email"], name=user.get("name"),
         role=user.get("role", "user"), color=user.get("color"),
         role_id=info["role_id"], role_name=info["role_name"], permissions=info["permissions"],
+        homepage=user.get("homepage"),
     )
+
+@api_router.patch("/auth/homepage")
+async def update_homepage(payload: dict, user: dict = Depends(current_user)):
+    homepage = payload.get("homepage", "/home")
+    await db.users.update_one({"id": user["id"]}, {"$set": {"homepage": homepage}})
+    return {"homepage": homepage}
+
+@api_router.get("/auth/tipos-mano-obra")
+async def get_tipos_mano_obra(user: dict = Depends(current_user)):
+    info = await get_user_role_info(user)
+    role_id = info.get("role_id")
+    if not role_id:
+        return {"tipos": []}
+    role = await db.roles.find_one({"id": role_id}, {"tipos_mano_obra": 1})
+    tipos = role.get("tipos_mano_obra") if role else []
+    return {"tipos": tipos or []}
 
 # ---------------- User management (admin only) ----------------
 class UserCreate(BaseModel):
@@ -1045,6 +1119,7 @@ async def create_role(payload: RoleCreate, admin: dict = Depends(require_permiss
         "name": name,
         "permissions": list(dict.fromkeys(payload.permissions)),
         "notification_prefs": role_notifs,
+        "tipos_mano_obra": payload.tipos_mano_obra or [],
         "system": False,
         "locked": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -1072,6 +1147,8 @@ async def update_role(rid: str, payload: RoleUpdate, admin: dict = Depends(requi
         upd["permissions"] = list(dict.fromkeys(payload.permissions))
     if payload.notification_prefs is not None:
         upd["notification_prefs"] = [n for n in payload.notification_prefs if n in ALL_NOTIFS]
+    if payload.tipos_mano_obra is not None:
+        upd["tipos_mano_obra"] = payload.tipos_mano_obra
     if not upd:
         raise HTTPException(400, "Nada que actualizar")
     await db.roles.update_one({"id": rid}, {"$set": upd})
@@ -1369,6 +1446,7 @@ class EventCreate(BaseModel):
     status: Optional[str] = "in_progress"
     seguimiento: Optional[str] = None  # observaciones del técnico
     hours: Optional[float] = None  # horas asignadas al evento
+    tipo_mano_obra: Optional[str] = None  # clave del tipo (ej. "obra", "sat", "desplazamiento_obra")
 
 class EventPatch(BaseModel):
     title: Optional[str] = None
@@ -1383,6 +1461,7 @@ class EventPatch(BaseModel):
     seguimiento: Optional[str] = None
     hours: Optional[float] = None
     budget_id: Optional[str] = None
+    tipo_mano_obra: Optional[str] = None
 
 class EventOut(BaseModel):
     id: str
@@ -1405,11 +1484,7 @@ class EventOut(BaseModel):
     seguimiento: Optional[str] = None
     hours: Optional[float] = None
     budget_id: Optional[str] = None
-
-class AttachmentUpload(BaseModel):
-    filename: str
-    mime_type: str
-    base64: str  # data only, no data: prefix
+    tipo_mano_obra: Optional[str] = None
 
 # ---------------------------------------------------------------------------
 # Guardias (técnicos de guardia por día). Independientes de eventos.
@@ -1590,7 +1665,7 @@ async def _sync_material_hours(material_id: str):
     if not material_id:
         return
     events = await db.events.find(
-        {"material_id": material_id},
+        {"material_id": material_id, "status": {"$in": ["completed", "pending_completion"]}},
         {"hours": 1}
     ).to_list(10000)
     total = round(sum(_safe_float(e.get("hours")) for e in events), 1)
@@ -1598,6 +1673,17 @@ async def _sync_material_hours(material_id: str):
         {"id": material_id},
         {"$set": {"horas_imputadas": total}},
     )
+
+
+async def recalc_horas(mid: str):
+    """Devuelve horas_imputadas recalculadas desde eventos completed/pending_completion."""
+    if not mid:
+        return 0.0
+    events = await db.events.find(
+        {"material_id": mid, "hours": {"$exists": True}, "status": {"$in": ["completed", "pending_completion"]}},
+        {"hours": 1, "status": 1}
+    ).to_list(1000)
+    return round(sum(_safe_float(ev.get("hours")) for ev in events if ev.get("status") in ("completed", "pending_completion")), 1)
 
 @api_router.post("/events", response_model=EventOut)
 async def create_event(payload: EventCreate, admin: dict = Depends(require_permission("calendario.edit"))):
@@ -1616,13 +1702,14 @@ async def create_event(payload: EventCreate, admin: dict = Depends(require_permi
         "hours": payload.hours,
         "status": payload.status or "in_progress",
         "seguimiento": payload.seguimiento or "",
+        "tipo_mano_obra": payload.tipo_mano_obra,
         "attachments": [],
         "created_by": admin["email"],
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.events.insert_one(doc)
     if doc.get("material_id"):
-        await _sync_material_hours(doc["material_id"])
+        pass  # _sync_material_hours handled by $inc + GET recalculation
     doc = await _attach_material(doc)
     doc = await _attach_users(doc)
     doc = _strip_attachments(doc)
@@ -1651,7 +1738,7 @@ async def update_event(eid: str, payload: EventPatch, user: dict = Depends(curre
         # and only if they are assigned to this event (i.e. the technician in charge).
         if not is_assigned:
             raise HTTPException(403, "No autorizado")
-        allowed = {"status", "seguimiento"}
+        allowed = {"status", "seguimiento", "hours", "tipo_mano_obra"}
         if any(k not in allowed for k in data.keys()):
             raise HTTPException(403, "Técnicos solo pueden modificar estado y seguimiento")
 
@@ -1666,15 +1753,53 @@ async def update_event(eid: str, payload: EventPatch, user: dict = Depends(curre
             upd[k] = v
     if not upd:
         raise HTTPException(400, "Nada que actualizar")
+
+    new_status_check = upd.get("status")
+    if new_status_check in ("completed", "pending_completion"):
+        mid_check = upd.get("material_id") or ev_current.get("material_id")
+        if mid_check:
+            hours_check = upd.get("hours") if "hours" in upd else ev_current.get("hours")
+            tipo_check = upd.get("tipo_mano_obra") if "tipo_mano_obra" in upd else ev_current.get("tipo_mano_obra")
+            seg_check = upd.get("seguimiento") if "seguimiento" in upd else ev_current.get("seguimiento")
+            if not hours_check or _safe_float(hours_check) <= 0:
+                raise HTTPException(400, "Para completar un evento debe tener horas imputadas (> 0)")
+            if not tipo_check or not str(tipo_check).strip():
+                raise HTTPException(400, "Para completar un evento debe especificar el tipo de mano de obra")
+            if not seg_check or not str(seg_check).strip():
+                raise HTTPException(400, "Para completar un evento debe añadir un seguimiento (observaciones)")
+
     res = await db.events.update_one({"id": real_id}, {"$set": upd})
     if res.matched_count == 0:
         raise HTTPException(404, "Evento no encontrado")
 
+    # Registrar horas en el historial del proyecto cuando se completa/pending
+    new_status = upd.get("status")
+    prev_status = ev_current.get("status") or "in_progress"
+    mid = ev_current.get("material_id")
+    hours_val = upd.get("hours") or ev_current.get("hours")
+    tipo_val = upd.get("tipo_mano_obra") or ev_current.get("tipo_mano_obra")
+    if mid and new_status and new_status != prev_status:
+        if new_status in ("completed", "pending_completion") and hours_val:
+            entry = {
+                "evento_id": real_id,
+                "usuario": user.get("name") or user.get("email"),
+                "tipo_mano_obra": tipo_val,
+                "horas": hours_val,
+                "estado": new_status,
+                "fecha": datetime.now(timezone.utc).isoformat(),
+            }
+            await db.materiales.update_one(
+                {"id": mid},
+                {"$push": {"historial_horas": {"$each": [entry], "$position": 0}}}
+            )
+        elif new_status == "in_progress" and prev_status in ("completed", "pending_completion"):
+            await db.materiales.update_one(
+                {"id": mid},
+                {"$pull": {"historial_horas": {"evento_id": real_id}}}
+            )
     # Notifications: whenever status changes, create an in-app notification
     # for the event's manager (if set). The seguimiento text is included so
     # the manager sees the technician's observations right in the list.
-    new_status = upd.get("status")
-    prev_status = ev_current.get("status") or "in_progress"
     if new_status and new_status != prev_status and ev_current.get("manager_id"):
         notif_type = f"event_{new_status}"
         if await should_notify_user(ev_current["manager_id"], notif_type):
@@ -1684,6 +1809,11 @@ async def update_event(eid: str, payload: EventPatch, user: dict = Depends(curre
             if new_status == "completed":
                 notif_title = f"Proyecto terminado: {title}"
                 notif_msg = f"{user.get('name') or user.get('email')} marcó el evento como completado."
+                # Enviar email al manager
+                _fire_and_forget(_notificar_email_manager_completado(
+                    ev_current["manager_id"], title,
+                    user.get("name") or user.get("email"), mid
+                ))
                 if mid:
                     project_status_opts = ["planificado", "a_facturar", "facturado", "terminado", "bloqueado", "anulado"]
                 # Generar PDF del presupuesto y adjuntarlo al evento y al proyecto
@@ -1792,7 +1922,8 @@ async def update_event(eid: str, payload: EventPatch, user: dict = Depends(curre
     if ev and ev.get("material_id"):
         mids.add(ev["material_id"])
     for mid in mids:
-        await _sync_material_hours(mid)
+        pass  # _sync_material_hours handled by recalc_horas in GET
+    _financiero_cache.clear()
     ev = await _attach_material(ev)
     ev = await _attach_users(ev)
     ev = _strip_attachments(ev)
@@ -1807,7 +1938,8 @@ async def delete_event(eid: str, admin: dict = Depends(require_permission("calen
     if res.deleted_count == 0:
         raise HTTPException(404, "Evento no encontrado")
     if mid:
-        await _sync_material_hours(mid)
+        pass  # _sync_material_hours handled by recalc_horas in GET
+    _financiero_cache.clear()
     return {"ok": True}
 
 # ---------------------------------------------------------------------------
@@ -2009,6 +2141,11 @@ async def set_project_status_from_notification(
     return {"ok": True, "project_status": body.project_status}
 
 # ---------------- Event attachments ----------------
+class AttachmentUpload(BaseModel):
+    filename: str
+    mime_type: str
+    base64: str
+
 @api_router.post("/events/{eid}/attachments")
 async def upload_event_attachment(eid: str, payload: AttachmentUpload, user: dict = Depends(current_user)):
     real_id = eid.split(":")[0]
@@ -2353,6 +2490,7 @@ async def microsoft_callback(code: str, state: Optional[str] = None, error: Opti
     code = secrets.token_hex(32)
     _auth_codes[code] = {
         "jwt": jwt_token,
+        "user": user,
         "state": state,
         "expires_at": time.time() + 300,
     }
@@ -2421,6 +2559,7 @@ class MicrosoftExchangeRequest(BaseModel):
 class MicrosoftExchangeResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    user: Optional[UserOut] = None
 
 
 @api_router.post("/auth/microsoft/exchange", response_model=MicrosoftExchangeResponse)
@@ -2429,15 +2568,28 @@ async def microsoft_exchange(payload: MicrosoftExchangeRequest):
     _cleanup_expired_codes()
     record = _auth_codes.get(payload.code)
     if not record:
-        raise HTTPException(401, "Código inválido o ya usado")
+        raise HTTPException(401, "Codigo invalido o ya usado")
     if record["state"] != payload.state:
         raise HTTPException(401, "State no coincide")
     if time.time() > record["expires_at"]:
         del _auth_codes[payload.code]
-        raise HTTPException(401, "Código expirado")
+        raise HTTPException(401, "Codigo expirado")
     jwt_token = record["jwt"]
     del _auth_codes[payload.code]
-    return MicrosoftExchangeResponse(access_token=jwt_token, token_type="bearer")
+    info = await get_user_role_info(record.get("user", {})) if record.get("user") else {}
+    return MicrosoftExchangeResponse(
+        access_token=jwt_token,
+        token_type="bearer",
+        user=UserOut(
+            id=record["user"]["id"], email=record["user"]["email"],
+            name=record["user"].get("name"),
+            role=record["user"].get("role", "user"),
+            color=record["user"].get("color"),
+            role_id=info.get("role_id"), role_name=info.get("role_name"),
+            permissions=info.get("permissions"),
+            homepage=record["user"].get("homepage"),
+        ) if record.get("user") else None,
+    )
 
 
 # ---------------- Sync routes (manual override — uses internal helpers) ----------------
@@ -2722,8 +2874,7 @@ async def get_material(mid: str, user: dict = Depends(require_permission("proyec
     perms_get = await get_user_permissions(user)
     es_editor_completo = "proyectos.edit" in perms_get
     if "materiales.view_hours" in perms_get or es_editor_completo:
-        events = await db.events.find({"material_id": mid, "hours": {"$exists": True}}, {"hours": 1}).to_list(1000)
-        doc["horas_imputadas"] = round(sum(_safe_float(ev.get("hours")) for ev in events), 1)
+        doc["horas_imputadas"] = await recalc_horas(mid)
     # Presupuestos vinculados
     doc["budgets"] = await db.budgets.find(
         {"material_id": mid},
@@ -2786,6 +2937,47 @@ async def update_material(mid: str, payload: MaterialUpdate, user: dict = Depend
 async def get_material_history(mid: str, user: dict = Depends(current_user)):
     items = await db.project_history.find({"project_id": mid}, {"_id": 0}).sort("created_at", -1).limit(50).to_list(50)
     return items
+
+@api_router.post("/materiales/{mid}/attachments")
+async def upload_material_attachment(mid: str, payload: AttachmentUpload, user: dict = Depends(current_user)):
+    """Sube un adjunto al proyecto (PDF, JPEG, PNG)."""
+    perms = await get_user_permissions(user)
+    if "proyectos.edit" not in perms and "proyectos.editar_campo" not in perms:
+        raise HTTPException(403, "No tienes permiso para adjuntar archivos al proyecto")
+    b64 = (payload.base64 or "").split(",")[-1].strip()
+    if not b64:
+        raise HTTPException(400, "Archivo vacío")
+    try:
+        raw_size = (len(b64) * 3) // 4
+    except Exception:
+        raw_size = 0
+    if raw_size > MAX_ATTACHMENT_MB * 1024 * 1024:
+        raise HTTPException(413, f"El archivo excede {MAX_ATTACHMENT_MB}MB")
+    mime = payload.mime_type or ""
+    allowed = ("application/pdf", "image/jpeg", "image/jpg", "image/png")
+    if not any(mime.lower().startswith(a) for a in allowed):
+        raise HTTPException(400, "Tipo no soportado. Solo PDF, JPEG o PNG")
+    att = {
+        "id": str(uuid.uuid4()),
+        "filename": payload.filename[:160] or "archivo",
+        "mime_type": mime,
+        "size": raw_size,
+        "base64": b64,
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+        "uploaded_by": user["email"],
+    }
+    await db.materiales.update_one({"id": mid}, {"$push": {"attachments": att}})
+    mat = await db.materiales.find_one({"id": mid})
+    if mat:
+        _fire_and_forget(_sync_project_folder(mat))
+    return {
+        "id": att["id"],
+        "filename": att["filename"],
+        "mime_type": att["mime_type"],
+        "size": att["size"],
+        "uploaded_at": att["uploaded_at"],
+        "uploaded_by": att["uploaded_by"],
+    }
 
 # ---------------- Stats ----------------
 @api_router.get("/stats")
@@ -3438,15 +3630,28 @@ async def dashboard(user: dict = Depends(current_user)):
     }
 
 @api_router.get("/dashboard/financiero")
-async def dashboard_financiero(user: dict = Depends(current_user), year: str = Query(None)):
+async def dashboard_financiero(
+    user: dict = Depends(current_user),
+    year: str = Query(None),
+    manager_id: str = Query(None),
+):
+    cache_key = f"{year or '__all__'}__{manager_id or '__all__'}"
+    now = time.time()
+    if cache_key in _financiero_cache and (now - _financiero_cache[cache_key].get("ts", 0)) < 60:
+        return _financiero_cache[cache_key]["data"]
+
     perms = await get_user_permissions(user)
     if "dashboard.view" not in perms:
         raise HTTPException(403, "No tienes permiso para ver el panel de datos")
 
+    query = {"project_status": {"$nin": ["anulado"]}, "horas_imputadas": {"$gt": 0}}
+    if manager_id:
+        query["manager_id"] = manager_id
+
     proyectos = await db.materiales.find(
-        {"project_status": {"$nin": ["anulado"]}, "horas_imputadas": {"$gt": 0}},
+        query,
         {"_id": 0, "id": 1, "materiales": 1, "cliente": 1, "ubicacion": 1,
-         "project_status": 1, "gestor": 1, "manager_name": 1,
+         "project_status": 1, "gestor": 1, "manager_name": 1, "manager_id": 1,
          "importe_venta_prev_materiales": 1, "importe_venta_prev_mano_de_obra": 1,
          "coste_prev_materiales": 1, "coste_prev_mano_de_obra": 1,
          "coste_real_materiales": 1, "coste_real_mano_de_obra": 1,
@@ -3454,6 +3659,32 @@ async def dashboard_financiero(user: dict = Depends(current_user), year: str = Q
          "horas_prev": 1, "horas_imputadas": 1,
          "updated_at": 1}
     ).to_list(10000)
+
+    # Cargar precios de mano de obra
+    precios_doc = await db.config.find_one({"_id": "precios_mano_obra"})
+    precios_mo = {}
+    if precios_doc:
+        for k, v in precios_doc.items():
+            if k.startswith("precio_") and v is not None:
+                tipo = k.replace("precio_", "")
+                precios_mo[tipo] = float(v)
+
+    # Cargar eventos con tipo_mano_obra y hours
+    mids = [p["id"] for p in proyectos]
+    eventos_mo = await db.events.find(
+        {"material_id": {"$in": mids}},
+        {"_id": 0, "material_id": 1, "hours": 1, "tipo_mano_obra": 1},
+    ).to_list(50000)
+
+    # Por cada proyecto: agrupar horas por tipo_mano_obra
+    desglose_por_proyecto: dict[str, dict[str, float]] = {}
+    for ev in eventos_mo:
+        mid = ev.get("material_id")
+        tipo = ev.get("tipo_mano_obra") or "sin_tipo"
+        h = _safe_float(ev.get("hours"))
+        if mid not in desglose_por_proyecto:
+            desglose_por_proyecto[mid] = {}
+        desglose_por_proyecto[mid][tipo] = desglose_por_proyecto[mid].get(tipo, 0) + h
 
     def _project_year(p):
         ua = p.get("updated_at")
@@ -3473,9 +3704,21 @@ async def dashboard_financiero(user: dict = Depends(current_user), year: str = Q
         venta_mat = p.get("importe_venta_prev_materiales") or 0
         venta_mo = p.get("importe_venta_prev_mano_de_obra") or 0
         coste_real_mat = p.get("coste_real_materiales") or 0
-        coste_real_mo = p.get("coste_real_mano_de_obra") or 0
+
+        # Calcular coste_real_mo desde eventos si hay tipos de mano de obra
+        mid = p["id"]
+        desglose = desglose_por_proyecto.get(mid, {})
+        coste_real_mo_calc = 0.0
+        if desglose:
+            for tipo, horas in desglose.items():
+                precio = precios_mo.get(tipo, 0)
+                coste_real_mo_calc += horas * precio
+            coste_real_mo_calc = round(coste_real_mo_calc, 2)
+        else:
+            coste_real_mo_calc = p.get("coste_real_mano_de_obra") or 0
+
+        coste_real_total = coste_real_mat + coste_real_mo_calc
         venta_total = venta_mat + venta_mo
-        coste_real_total = coste_real_mat + coste_real_mo
         if venta_total > 0 or coste_real_total > 0:
             yearly[py]["venta"] += venta_total
             yearly[py]["coste_real"] += coste_real_total
@@ -3519,9 +3762,32 @@ async def dashboard_financiero(user: dict = Depends(current_user), year: str = Q
         coste_prev_mat = p.get("coste_prev_materiales") or 0
         coste_prev_mo = p.get("coste_prev_mano_de_obra") or 0
         coste_real_mat = p.get("coste_real_materiales") or 0
-        coste_real_mo = p.get("coste_real_mano_de_obra") or 0
         ben_inicial = p.get("beneficio_inicial") or 0
         ben_real = p.get("beneficio_real") or 0
+
+        # Calcular coste_real_mo y desglose_horas desde eventos
+        mid = p["id"]
+        desglose_raw = desglose_por_proyecto.get(mid, {})
+        desglose_horas = []
+        coste_real_mo_calc = 0.0
+        for tipo, horas in desglose_raw.items():
+            precio = precios_mo.get(tipo, 0)
+            coste = round(horas * precio, 2)
+            coste_real_mo_calc += coste
+            desglose_horas.append({
+                "tipo": tipo,
+                "horas": round(horas, 1),
+                "precio": precio,
+                "coste": coste,
+            })
+        coste_real_mo_calc = round(coste_real_mo_calc, 2)
+
+        # Priorizar valor calculado sobre manual
+        manual_mo = p.get("coste_real_mano_de_obra") or 0
+        if desglose_raw:
+            coste_real_mo = coste_real_mo_calc
+        else:
+            coste_real_mo = manual_mo
 
         venta_total = venta_mat + venta_mo
         coste_prev_total = coste_prev_mat + coste_prev_mo
@@ -3554,6 +3820,11 @@ async def dashboard_financiero(user: dict = Depends(current_user), year: str = Q
             "margen_previsto": margen_previsto, "margen_real": margen_real,
             "ben_inicial": ben_inicial, "ben_real": ben_real,
             "desviacion_euros": desviacion_euros,
+            "desviacion_materiales": round(coste_real_mat - coste_prev_mat, 2),
+            "desviacion_mo": round(coste_real_mo - coste_prev_mo, 2),
+            "horas_prev": p.get("horas_prev"),
+            "horas_imputadas": p.get("horas_imputadas"),
+            "desglose_horas": desglose_horas,
         }
         if has_data:
             detalle.append(proyecto)
@@ -3575,7 +3846,71 @@ async def dashboard_financiero(user: dict = Depends(current_user), year: str = Q
     perdidas.sort(key=lambda x: x["desviacion_euros"])
     resumen["total_proyectos"] = len(proyectos)
 
-    return {
+    por_gestor_raw: dict[str, dict] = {}
+    for p in detalle:
+        mid_key = p.get("id")
+        original = next((x for x in proyectos if x.get("id") == mid_key), {})
+        mgr_id = original.get("manager_id") or "sin_gestor"
+        mgr_name = original.get("manager_name") or original.get("gestor") or "Sin gestor"
+        if mgr_id not in por_gestor_raw:
+            por_gestor_raw[mgr_id] = {"gestor_id": mgr_id, "gestor_name": mgr_name, "proyectos": 0, "venta_total": 0.0, "margen_real": 0.0}
+        por_gestor_raw[mgr_id]["proyectos"] += 1
+        por_gestor_raw[mgr_id]["venta_total"] += p["venta_total"]
+        por_gestor_raw[mgr_id]["margen_real"] += p["margen_real"]
+
+    mgr_ids_real = [k for k in por_gestor_raw if k != "sin_gestor"]
+    if mgr_ids_real:
+        mgr_users = await db.users.find({"id": {"$in": mgr_ids_real}}, {"_id": 0, "id": 1, "name": 1}).to_list(500)
+        name_map = {u["id"]: u.get("name") or u.get("email", "Gestor") for u in mgr_users}
+        for mgr_id_key, entry in por_gestor_raw.items():
+            if mgr_id_key == "sin_gestor":
+                entry["gestor_name"] = "Sin gestor"
+            elif mgr_id_key in name_map:
+                entry["gestor_name"] = name_map[mgr_id_key]
+
+    por_gestor = []
+    for entry in por_gestor_raw.values():
+        mgr_venta = entry["venta_total"]
+        mgr_margen = entry["margen_real"]
+        entry["venta_total"] = round(mgr_venta, 2)
+        entry["margen_real"] = round(mgr_margen, 2)
+        entry["margen_pct"] = round(mgr_margen / mgr_venta * 100, 1) if mgr_venta > 0 else 0
+        por_gestor.append(entry)
+    por_gestor.sort(key=lambda x: x["margen_real"], reverse=True)
+
+    # -- Alertas automáticas --
+    alertas: list = []
+    # Horas excedidas (> 80% consumido)
+    horas_exc = []
+    for p in proyectos:
+        hp = _safe_float(p.get("horas_prev"))
+        hi = _safe_float(p.get("horas_imputadas"))
+        if hp > 0 and hi > hp * 0.8:
+            horas_exc.append({
+                "tipo": "horas_excedidas",
+                "proyecto_id": p.get("id"),
+                "materiales": p.get("materiales", ""),
+                "horas_prev": hp,
+                "horas_imp": hi,
+                "pct": round(hi / hp * 100, 1),
+            })
+    horas_exc.sort(key=lambda x: x["pct"], reverse=True)
+    alertas.extend(horas_exc[:5])
+    # Margen bajo (< 10%)
+    margen_bajo = []
+    for d in detalle:
+        br = d.get("ben_real") or 0
+        if br < 10:
+            margen_bajo.append({
+                "tipo": "margen_bajo",
+                "proyecto_id": d.get("id"),
+                "materiales": d.get("materiales", ""),
+                "margen_pct": br,
+            })
+    margen_bajo.sort(key=lambda x: x["margen_pct"])
+    alertas.extend(margen_bajo[:5])
+
+    data = {
         "resumen": resumen,
         "detalle": detalle,
         "perdidas": perdidas[:20],
@@ -3583,7 +3918,159 @@ async def dashboard_financiero(user: dict = Depends(current_user), year: str = Q
         "comparativa": comparativa,
         "year": year,
         "years_disponibles": sorted(list(yearly.keys())),
+        "por_gestor": por_gestor,
+        "alertas": alertas,
     }
+    _financiero_cache[cache_key] = {"ts": time.time(), "data": data}
+    return data
+
+@api_router.get("/dashboard/financiero/export-excel")
+async def dashboard_financiero_export_excel(
+    user: dict = Depends(current_user),
+    year: str = Query(None),
+):
+    perms = await get_user_permissions(user)
+    if "dashboard.view" not in perms:
+        raise HTTPException(403, "No tienes permiso para ver el panel de datos")
+
+    proyectos = await db.materiales.find(
+        {"project_status": {"$nin": ["anulado"]}, "horas_imputadas": {"$gt": 0}},
+        {"_id": 0, "id": 1, "materiales": 1, "cliente": 1,
+         "project_status": 1, "gestor": 1, "manager_name": 1,
+         "importe_venta_prev_materiales": 1, "importe_venta_prev_mano_de_obra": 1,
+         "coste_prev_materiales": 1, "coste_prev_mano_de_obra": 1,
+         "coste_real_materiales": 1, "coste_real_mano_de_obra": 1,
+         "beneficio_real": 1,
+         "updated_at": 1}
+    ).to_list(10000)
+
+    precios_doc = await db.config.find_one({"_id": "precios_mano_obra"})
+    precios_mo = {}
+    if precios_doc:
+        for k, v in precios_doc.items():
+            if k.startswith("precio_") and v is not None:
+                tipo = k.replace("precio_", "")
+                precios_mo[tipo] = float(v)
+
+    mids = [p["id"] for p in proyectos]
+    eventos_mo = await db.events.find(
+        {"material_id": {"$in": mids}},
+        {"_id": 0, "material_id": 1, "hours": 1, "tipo_mano_obra": 1},
+    ).to_list(50000)
+    desglose_por_proyecto: dict[str, dict[str, float]] = {}
+    for ev in eventos_mo:
+        mid = ev.get("material_id")
+        tipo = ev.get("tipo_mano_obra") or "sin_tipo"
+        h = _safe_float(ev.get("hours"))
+        if mid not in desglose_por_proyecto:
+            desglose_por_proyecto[mid] = {}
+        desglose_por_proyecto[mid][tipo] = desglose_por_proyecto[mid].get(tipo, 0) + h
+
+    def _py(p):
+        ua = p.get("updated_at")
+        if ua:
+            try: return ua[:4]
+            except Exception: pass
+        return "2025"
+
+    if year:
+        proyectos = [p for p in proyectos if _py(p) == year]
+
+    rows = []
+    for p in proyectos:
+        venta_mat = p.get("importe_venta_prev_materiales") or 0
+        venta_mo = p.get("importe_venta_prev_mano_de_obra") or 0
+        coste_prev_mat = p.get("coste_prev_materiales") or 0
+        coste_prev_mo = p.get("coste_prev_mano_de_obra") or 0
+        coste_real_mat = p.get("coste_real_materiales") or 0
+
+        mid = p["id"]
+        desglose = desglose_por_proyecto.get(mid, {})
+        coste_real_mo = 0.0
+        if desglose:
+            for tipo, horas in desglose.items():
+                precio = precios_mo.get(tipo, 0)
+                coste_real_mo += horas * precio
+            coste_real_mo = round(coste_real_mo, 2)
+        else:
+            coste_real_mo = p.get("coste_real_mano_de_obra") or 0
+
+        venta_total = venta_mat + venta_mo
+        coste_prev_total = coste_prev_mat + coste_prev_mo
+        coste_real_total = coste_real_mat + coste_real_mo
+        margen_real = venta_total - coste_real_total
+        ben_pct = round(margen_real / venta_total * 100, 1) if venta_total > 0 else 0
+        desviacion = coste_real_total - coste_prev_total
+
+        status_map = {"pendiente": "Pendiente", "planificado": "Planificado", "a_facturar": "A facturar",
+                      "facturado": "Facturado", "terminado": "Terminado", "bloqueado": "Bloqueado"}
+        rows.append({
+            "materiales": p.get("materiales", ""),
+            "cliente": p.get("cliente", ""),
+            "gestor": p.get("manager_name") or p.get("gestor", ""),
+            "estado": status_map.get(p.get("project_status", ""), p.get("project_status", "Pendiente")),
+            "venta_total": venta_total,
+            "coste_previsto": coste_prev_total,
+            "coste_real": coste_real_total,
+            "margen_real": margen_real,
+            "ben_pct": ben_pct,
+            "desviacion": desviacion,
+        })
+
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Ventas y Beneficios"
+
+    headers = ["Codigo Proyecto", "Cliente", "Gestor", "Estado", "Venta Total", "Coste Previsto", "Coste Real", "Margen Real", "% Beneficio", "Desviacion"]
+    header_font = Font(bold=True, size=11, color="FFFFFF")
+    header_fill = PatternFill(start_color="1976D2", end_color="1976D2", fill_type="solid")
+    thin_border = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
+
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+        cell.border = thin_border
+
+    neg_fill = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
+    for r_idx, row_data in enumerate(rows, 2):
+        values = [
+            row_data["materiales"],
+            row_data["cliente"],
+            row_data["gestor"],
+            row_data["estado"],
+            row_data["venta_total"],
+            row_data["coste_previsto"],
+            row_data["coste_real"],
+            row_data["margen_real"],
+            row_data["ben_pct"],
+            row_data["desviacion"],
+        ]
+        is_neg = row_data["margen_real"] < 0
+        for col, v in enumerate(values, 1):
+            cell = ws.cell(row=r_idx, column=col, value=v)
+            cell.border = thin_border
+            if is_neg:
+                cell.fill = neg_fill
+            if isinstance(v, float):
+                cell.number_format = '#,##0.00'
+
+    for col in range(1, len(headers) + 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = 20
+
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+    filename = f"ventas_beneficios_{datetime.now(timezone.utc).strftime('%Y%m%d')}.xlsx"
+    return StreamingResponse(
+        out,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 # ---------------- Budgets (Presupuestos) ----------------
 async def current_budget_view(user: dict = Depends(current_user)):
@@ -4154,6 +4641,22 @@ async def _seed_demo_user(email: str, name: str, role_key: str, color: str) -> O
 async def seed_demo_data():
     if not ENABLE_DEMO_SEED:
         return
+
+    # Asegurar precios de mano de obra en config
+    await db.config.update_one(
+        {"_id": "precios_mano_obra"},
+        {"$setOnInsert": {
+            "precio_obra": 35.5,
+            "precio_sat": 45.0,
+            "precio_sat_remoto": 30.0,
+            "precio_sat_desplazamiento": 55.0,
+            "precio_sat_guardia_desplazamiento": 65.0,
+            "precio_guardia": 25.0,
+            "precio_sat_guardia_remoto": 40.0,
+            "precio_desplazamiento_obra": 72,
+        }},
+        upsert=True,
+    )
 
     now = datetime.now(timezone.utc)
     now_iso = now.isoformat()
@@ -5800,6 +6303,7 @@ class PreciosManoObra(BaseModel):
     precio_sat_guardia_desplazamiento: Optional[float] = None
     precio_guardia: Optional[float] = None
     precio_sat_guardia_remoto: Optional[float] = None
+    precio_desplazamiento_obra: Optional[float] = None
 
 @api_router.get("/config/precios", response_model=PreciosManoObra)
 async def get_precios():

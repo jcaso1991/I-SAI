@@ -19,6 +19,7 @@ export default function Admin() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
+  const [homepage, setHomepage] = useState("/home");
   const [precios, setPrecios] = useState<any>({});
   const [draftPrecios, setDraftPrecios] = useState<any>({});
   const [preciosDirty, setPreciosDirty] = useState(false);
@@ -62,6 +63,7 @@ export default function Admin() {
       const [st, me] = await Promise.all([api.onedriveStatus(), api.me()]);
       setStatus(st);
       setUser(me);
+      setHomepage(me.homepage || "/home");
       loadPrecios();
     } catch (e: any) {
       Alert.alert("Error", e.message);
@@ -172,6 +174,24 @@ export default function Admin() {
   const canManageOnedrive = perms.includes("onedrive.manage");
   const connected = status?.connected;
 
+  const allModulos = [
+    { label: "Inicio", to: "/home", icon: "home", perm: null },
+    { label: "Dashboard", to: "/dashboard", icon: "stats-chart", perm: "dashboard.view" },
+    { label: "Ventas y Beneficios", to: "/dashboard/ventas-beneficios", icon: "cash", perm: "dashboard.view" },
+    { label: "Calendario", to: "/calendario", icon: "calendar", perm: "calendario.view" },
+    { label: "Planos", to: "/planos", icon: "map", perm: "planos.view" },
+    { label: "Proyectos", to: "/materiales", icon: "set-square", perm: "proyectos.view" },
+    { label: "Presupuestos", to: "/presupuestos", icon: "document-text", perm: "presupuestos.view" },
+    { label: "CRM SAT", to: "/sat", icon: "headset", perm: "sat.view" },
+    { label: "Chat", to: "/chat", icon: "chatbubbles", perm: "chat.view" },
+    { label: "Notas", to: "/notas", icon: "book", perm: "notas.view" },
+    { label: "Preciario", to: "/preciario", icon: "pricetags", perm: "preciario.view" },
+    { label: "Documentos", to: "/documentos", icon: "folder-open", perm: null },
+    { label: "Documentaciones", to: "/documentaciones", icon: "document-text", perm: null },
+    { label: "Ajustes", to: "/admin", icon: "settings", perm: null },
+  ];
+  const modulos = allModulos.filter(m => m.perm === null || perms.includes(m.perm));
+
   return (
     <ResponsiveLayout active="ajustes" isAdmin={isAdmin} userName={user?.name}>
     <SafeAreaView style={s.root} edges={["top"]}>
@@ -227,6 +247,42 @@ export default function Admin() {
           </View>
         </View>
 
+        {/* Pagina principal al iniciar sesion */}
+        <View style={s.card}>
+          <View style={s.cardHeader}>
+            <View style={[s.iconCircle, { backgroundColor: COLORS.pillBlueBg }]}>
+              <Ionicons name="home" size={22} color={COLORS.pillBlueText} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.cardTitle}>Pagina principal</Text>
+              <Text style={s.cardSub}>
+                Elige a que modulo quieres ir al iniciar sesion. Actual: {modulos.find(m => m.to === homepage)?.label || "Inicio"}
+              </Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+            {modulos.map((mod) => (
+              <TouchableOpacity
+                key={mod.to}
+                style={[
+                  s.themeOption,
+                  homepage === mod.to && { borderColor: COLORS.primary, backgroundColor: COLORS.primarySoft },
+                ]}
+                onPress={async () => {
+                  setHomepage(mod.to);
+                  try {
+                    await api.updateHomepage(mod.to);
+                  } catch {}
+                }}
+              >
+                <Ionicons name={mod.icon as any} size={18} color={homepage === mod.to ? COLORS.primary : COLORS.textSecondary} />
+                <Text style={[s.themeOptionTxt, homepage === mod.to && { color: COLORS.primary, fontWeight: "800" }]}>{mod.label}</Text>
+                {homepage === mod.to && <Ionicons name="checkmark-circle" size={16} color={COLORS.primary} style={{ position: "absolute", top: 4, right: 4 }} />}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
         {/* Precios mano de obra técnico */}
         <View style={s.card}>
           <View style={s.cardHeader}>
@@ -245,8 +301,9 @@ export default function Admin() {
             { field: "precio_sat_desplazamiento", label: "Precio técnico SAT desplazamiento" },
             { field: "precio_sat_guardia_desplazamiento", label: "Precio técnico SAT guardia desplazamiento" },
             { field: "precio_guardia", label: "Precio técnico mano de obra guardia" },
-            { field: "precio_sat_guardia_remoto", label: "Precio técnico SAT guardia remoto" },
-          ].map((item) => (
+             { field: "precio_sat_guardia_remoto", label: "Precio técnico SAT guardia remoto" },
+             { field: "precio_desplazamiento_obra", label: "Desplazamiento técnico obras" },
+           ].map((item) => (
             <View key={item.field} style={{ flexDirection: "row", alignItems: "center", marginTop: 12, gap: 10 }}>
               <Text style={[s.cardSub, { flex: 1 }]}>{item.label}</Text>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>

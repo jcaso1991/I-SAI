@@ -50,7 +50,8 @@ export default function Login() {
         try {
           const res = await api.microsoftExchange(ev.data.code, storedState);
           await setToken(res.access_token);
-          router.replace("/home");
+          const dest = res.user?.homepage || "/home";
+          router.replace(dest as any);
         } catch (e: any) {
           Alert.alert("Error", e.message || "Error al completar autenticación");
         }
@@ -105,7 +106,8 @@ export default function Login() {
     try {
       const res = await api.login(email, password);
       await setToken(res.access_token);
-      router.replace("/home");
+      const dest = res.user?.homepage || "/home";
+      router.replace(dest as any);
     } catch (e: any) {
       Alert.alert("Error", e.message || "Error de autenticación");
     } finally {

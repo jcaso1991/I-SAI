@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, TextInput,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, TextInput, Platform, Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { COLORS, getToken } from "../../src/api";
+import { COLORS, getToken, BACKEND_URL } from "../../src/api";
 import ResponsiveLayout from "../../src/ResponsiveLayout";
 import { useThemedStyles } from "../../src/theme";
 import { useBreakpoint } from "../../src/useBreakpoint";
@@ -28,6 +28,22 @@ function fmtPct(v: number | null | undefined): string {
   return `${v > 0 ? "+" : ""}${v}%`;
 }
 
+function fmtHoras(v: any): string {
+  if (v == null || v === "") return "—";
+  const n = Number(v);
+  if (isNaN(n)) return "—";
+  return n === 0 ? "0h" : `${n}h`;
+}
+
+function causaDesviacion(p: any): string {
+  const mat = p.desviacion_materiales || 0;
+  const mo = p.desviacion_mo || 0;
+  if (mat > 0 && mo > 0) return "Materiales y mano de obra";
+  if (mat > 0) return "Exceso de materiales";
+  if (mo > 0) return "Exceso de mano de obra";
+  return "Margen ajustado";
+}
+
 function pctColor(v: number | null | undefined): string {
   if (v == null) return COLORS.textDisabled;
   if (v > 10) return COLORS.syncedText;
@@ -46,24 +62,57 @@ function fmtEurShort(v: number): string {
 
 export default function VentasBeneficios() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ year?: string; search?: string; profit?: string; manager?: string }>();
   const { isWide } = useBreakpoint();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
-  const [selectedYear, setSelectedYear] = useState<string>("");
+  const [showAllPerdidas, setShowAllPerdidas] = useState(false);
+  const [sortCol, setSortCol] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [selectedYear, setSelectedYear] = useState<string>((params.year as string) || "");
+  const [selectedManager, setSelectedManager] = useState<string>((params.manager as string) || "");
   const s = useThemedStyles(useS);
-  const [searchText, setSearchText] = useState("");
-  const [profitFilter, setProfitFilter] = useState<number | null>(null);
+  const [searchText, setSearchText] = useState((params.search as string) || "");
+  const [profitFilter, setProfitFilter] = useState<number | null>(params.profit ? Number(params.profit) : null);
   const [showProfitPicker, setShowProfitPicker] = useState(false);
+  const [expandedProject, setExpandedProject] = useState<string | null>(null);
+  const [managers, setManagers] = useState<any[]>([]);
+  const [exporting, setExporting] = useState(false);
 
   const [initialized, setInitialized] = useState(false);
 
-  const fetchData = useCallback(async (year?: string) => {
+  useEffect(() => {
+    if (!initialized) return;
+    const upd: Record<string, string> = {};
+    if (selectedYear) upd.year = selectedYear;
+    if (searchText) upd.search = searchText;
+    if (profitFilter !== null) upd.profit = String(profitFilter);
+    if (selectedManager) upd.manager = selectedManager;
+    router.setParams(upd);
+  }, [selectedYear, searchText, profitFilter, selectedManager]);
+
+  useEffect(() => {
+    getToken().then(async (token) => {
+      try {
+        const base = BACKEND_URL || "";
+        const res = await fetch(`${base}/api/managers`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) setManagers(await res.json());
+      } catch {}
+    });
+  }, []);
+
+  const fetchData = useCallback(async (year?: string, manager?: string) => {
     try {
       const token = await getToken();
-      const base = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/+$/, "");
-      const params = year ? `?year=${year}` : "";
-      const res = await fetch(`${base}/api/dashboard/financiero${params}`, {
+      const base = BACKEND_URL || "";
+      const qp = new URLSearchParams();
+      if (year) qp.set("year", year);
+      if (manager) qp.set("manager_id", manager);
+      const qs = qp.toString();
+      const res = await fetch(`${base}/api/dashboard/financiero${qs ? `?${qs}` : ""}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -75,15 +124,43 @@ export default function VentasBeneficios() {
     }
   }, []);
 
+  const doExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      const token = await getToken();
+      const base = BACKEND_URL || "";
+      const qp = new URLSearchParams();
+      if (selectedYear) qp.set("year", selectedYear);
+      const qs = qp.toString();
+      const res = await fetch(`${base}/api/dashboard/financiero/export-excel${qs ? `?${qs}` : ""}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ventas_beneficios_${selectedYear || "todo"}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      Alert.alert("Error", "No se pudo exportar el archivo");
+    } finally {
+      setExporting(false);
+    }
+  }, [selectedYear]);
+
   useFocusEffect(useCallback(() => {
     setLoading(true);
-    fetchData(selectedYear || undefined);
-  }, [selectedYear]));
+    fetchData(selectedYear || undefined, selectedManager || undefined);
+  }, [selectedYear, selectedManager]));
 
   useEffect(() => {
     if (data && !initialized && data.years_disponibles?.length > 0) {
       const currentYear = String(new Date().getFullYear());
-      if (data.years_disponibles.includes(currentYear)) {
+      if (!selectedYear && data.years_disponibles.includes(currentYear)) {
         setSelectedYear(currentYear);
       }
       setInitialized(true);
@@ -105,6 +182,7 @@ export default function VentasBeneficios() {
   const perdidas: any[] = data?.perdidas || [];
   const comparativa: any[] = data?.comparativa || [];
   const years: string[] = data?.years_disponibles || [];
+  const porGestor: any[] = data?.por_gestor || [];
 
   const filterProject = (p: any) => {
     if (searchText) {
@@ -123,13 +201,38 @@ export default function VentasBeneficios() {
 
   const filteredDetalle = detalle.filter(filterProject);
   const filteredPerdidas = perdidas.filter(filterProject);
+
+  if (sortCol) {
+    filteredDetalle.sort((a: any, b: any) => {
+      const va = a[sortCol] ?? "";
+      const vb = b[sortCol] ?? "";
+      if (sortCol === "materiales") {
+        return sortDir === "desc" ? String(vb).localeCompare(String(va)) : String(va).localeCompare(String(vb));
+      }
+      const na = Number(va) || 0;
+      const nb = Number(vb) || 0;
+      return sortDir === "desc" ? nb - na : na - nb;
+    });
+  }
+
   const displayed = showAll ? filteredDetalle : filteredDetalle.slice(0, 10);
+
+  const toggleSort = (col: string) => {
+    if (sortCol === col) {
+      if (sortDir === "desc") { setSortDir("asc"); }
+      else { setSortCol(null); setSortDir("desc"); }
+    } else {
+      setSortCol(col); setSortDir("desc");
+    }
+  };
+
+  const sortArrow = (col: string) => sortCol === col ? (sortDir === "desc" ? " ▼" : " ▲") : "";
 
   const maxMargen = Math.max(...comparativa.map((c: any) => Math.abs(c.margen)), 1);
   const maxVenta = Math.max(...comparativa.map((c: any) => c.venta), 1);
 
   return (
-    <ResponsiveLayout active="dashboard">
+    <ResponsiveLayout active="ventas-beneficios">
       <SafeAreaView style={s.root} edges={["top"]}>
         <View style={s.header}>
           <TouchableOpacity style={s.iconBtn} onPress={() => router.replace("/dashboard")}>
@@ -143,26 +246,64 @@ export default function VentasBeneficios() {
           contentContainerStyle={[s.scroll, isWide && s.scrollWide]}
           showsVerticalScrollIndicator={false}
         >
-          {/* Year selector */}
-          {years.length > 0 && (
-            <View style={s.yearStrip}>
-              <TouchableOpacity
-                style={[s.yearChip, !selectedYear && s.yearChipActive]}
-                onPress={() => setSelectedYear("")}
-              >
-                <Text style={[s.yearChipTxt, !selectedYear && s.yearChipActiveTxt]}>Todos</Text>
-              </TouchableOpacity>
-              {years.map((y: string) => (
+          {/* Year selector + Export + Manager */}
+          <View style={{ gap: 8, marginBottom: 4 }}>
+            {years.length > 0 && (
+              <View style={s.yearStrip}>
                 <TouchableOpacity
-                  key={y}
-                  style={[s.yearChip, selectedYear === y && s.yearChipActive]}
-                  onPress={() => setSelectedYear(y)}
+                  style={[s.yearChip, !selectedYear && s.yearChipActive]}
+                  onPress={() => setSelectedYear("")}
                 >
-                  <Text style={[s.yearChipTxt, selectedYear === y && s.yearChipActiveTxt]}>{y}</Text>
+                  <Text style={[s.yearChipTxt, !selectedYear && s.yearChipActiveTxt]}>Todos</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-          )}
+                {years.map((y: string) => (
+                  <TouchableOpacity
+                    key={y}
+                    style={[s.yearChip, selectedYear === y && s.yearChipActive]}
+                    onPress={() => setSelectedYear(y)}
+                  >
+                    <Text style={[s.yearChipTxt, selectedYear === y && s.yearChipActiveTxt]}>{y}</Text>
+                  </TouchableOpacity>
+                ))}
+                <View style={{ flex: 1 }} />
+                {Platform.OS === "web" && (
+                  <TouchableOpacity
+                    style={s.exportBtn}
+                    onPress={doExport}
+                    disabled={exporting}
+                  >
+                    {exporting ? (
+                      <ActivityIndicator size="small" color={COLORS.primary} />
+                    ) : (
+                      <Ionicons name="download-outline" size={18} color={COLORS.primary} />
+                    )}
+                    <Text style={s.exportBtnText}>{exporting ? "Exportando..." : "Exportar Excel"}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+            {managers.length > 0 && (
+              <View style={s.yearStrip}>
+                <TouchableOpacity
+                  style={[s.yearChip, !selectedManager && s.yearChipActive]}
+                  onPress={() => setSelectedManager("")}
+                >
+                  <Text style={[s.yearChipTxt, !selectedManager && s.yearChipActiveTxt]}>Todos los gestores</Text>
+                </TouchableOpacity>
+                {managers.map((m: any) => (
+                  <TouchableOpacity
+                    key={m.id}
+                    style={[s.yearChip, selectedManager === m.id && s.yearChipActive]}
+                    onPress={() => setSelectedManager(selectedManager === m.id ? "" : m.id)}
+                  >
+                    <Text style={[s.yearChipTxt, selectedManager === m.id && s.yearChipActiveTxt]}>{m.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+
+          {/* Alertas automáticas */}
 
           {/* KPI Cards */}
           {r && (
@@ -187,6 +328,8 @@ export default function VentasBeneficios() {
               </View>
             </View>
           )}
+
+
 
           {/* Year-over-Year Comparison Chart */}
           {comparativa.length > 1 && (
@@ -345,36 +488,105 @@ export default function VentasBeneficios() {
 
           {filteredPerdidas.length > 0 && (
             <>
-              <View style={[s.sectionHeader, { marginTop: 24 }]}>
-                <Ionicons name="warning" size={20} color={COLORS.errorText} />
-                <Text style={[s.sectionTitle, { color: COLORS.errorText }]}>
-                  Proyectos por debajo del margen previsto ({filteredPerdidas.length})
-                </Text>
-              </View>
-              {filteredPerdidas.slice(0, 8).map((p: any) => (
-                <TouchableOpacity
-                  key={p.id}
-                  style={s.projectRow}
-                  onPress={() => router.push(`/material/${p.id}` as any)}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.projectName} numberOfLines={1}>
-                      {p.materiales || "Sin código"} — {p.cliente || "Sin cliente"}
-                    </Text>
-                    <Text style={s.projectSub}>
-                      {p.gestor || "Sin gestor"} · {STATUS_LABELS[p.project_status] || p.project_status}
-                    </Text>
-                  </View>
-                  <View style={{ alignItems: "flex-end" }}>
-                    <Text style={[s.projectAmount, { color: COLORS.errorText }]}>
-                      {fmtEur(p.desviacion_euros)}
-                    </Text>
-                    <Text style={s.projectDelta}>
-                      Prev: {fmtEur(p.margen_previsto)} → Real: {fmtEur(p.margen_real)}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
+               <View style={[s.sectionHeader, { marginTop: 24 }]}>
+                 <Ionicons name="warning" size={20} color={COLORS.errorText} />
+                 <Text style={[s.sectionTitle, { color: COLORS.errorText }]}>
+                   Proyectos por debajo del margen previsto ({filteredPerdidas.length})
+                 </Text>
+               </View>
+               <ScrollView style={{ maxHeight: 500 }} showsVerticalScrollIndicator={true} nestedScrollEnabled={true}>
+               {filteredPerdidas.slice(0, showAllPerdidas ? filteredPerdidas.length : 8).map((p: any) => (
+                <View key={p.id}>
+                  <TouchableOpacity
+                    style={s.projectRow}
+                    onPress={() => setExpandedProject(expandedProject === p.id ? null : p.id)}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.projectName} numberOfLines={1}>
+                        {p.materiales || "Sin codigo"} — {p.cliente || "Sin cliente"}
+                      </Text>
+                      <Text style={s.projectSub}>
+                        {p.gestor || "Sin gestor"} · {STATUS_LABELS[p.project_status] || p.project_status}
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: "flex-end" }}>
+                      <Text style={[s.projectAmount, { color: COLORS.errorText }]}>
+                        {fmtEur(p.desviacion_euros)}
+                      </Text>
+                      <Text style={s.projectDelta}>
+                        Prev: {fmtEur(p.margen_previsto)} → Real: {fmtEur(p.margen_real)}
+                      </Text>
+                    </View>
+                    <Ionicons
+                      name={expandedProject === p.id ? "chevron-up" : "chevron-down"}
+                      size={16}
+                      color={COLORS.textSecondary}
+                      style={{ marginLeft: 8 }}
+                    />
+                  </TouchableOpacity>
+                  {expandedProject === p.id && (
+                    <View style={s.desvioDetail}>
+                      <Text style={s.desvioCause}>{causaDesviacion(p)}</Text>
+                      <View style={{ flexDirection: "row", gap: 16, marginTop: 8 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.desvioLabel}>Materiales</Text>
+                          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                            <Text style={s.desvioValue}>Prev: {fmtEur(p.coste_prev_mat)}</Text>
+                            <Text style={[s.desvioValue, { color: (p.desviacion_materiales || 0) > 0 ? COLORS.errorText : COLORS.syncedText }]}>
+                              Real: {fmtEur(p.coste_real_mat)}
+                            </Text>
+                          </View>
+                          {(p.desviacion_materiales || 0) !== 0 && (
+                            <Text style={[s.desvioDelta, { color: (p.desviacion_materiales || 0) > 0 ? COLORS.errorText : COLORS.syncedText }]}>
+                              {(p.desviacion_materiales || 0) > 0 ? "+" : ""}{fmtEur(p.desviacion_materiales)}
+                            </Text>
+                          )}
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.desvioLabel}>Mano de obra</Text>
+                          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                            <Text style={s.desvioValue}>Prev: {fmtEur(p.coste_prev_mo)}</Text>
+                            <Text style={[s.desvioValue, { color: (p.desviacion_mo || 0) > 0 ? COLORS.errorText : COLORS.syncedText }]}>
+                              Real: {fmtEur(p.coste_real_mo)}
+                            </Text>
+                          </View>
+                          {(p.desviacion_mo || 0) !== 0 && (
+                            <Text style={[s.desvioDelta, { color: (p.desviacion_mo || 0) > 0 ? COLORS.errorText : COLORS.syncedText }]}>
+                              {(p.desviacion_mo || 0) > 0 ? "+" : ""}{fmtEur(p.desviacion_mo)}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                      <View style={{ flexDirection: "row", gap: 16, marginTop: 8 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.desvioLabel}>Horas previstas</Text>
+                          <Text style={s.desvioValue}>{fmtHoras(p.horas_prev)}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.desvioLabel}>Horas imputadas</Text>
+                          <Text style={s.desvioValue}>{fmtHoras(p.horas_imputadas)}</Text>
+                        </View>
+                      </View>
+                      <TouchableOpacity
+                        style={{ marginTop: 10, alignSelf: "flex-end" }}
+                        onPress={() => router.push(`/material/${p.id}` as any)}
+                      >
+                        <Text style={{ color: COLORS.primary, fontWeight: "700", fontSize: 13 }}>
+                          Ver detalle del proyecto →
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
               ))}
+              </ScrollView>
+              {filteredPerdidas.length > 8 && (
+                <TouchableOpacity style={s.showMoreBtn} onPress={() => setShowAllPerdidas(!showAllPerdidas)}>
+                  <Text style={s.showMoreText}>
+                    {showAllPerdidas ? "Mostrar menos" : `Ver todos (${filteredPerdidas.length - 8} más)`}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </>
           )}
 
@@ -385,10 +597,18 @@ export default function VentasBeneficios() {
           </View>
 
           <View style={s.tableHeader}>
-            <Text style={[s.th, { flex: 2 }]}>Proyecto</Text>
-            <Text style={[s.th, { flex: 1.2, textAlign: "right" }]}>Venta</Text>
-            <Text style={[s.th, { flex: 1.2, textAlign: "right" }]}>Coste real</Text>
-            <Text style={[s.th, { flex: 1, textAlign: "right" }]}>Margen</Text>
+            <TouchableOpacity style={{ flex: 2 }} onPress={() => toggleSort("materiales")}>
+              <Text style={[s.th, { flex: 0 }]}>Proyecto{sortArrow("materiales")}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={{ flex: 1.2 }} onPress={() => toggleSort("venta_total")}>
+              <Text style={[s.th, { flex: 0, textAlign: "right" }]}>Venta{sortArrow("venta_total")}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={{ flex: 1.2 }} onPress={() => toggleSort("coste_real_total")}>
+              <Text style={[s.th, { flex: 0, textAlign: "right" }]}>Coste real{sortArrow("coste_real_total")}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={{ flex: 1 }} onPress={() => toggleSort("margen_real")}>
+              <Text style={[s.th, { flex: 0, textAlign: "right" }]}>Margen{sortArrow("margen_real")}</Text>
+            </TouchableOpacity>
           </View>
 
           {displayed.map((p: any) => {
@@ -425,6 +645,72 @@ export default function VentasBeneficios() {
             </TouchableOpacity>
           )}
 
+                    {/* Gestor summary cards */}
+          {porGestor.length > 0 && !selectedManager && (
+            <View style={s.chartCard}>
+              <Text style={[s.sectionTitle, { marginBottom: 12 }]}>Resumen por gestor</Text>
+              <View style={{ gap: 8 }}>
+                {porGestor.map((g: any) => (
+                  <TouchableOpacity
+                    key={g.gestor_id}
+                    style={s.managerRow}
+                    onPress={() => setSelectedManager(g.gestor_id === "sin_gestor" ? "" : g.gestor_id)}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.managerName} numberOfLines={1}>{g.gestor_name}</Text>
+                      <Text style={s.managerMeta}>{g.proyectos} proyectos</Text>
+                    </View>
+                    <View style={{ alignItems: "flex-end" }}>
+                      <Text style={[s.managerValue, { color: pctColor(g.margen_pct) }]}>
+                        {fmtEur(g.margen_real)}
+                      </Text>
+                      <Text style={[s.managerPct, { color: pctColor(g.margen_pct) }]}>
+                        {fmtPct(g.margen_pct)}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={COLORS.textDisabled} style={{ marginLeft: 4 }} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {data?.alertas?.length > 0 && (
+            <View style={{ gap: 8, marginTop: 4 }}>
+              {data.alertas.map((a: any, i: number) => {
+                const isHoras = a.tipo === "horas_excedidas";
+                return (
+                  <TouchableOpacity
+                    key={`alerta-${i}`}
+                    style={[s.alertaCard, isHoras ? s.alertaRed : s.alertaAmber]}
+                    onPress={() => router.push(`/material/${a.proyecto_id}` as any)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={s.alertaIcon}>
+                      <Ionicons
+                        name={isHoras ? "time" : "trending-down"}
+                        size={20}
+                        color={isHoras ? COLORS.errorText : "#92400E"}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.alertaTitle} numberOfLines={1}>
+                        {isHoras
+                          ? `Horas al ${a.pct}% — ${a.materiales || "Sin código"}`
+                          : `Margen ${a.margen_pct}% — ${a.materiales || "Sin código"}`}
+                      </Text>
+                      <Text style={s.alertaSub}>
+                        {isHoras
+                          ? `${a.horas_imp}h imputadas de ${a.horas_prev}h previstas`
+                          : `Beneficio real por debajo del 10%`}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
           <View style={{ height: 80 }} />
         </ScrollView>
       </SafeAreaView>
@@ -524,6 +810,15 @@ const useS = () => StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.border, marginTop: 4,
   },
   showMoreText: { ...fontStyle("callout"), color: COLORS.primary, fontWeight: "700" },
+  desvioDetail: {
+    backgroundColor: COLORS.bg, borderRadius: ios.radius.md,
+    padding: ios.spacing.md, marginTop: 4, marginBottom: 8,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  desvioCause: { ...fontStyle("callout"), color: COLORS.errorText, fontWeight: "800" },
+  desvioLabel: { fontSize: 11, color: COLORS.textDisabled, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 },
+  desvioValue: { ...fontStyle("callout"), color: COLORS.text, fontWeight: "600" },
+  desvioDelta: { fontSize: 13, fontWeight: "900", marginTop: 2 },
   searchRow: {
     flexDirection: "row", alignItems: "center", gap: 8,
     backgroundColor: COLORS.surface, borderRadius: ios.radius.md,
@@ -567,4 +862,39 @@ const useS = () => StyleSheet.create({
   dropdownItemTxt: {
     ...fontStyle("callout"), color: COLORS.text, fontWeight: "600",
   },
+  exportBtn: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+    backgroundColor: COLORS.surface, borderWidth: 1.5, borderColor: COLORS.primary,
+  },
+  exportBtnText: {
+    ...fontStyle("callout"), color: COLORS.primary, fontWeight: "700",
+  },
+  managerRow: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    backgroundColor: COLORS.bg, borderRadius: ios.radius.md,
+    padding: ios.spacing.md, borderWidth: 1, borderColor: COLORS.border,
+  },
+  managerName: { ...fontStyle("callout"), color: COLORS.text, fontWeight: "700" },
+  managerMeta: { ...fontStyle("caption"), color: COLORS.textSecondary, marginTop: 2 },
+  managerValue: { ...fontStyle("callout"), fontWeight: "800" },
+  managerPct: { ...fontStyle("caption"), fontWeight: "700", marginTop: 1 },
+  alertaCard: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    borderRadius: ios.radius.md, padding: ios.spacing.md,
+    borderWidth: 1,
+  },
+  alertaRed: {
+    backgroundColor: COLORS.errorBg, borderColor: "#FECACA",
+  },
+  alertaAmber: {
+    backgroundColor: "#FFFBEB", borderColor: "#FDE68A",
+  },
+  alertaIcon: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.7)",
+    alignItems: "center", justifyContent: "center",
+  },
+  alertaTitle: { ...fontStyle("callout"), color: COLORS.text, fontWeight: "700" },
+  alertaSub: { ...fontStyle("caption"), color: COLORS.textSecondary, marginTop: 2 },
 });

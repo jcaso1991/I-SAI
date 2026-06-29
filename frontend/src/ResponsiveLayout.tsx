@@ -125,7 +125,7 @@ export default function ResponsiveLayout({
         <SideLink active={active === "home"} label="Inicio" icon="home" to="/home" accent={ios.colors.brand} />
         <SideLink active={active === "dashboard"} label="Dashboard" icon="stats-chart" to="/dashboard" accent={ios.colors.brand} />
         {has("dashboard.view") && (
-          <SideLink active={false} label="Ventas y Beneficios" icon="cash" to="/dashboard/ventas-beneficios" accent={ios.colors.orange} />
+          <SideLink active={active === "ventas-beneficios"} label="Ventas y Beneficios" icon="cash" to="/dashboard/ventas-beneficios" accent={ios.colors.orange} />
         )}
 
         {has("calendario.view") && (

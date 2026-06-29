@@ -72,6 +72,8 @@ export default function MaterialDetail() {
   const [showHistory, setShowHistory] = useState(false);
   const [linkedEvents, setLinkedEvents] = useState<any[]>([]);
   const [showLinkedEvents, setShowLinkedEvents] = useState(false);
+  const [showDesglose, setShowDesglose] = useState(false);
+  const [desgloseHoras, setDesgloseHoras] = useState<any[]>([]);
   const [linkedBudgets, setLinkedBudgets] = useState<any[]>([]);
   const [showLinkedBudgets, setShowLinkedBudgets] = useState(false);
   const [showTechPicker, setShowTechPicker] = useState(false);
@@ -158,6 +160,30 @@ export default function MaterialDetail() {
         ).catch(() => []);
         setLinkedEvents((events || []).filter((e: any) => e.material_id === id));
         api.listBudgets(id).then(setLinkedBudgets).catch(() => {});
+        // Cargar desglose de horas por tipo de mano de obra
+        api.getDashboardFinanciero().then((data) => {
+          const proj = (data.detalle || []).find((d: any) => d.id === id);
+          if (proj?.desglose_horas) {
+            setDesgloseHoras(proj.desglose_horas);
+          } else {
+            // Fallback: calcular a partir de eventos locales
+            const byType: Record<string, { horas: number; tipo: string }> = {};
+            (events || []).filter((e: any) => e.material_id === id).forEach((e: any) => {
+              const tipo = (e as any).tipo_mano_obra || "sin_tipo";
+              const h = parseFloat((e as any).hours) || 0;
+              if (!byType[tipo]) byType[tipo] = { horas: 0, tipo };
+              byType[tipo].horas += h;
+            });
+            if (Object.keys(byType).length > 0) {
+              setDesgloseHoras(Object.values(byType).map(b => ({
+                tipo: b.tipo,
+                horas: Math.round(b.horas * 10) / 10,
+                precio: 0,
+                coste: 0,
+              })));
+            }
+          }
+        }).catch(() => {});
         // if fecha was empty, mark dirty so user sees the default today is pending save
         if (!data.fecha) setDirty(true);
       } catch (e: any) {
@@ -261,10 +287,50 @@ export default function MaterialDetail() {
           <View style={s.section}>
             <Text style={s.sectionTitle}>INFORMACIÓN FIJA</Text>
             <ReadRow label="Horas PREV" value={m.horas_prev} />
-            <ReadRow
-              label="Horas imputadas"
-              value={m.horas_imputadas != null ? String(m.horas_imputadas) : "—"}
-            />
+            <TouchableOpacity
+              style={s.roRow}
+              onPress={() => setShowDesglose(!showDesglose)}
+              activeOpacity={0.7}
+            >
+              <Text style={s.roLabel}>Horas imputadas</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <Text style={s.roValue}>{m.horas_imputadas != null ? String(m.horas_imputadas) : "—"}</Text>
+                {desgloseHoras.length > 0 && (
+                  <Ionicons name={showDesglose ? "chevron-up" : "chevron-down"} size={14} color={COLORS.textSecondary} />
+                )}
+              </View>
+            </TouchableOpacity>
+            {showDesglose && desgloseHoras.length > 0 && (
+              <View style={{ backgroundColor: COLORS.bg, borderRadius: ios.radius.md, padding: ios.spacing.md, marginTop: 4, borderWidth: 1, borderColor: COLORS.border }}>
+                <View style={{ flexDirection: "row", paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 4 }}>
+                  <Text style={{ flex: 2, fontSize: 10, fontWeight: "800", color: COLORS.textSecondary }}>Tipo</Text>
+                  <Text style={{ flex: 1, fontSize: 10, fontWeight: "800", color: COLORS.textSecondary, textAlign: "center" }}>Horas</Text>
+                  <Text style={{ flex: 1, fontSize: 10, fontWeight: "800", color: COLORS.textSecondary, textAlign: "right" }}>Precio/h</Text>
+                  <Text style={{ flex: 1, fontSize: 10, fontWeight: "800", color: COLORS.textSecondary, textAlign: "right" }}>Coste</Text>
+                </View>
+                {desgloseHoras.map((d: any, i: number) => (
+                  <View key={i} style={{ flexDirection: "row", paddingVertical: 3 }}>
+                    <Text style={{ flex: 2, fontSize: 12, color: COLORS.text, fontWeight: "500" }}>{d.tipo === "sin_tipo" ? "Sin tipo" : d.tipo}</Text>
+                    <Text style={{ flex: 1, fontSize: 12, color: COLORS.text, textAlign: "center", fontWeight: "600" }}>{d.horas}h</Text>
+                    <Text style={{ flex: 1, fontSize: 12, color: COLORS.text, textAlign: "right" }}>{d.precio > 0 ? `${d.precio.toFixed(1)}€` : "—"}</Text>
+                    <Text style={{ flex: 1, fontSize: 12, color: COLORS.text, textAlign: "right", fontWeight: "700" }}>{d.coste > 0 ? `${d.coste.toFixed(1)}€` : "—"}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+            {m.historial_horas?.length > 0 && (
+              <View style={{ marginTop: 8, backgroundColor: COLORS.bg, borderRadius: ios.radius.md, padding: ios.spacing.md, borderWidth: 1, borderColor: COLORS.border }}>
+                <Text style={{ fontSize: 10, fontWeight: "800", color: COLORS.textSecondary, marginBottom: 6 }}>Historial de horas</Text>
+                {m.historial_horas.map((h: any, i: number) => (
+                  <View key={i} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 4, borderBottomWidth: i < m.historial_horas.length - 1 ? 1 : 0, borderBottomColor: COLORS.border }}>
+                    <Text style={{ flex: 2, fontSize: 11, color: COLORS.text, fontWeight: "600" }} numberOfLines={1}>{h.usuario}</Text>
+                    <Text style={{ flex: 1.5, fontSize: 11, color: COLORS.textSecondary }}>{h.tipo_mano_obra || "—"}</Text>
+                    <Text style={{ flex: 0.8, fontSize: 11, color: COLORS.text, fontWeight: "700", textAlign: "center" }}>{h.horas}h</Text>
+                    <Text style={{ flex: 0.5, fontSize: 9, color: COLORS.textDisabled, textAlign: "right" }}>{(h.fecha || "").slice(0, 10)}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
             <ReadRow label="Comercial" value={m.comercial} />
 
             <Text style={[s.fieldLabel, { marginTop: ios.spacing.lg }]}>Importe venta previsto</Text>

@@ -54,6 +54,8 @@ export const api = {
   register: (email: string, password: string, name?: string) =>
     request("/auth/register", { method: "POST", body: JSON.stringify({ email, password, name }) }, false),
   me: () => request("/auth/me"),
+  updateHomepage: (homepage: string) =>
+    request("/auth/homepage", { method: "PATCH", body: JSON.stringify({ homepage }) }),
   listMateriales: (q?: string, pendingOnly?: boolean, managerId?: string, unassigned?: boolean, projectStatus?: string, year?: string, month?: string) => {
     const p = new URLSearchParams();
     if (q) p.set("q", q);
@@ -69,6 +71,8 @@ export const api = {
   getMaterial: (id: string) => request(`/materiales/${id}`),
   updateMaterial: (id: string, body: any) =>
     request(`/materiales/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  uploadMaterialAttachment: (mid: string, body: { filename: string; mime_type: string; base64: string }) =>
+    request(`/materiales/${mid}/attachments`, { method: "POST", body: JSON.stringify(body) }),
   getMaterialHistory: (id: string) => request(`/materiales/${id}/history`),
   stats: () => request("/stats"),
   statsByManager: (year?: string) => request(`/stats/by-manager${year && year !== "todos" ? "?year=" + year : ""}`),
@@ -105,9 +109,9 @@ export const api = {
   deleteUser: (id: string) => request(`/users/${id}`, { method: "DELETE" }),
   // Roles & Permissions
   listRoles: () => request("/roles"),
-  createRole: (body: { name: string; permissions: string[]; notification_prefs?: string[] }) =>
+  createRole: (body: { name: string; permissions: string[]; notification_prefs?: string[]; tipos_mano_obra?: string[] }) =>
     request("/roles", { method: "POST", body: JSON.stringify(body) }),
-  updateRole: (id: string, body: { name?: string; permissions?: string[] }) =>
+  updateRole: (id: string, body: { name?: string; permissions?: string[]; notification_prefs?: string[]; tipos_mano_obra?: string[] }) =>
     request(`/roles/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteRole: (id: string) => request(`/roles/${id}`, { method: "DELETE" }),
   listPermissions: () => request("/permissions"),
@@ -423,6 +427,16 @@ export const api = {
   // Precios mano de obra
   getPrecios: () => request("/config/precios", {}, false),
   updatePrecios: (body: any) => request("/config/precios", { method: "PUT", body: JSON.stringify(body) }),
+
+  // Tipos de mano de obra disponibles para el usuario actual
+  getTiposManoObra: () => request("/auth/tipos-mano-obra"),
+
+  // Dashboard financiero
+  getDashboardFinanciero: (year?: string) => {
+    const params = new URLSearchParams();
+    if (year) params.set("year", year);
+    return request(`/dashboard/financiero${params.toString() ? "?" + params.toString() : ""}`);
+  },
 };
 
 export const COLORS = {

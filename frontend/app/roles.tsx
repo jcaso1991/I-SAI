@@ -27,10 +27,22 @@ type Role = {
   name: string;
   permissions: string[];
   notification_prefs: string[];
+  tipos_mano_obra?: string[];
   system: boolean;
   locked: boolean;
   created_at?: string;
 };
+
+const TIPOS_MANO_OBRA = [
+  { key: "obra", label: "Obra" },
+  { key: "sat", label: "SAT" },
+  { key: "sat_remoto", label: "SAT Remoto" },
+  { key: "sat_desplazamiento", label: "SAT Desplazamiento" },
+  { key: "sat_guardia_desplazamiento", label: "SAT Guardia Desplazamiento" },
+  { key: "guardia", label: "Guardia" },
+  { key: "sat_guardia_remoto", label: "SAT Guardia Remoto" },
+  { key: "desplazamiento_obra", label: "Desplazamiento Obra" },
+];
 
 export default function RolesScreen() {
   const router = useRouter();
@@ -189,10 +201,11 @@ function CreateRoleModal({ visible, permissions, notifications, onClose, onDone 
   const [name, setName] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [notifSelected, setNotifSelected] = useState<string[]>([]);
+  const [tiposSelected, setTiposSelected] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   useFocusEffect(useCallback(() => {
-    setName(""); setSelected([]); setNotifSelected([]);
+    setName(""); setSelected([]); setNotifSelected([]); setTiposSelected([]);
   }, [visible]));
 
   const togglePerm = (k: string) => {
@@ -203,6 +216,10 @@ function CreateRoleModal({ visible, permissions, notifications, onClose, onDone 
     setNotifSelected((prev) => prev.includes(k) ? prev.filter((p) => p !== k) : [...prev, k]);
   };
 
+  const toggleTipo = (k: string) => {
+    setTiposSelected((prev) => prev.includes(k) ? prev.filter((p) => p !== k) : [...prev, k]);
+  };
+
   const submit = async () => {
     if (!name.trim()) {
       Alert.alert("Error", "Nombre obligatorio");
@@ -210,7 +227,7 @@ function CreateRoleModal({ visible, permissions, notifications, onClose, onDone 
     }
     setSaving(true);
     try {
-      await api.createRole({ name: name.trim(), permissions: selected, notification_prefs: notifSelected } as any);
+      await api.createRole({ name: name.trim(), permissions: selected, notification_prefs: notifSelected, tipos_mano_obra: tiposSelected } as any);
       onDone();
     } catch (e: any) {
       Alert.alert("Error", e.message);
@@ -254,6 +271,11 @@ function CreateRoleModal({ visible, permissions, notifications, onClose, onDone 
               selected={notifSelected}
               onToggle={toggleNotif}
             />
+            <Text style={s.mLabel}>Tipos de mano de obra</Text>
+            <TiposManoObraList
+              selected={tiposSelected}
+              onToggle={toggleTipo}
+            />
             <TouchableOpacity
               testID="modal-submit-role"
               style={[s.primary, saving && { opacity: 0.6 }]}
@@ -276,12 +298,14 @@ function EditRoleModal({ role, permissions, notifications, onClose, onDone }: {
   const [name, setName] = useState(role?.name || "");
   const [selected, setSelected] = useState<string[]>(role?.permissions || []);
   const [notifSelected, setNotifSelected] = useState<string[]>(role?.notification_prefs || []);
+  const [tiposSelected, setTiposSelected] = useState<string[]>(role?.tipos_mano_obra || []);
   const [saving, setSaving] = useState(false);
 
   useFocusEffect(useCallback(() => {
     setName(role?.name || "");
     setSelected(role?.permissions || []);
     setNotifSelected(role?.notification_prefs || []);
+    setTiposSelected(role?.tipos_mano_obra || []);
   }, [role?.id]));
 
   const togglePerm = (k: string) => {
@@ -292,6 +316,10 @@ function EditRoleModal({ role, permissions, notifications, onClose, onDone }: {
     setNotifSelected((prev) => prev.includes(k) ? prev.filter((p) => p !== k) : [...prev, k]);
   };
 
+  const toggleTipo = (k: string) => {
+    setTiposSelected((prev) => prev.includes(k) ? prev.filter((p) => p !== k) : [...prev, k]);
+  };
+
   const submit = async () => {
     if (!role) return;
     if (!name.trim()) {
@@ -300,7 +328,7 @@ function EditRoleModal({ role, permissions, notifications, onClose, onDone }: {
     }
     setSaving(true);
     try {
-      await api.updateRole(role.id, { name: name.trim(), permissions: selected, notification_prefs: notifSelected } as any);
+      await api.updateRole(role.id, { name: name.trim(), permissions: selected, notification_prefs: notifSelected, tipos_mano_obra: tiposSelected } as any);
       onDone();
     } catch (e: any) {
       Alert.alert("Error", e.message);
@@ -347,6 +375,11 @@ function EditRoleModal({ role, permissions, notifications, onClose, onDone }: {
               notifications={notifications}
               selected={notifSelected}
               onToggle={toggleNotif}
+            />
+            <Text style={s.mLabel}>Tipos de mano de obra</Text>
+            <TiposManoObraList
+              selected={tiposSelected}
+              onToggle={toggleTipo}
             />
             <TouchableOpacity
               style={[s.primary, saving && { opacity: 0.6 }]}
@@ -443,6 +476,37 @@ function NotificationList({ notifications, selected, onToggle }: {
           })}
         </View>
       ))}
+    </View>
+  );
+}
+
+// ---------------- Tipos de mano de obra list ----------------
+function TiposManoObraList({ selected, onToggle }: {
+  selected: string[]; onToggle: (k: string) => void;
+}) {
+  return (
+    <View style={s.permGroup}>
+      <Text style={s.permGroupTitle}>MANO DE OBRA</Text>
+      {TIPOS_MANO_OBRA.map((t) => {
+        const on = selected.includes(t.key);
+        return (
+          <TouchableOpacity
+            key={t.key}
+            testID={`tipo-${t.key}`}
+            style={s.permRow}
+            onPress={() => onToggle(t.key)}
+            activeOpacity={0.7}
+          >
+            <View style={[s.checkbox, on && s.checkboxOn]}>
+              {on && <Ionicons name="checkmark" size={16} color="#fff" />}
+            </View>
+            <Text style={[s.permLabel, on && { color: COLORS.text, fontWeight: "700" }]}>
+              {t.label}
+            </Text>
+            <Text style={s.permKey}>{t.key}</Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }

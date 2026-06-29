@@ -56,6 +56,17 @@ const DAY_LABELS_FULL = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 const DAY_LABELS_MONTH = ["L", "M", "X", "J", "V", "S", "D"];
 const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
+const TIPO_MO_LABELS: Record<string, string> = {
+  obra: "Obra",
+  sat: "SAT",
+  sat_remoto: "SAT Remoto",
+  sat_desplazamiento: "SAT Desplazamiento",
+  sat_guardia_desplazamiento: "SAT Guardia Desplazamiento",
+  guardia: "Guardia",
+  sat_guardia_remoto: "SAT Guardia Remoto",
+  desplazamiento_obra: "Desplazamiento Obra",
+};
+
 type ViewMode = "day" | "week" | "month" | "multi" | "gestor";
 type Technician = { id: string; name: string; email: string };
 type RecurrenceType = "none" | "daily" | "weekly" | "monthly";
@@ -80,6 +91,7 @@ type EventT = {
   seguimiento?: string;
   budget_id?: string | null;
   hours?: number | null;
+  tipo_mano_obra?: string | null;
 };
 
 // Date helpers
@@ -1970,6 +1982,9 @@ function CreateEventModal({
   const [until, setUntil] = useState<string>("");
   const [hours, setHours] = useState<string>("");
   const [showHours, setShowHours] = useState(false);
+  const [tiposMO, setTiposMO] = useState<string[]>([]);
+  const [tipoManoObra, setTipoManoObra] = useState<string | null>(null);
+  const [showTipoMO, setShowTipoMO] = useState(false);
 
   const startDate = dateAt(range.day, range.startMin);
   const endDate = dateAt(range.day, range.endMin);
@@ -1994,11 +2009,16 @@ function CreateEventModal({
         setMaterialId(null); setMaterialObj(null); setShowMatList(false);
         setAssignedIds([]); setManagerId(null);
         setRecurrence("none"); setUntil(""); setHours(""); setShowHours(false);
+        setTipoManoObra(null); setShowTipoMO(false);
       }
       setShowManagerList(false); setShowTechList(false);
       (async () => {
         try { setTechs(await api.listTechnicians()); } catch {}
         try { setManagers(await api.listManagers()); } catch {}
+        try {
+          const res = await api.getTiposManoObra();
+          setTiposMO(res.tipos || []);
+        } catch {}
       })();
     }
   }, [visible]);
@@ -2037,6 +2057,7 @@ function CreateEventModal({
         manager_id: managerId || undefined,
         recurrence: recurrence !== "none" ? { type: recurrence, until: until || null } : undefined,
         hours: hours ? parseFloat(hours) : undefined,
+        tipo_mano_obra: tipoManoObra || undefined,
       } as any);
       onDone();
     } catch (e: any) { Alert.alert("Error", e.message); }
@@ -2224,6 +2245,49 @@ function CreateEventModal({
                   ))}
                 </View>
               )}
+              {tiposMO.length > 0 && (
+                <>
+                  <Text style={s.mLabel}>Tipo de mano de obra</Text>
+                  <TouchableOpacity
+                    style={s.pickMatBtn}
+                    onPress={() => setShowTipoMO((v) => !v)}
+                  >
+                    <Ionicons name="construct-outline" size={20} color={COLORS.primary} />
+                    <Text style={{ color: tipoManoObra ? COLORS.navy : COLORS.primary, fontWeight: "700", flex: 1 }}>
+                      {tipoManoObra ? TIPO_MO_LABELS[tipoManoObra] || tipoManoObra : "Sin tipo"}
+                    </Text>
+                    <Ionicons name={showTipoMO ? "chevron-up" : "chevron-down"} size={18} color={COLORS.primary} />
+                  </TouchableOpacity>
+                  {showTipoMO && (
+                    <View style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, marginTop: 6, overflow: "hidden" }}>
+                      <TouchableOpacity
+                        style={[s.techRow, { borderRadius: 0, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: COLORS.border }]}
+                        onPress={() => { setTipoManoObra(null); setShowTipoMO(false); }}
+                      >
+                        <View style={[s.checkBox, !tipoManoObra && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}>
+                          {!tipoManoObra && <Ionicons name="checkmark" size={16} color="#fff" />}
+                        </View>
+                        <Text style={[s.techName, { color: COLORS.textSecondary, fontStyle: "italic" }]}>— Sin tipo —</Text>
+                      </TouchableOpacity>
+                      {tiposMO.map((t) => {
+                        const on = tipoManoObra === t;
+                        return (
+                          <TouchableOpacity
+                            key={t}
+                            style={[s.techRow, { borderRadius: 0, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: COLORS.border }, on && { backgroundColor: COLORS.highlightBg }]}
+                            onPress={() => { setTipoManoObra(t); setShowTipoMO(false); }}
+                          >
+                            <View style={[s.checkBox, on && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}>
+                              {on && <Ionicons name="checkmark" size={16} color="#fff" />}
+                            </View>
+                            <Text style={s.techName}>{TIPO_MO_LABELS[t] || t}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+                </>
+              )}
 
               <Text style={s.mLabel}>Gestor del proyecto</Text>
               <TouchableOpacity
@@ -2366,7 +2430,9 @@ function EventDetailsModal({
   const [eventHours, setEventHours] = useState<string>((event as any).hours ? String((event as any).hours) : "");
   const [showEventHours, setShowEventHours] = useState(false);
 
-  // Budget linking
+  const [eventTipoMO, setEventTipoMO] = useState<string | null>((event as any).tipo_mano_obra || null);
+  const [showTipoMOEdit, setShowTipoMOEdit] = useState(false);
+  const [tiposMOEdit, setTiposMOEdit] = useState<string[]>([]);
   const [budgetObj, setBudgetObj] = useState<any>(null);
   const [budgets, setBudgets] = useState<any[]>([]);
   const [showBudgetList, setShowBudgetList] = useState(false);
@@ -2376,6 +2442,7 @@ function EventDetailsModal({
   const m = event.material;
 
   useEffect(() => {
+    api.getTiposManoObra().then((res) => setTiposMOEdit(res.tipos || [])).catch(() => {});
     if (isAdmin) {
       api.listManagers().then(setManagers).catch(() => {});
       api.listTechnicians().then(setTechs).catch(() => {});
@@ -2445,6 +2512,7 @@ function EventDetailsModal({
         seguimiento: seguimiento || undefined,
         hours: eventHours ? parseFloat(eventHours) : null,
         budget_id: budgetObj?.id || null,
+        tipo_mano_obra: eventTipoMO || null,
       } as any);
       onChanged();
     } catch (e: any) { Alert.alert("Error", e.message); }
@@ -2454,22 +2522,34 @@ function EventDetailsModal({
   // Fast-path used by the status chips: a technician just taps
   // Terminado / Pendiente and we persist immediately without requiring
   // full edit-mode. Validates that Pendiente comes with a seguimiento.
-  const saveStatus = async (newStatus: "completed" | "pending_completion", segText?: string) => {
-    if (newStatus === "pending_completion" && !(segText || "").trim()) {
-      Alert.alert(
-        "Observaciones requeridas",
-        "Añade las observaciones del técnico antes de marcar el evento como pendiente de terminar.",
-      );
-      return;
+  const saveStatus = async (newStatus: "completed" | "pending_completion") => {
+    const seg = seguimiento.trim();
+    const horVal = eventHours ? parseFloat(eventHours) : null;
+    const tipo = eventTipoMO || null;
+    if (newStatus === "completed" || newStatus === "pending_completion") {
+      const errors: string[] = [];
+      if (!seg) errors.push("• Observaciones del técnico (campo Seguimiento)");
+      if (horVal == null || isNaN(horVal)) errors.push("• Horas imputadas (puede ser 0)");
+      if (!tipo && tiposMOEdit.length > 0) errors.push("• Tipo de mano de obra");
+      if (errors.length > 0) {
+        setEditing(true);
+        Alert.alert(
+          "Campos obligatorios",
+          "Antes de cambiar el estado debes rellenar:\n" + errors.join("\n"),
+        );
+        return;
+      }
     }
     setSaving(true);
     try {
       await api.updateEvent(event.id, {
         status: newStatus,
-        ...(segText !== undefined ? { seguimiento: segText || undefined } : {}),
+        seguimiento: seg || undefined,
+        hours: newStatus === "completed" ? (horVal || 0) : horVal,
+        tipo_mano_obra: tipo,
       } as any);
       setStatus(newStatus);
-      if (segText !== undefined) setSeguimiento(segText);
+      setSeguimiento(seg);
       onChanged();
     } catch (e: any) { Alert.alert("Error", e.message); }
     finally { setSaving(false); }
@@ -2736,17 +2816,13 @@ function EventDetailsModal({
               </View>
             )}
 
-            {/* Seguimiento (observaciones) — siempre editable, auto-guarda */}
+            {/* Seguimiento (observaciones) */}
             <Text style={s.mLabel}>Seguimiento (observaciones del técnico)</Text>
             <TextInput
               testID="seguimiento-input"
               style={[s.mInput, { minHeight: 72, textAlignVertical: "top" }]}
               value={seguimiento}
               onChangeText={setSeguimiento}
-              onBlur={() => {
-                const segText = seguimiento.trim() || "";
-                saveStatus("pending_completion", segText);
-              }}
               placeholder="Escribe aquí las observaciones…"
               placeholderTextColor={COLORS.textDisabled}
               multiline
@@ -3059,22 +3135,20 @@ function EventDetailsModal({
             )}
 
             <Text style={s.mLabel}>Horas asignadas</Text>
-            {isAdmin ? (
-              <>
-                <TouchableOpacity
-                  style={s.pickMatBtn}
-                  onPress={() => setShowEventHours((v) => !v)}
-                  disabled={saving}
-                >
-                  <Ionicons name="time-outline" size={20} color={COLORS.primary} />
-                  <Text style={{ color: eventHours ? COLORS.navy : COLORS.primary, fontWeight: "700", flex: 1 }}>{eventHours ? `${eventHours}h` : "Sin asignar"}</Text>
-                  <Ionicons name={showEventHours ? "chevron-up" : "chevron-down"} size={18} color={COLORS.primary} />
-                </TouchableOpacity>
-                {showEventHours && (
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
-                    {[0.5,1,1.5,2,2.5,3,3.5,4,4.5,5,5.5,6,6.5,7,7.5,8].map((h) => (
-                      <TouchableOpacity
-                        key={h}
+            <TouchableOpacity
+              style={s.pickMatBtn}
+              onPress={() => setShowEventHours((v) => !v)}
+              disabled={saving}
+            >
+              <Ionicons name="time-outline" size={20} color={COLORS.primary} />
+              <Text style={{ color: eventHours ? COLORS.navy : COLORS.primary, fontWeight: "700", flex: 1 }}>{eventHours ? `${eventHours}h` : "Sin asignar"}</Text>
+              <Ionicons name={showEventHours ? "chevron-up" : "chevron-down"} size={18} color={COLORS.primary} />
+            </TouchableOpacity>
+            {showEventHours && (
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                {[0.5,1,1.5,2,2.5,3,3.5,4,4.5,5,5.5,6,6.5,7,7.5,8].map((h) => (
+                  <TouchableOpacity
+                    key={h}
                       style={[s.recChip, eventHours === String(h) && s.recChipActive]}
                       onPress={() => { saveHours(String(h)); setShowEventHours(false); }}
                       >
@@ -3083,9 +3157,50 @@ function EventDetailsModal({
                     ))}
                   </View>
                 )}
+            <View style={{ height: 8 }} />
+
+            {tiposMOEdit.length > 0 && (
+              <>
+                <Text style={s.mLabel}>Tipo de mano de obra</Text>
+                <TouchableOpacity
+                  style={s.pickMatBtn}
+                  onPress={() => setShowTipoMOEdit((v) => !v)}
+                >
+                  <Ionicons name="construct-outline" size={20} color={COLORS.primary} />
+                  <Text style={{ color: eventTipoMO ? COLORS.navy : COLORS.primary, fontWeight: "700", flex: 1 }}>
+                    {eventTipoMO ? TIPO_MO_LABELS[eventTipoMO] || eventTipoMO : "Sin tipo"}
+                  </Text>
+                  <Ionicons name={showTipoMOEdit ? "chevron-up" : "chevron-down"} size={18} color={COLORS.primary} />
+                </TouchableOpacity>
+                {showTipoMOEdit && (
+                  <View style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, marginTop: 6, overflow: "hidden" }}>
+                    <TouchableOpacity
+                      style={[s.techRow, { borderRadius: 0, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: COLORS.border }]}
+                      onPress={() => { setEventTipoMO(null); setShowTipoMOEdit(false); }}
+                    >
+                      <View style={[s.checkBox, !eventTipoMO && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}>
+                        {!eventTipoMO && <Ionicons name="checkmark" size={16} color="#fff" />}
+                      </View>
+                      <Text style={[s.techName, { color: COLORS.textSecondary, fontStyle: "italic" }]}>— Sin tipo —</Text>
+                    </TouchableOpacity>
+                    {tiposMOEdit.map((t) => {
+                      const on = eventTipoMO === t;
+                      return (
+                        <TouchableOpacity
+                          key={t}
+                          style={[s.techRow, { borderRadius: 0, borderWidth: 0, borderBottomWidth: 1, borderBottomColor: COLORS.border }, on && { backgroundColor: COLORS.highlightBg }]}
+                          onPress={() => { setEventTipoMO(t); setShowTipoMOEdit(false); }}
+                        >
+                          <View style={[s.checkBox, on && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}>
+                            {on && <Ionicons name="checkmark" size={16} color="#fff" />}
+                          </View>
+                          <Text style={s.techName}>{TIPO_MO_LABELS[t] || t}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
               </>
-            ) : (
-              <Text style={s.descText}>{eventHours ? `${eventHours}h` : "Sin asignar"}</Text>
             )}
 
             <Text style={s.mLabel}>Notas</Text>
@@ -3109,8 +3224,8 @@ function EventDetailsModal({
             )}
 
             {/* Work status + technician's seguimiento. Visible to both the
-                admin and the assigned technician. Chips update the status
-                with a single tap; Pendiente forces a seguimiento text. */}
+                admin and the assigned technician. Changing to completed/pending
+                requires hours, labor type, and observations. */}
             <Text style={s.mLabel}>Estado del trabajo</Text>
             <View style={s.statusRow}>
               <TouchableOpacity
@@ -3119,7 +3234,15 @@ function EventDetailsModal({
                   s.statusChip,
                   status === "in_progress" && { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
                 ]}
-                onPress={() => saveStatus("in_progress" as any)}
+                onPress={async () => {
+                  setSaving(true);
+                  try {
+                    await api.updateEvent(event.id, { status: "in_progress" } as any);
+                    setStatus("in_progress");
+                    onChanged();
+                  } catch (e: any) { Alert.alert("Error", e.message); }
+                  finally { setSaving(false); }
+                }}
                 disabled={saving || status === "in_progress"}
               >
                 <Ionicons name="hourglass-outline" size={14} color={status === "in_progress" ? "#fff" : COLORS.primary} />
@@ -3143,18 +3266,7 @@ function EventDetailsModal({
                   s.statusChip,
                   status === "pending_completion" && { backgroundColor: COLORS.pendingText, borderColor: COLORS.pendingText },
                 ]}
-                onPress={() => {
-                  if (!seguimiento.trim()) {
-                    setEditing(true);
-                    setStatus("pending_completion");
-                    Alert.alert(
-                      "Observaciones requeridas",
-                      "Escribe las observaciones del técnico en el campo Seguimiento y vuelve a pulsar el chip para guardar.",
-                    );
-                    return;
-                  }
-                  saveStatus("pending_completion", seguimiento);
-                }}
+                onPress={() => saveStatus("pending_completion")}
                 disabled={saving}
               >
                 <Ionicons name="alert-circle-outline" size={14} color={status === "pending_completion" ? "#fff" : COLORS.pendingText} />
