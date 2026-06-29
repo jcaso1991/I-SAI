@@ -827,6 +827,78 @@ async def seed_notifications():
     print(f"  ✅ {inserted} notificaciones")
 
 
+async def seed_datos_financieros():
+    """Genera datos financieros (ventas, costes, margenes) y eventos con horas."""
+    print("\n📊 Generando datos financieros...")
+    TIPOS = ["obra", "sat", "sat_remoto", "sat_desplazamiento", "sat_guardia_desplazamiento", "guardia", "sat_guardia_remoto", "desplazamiento_obra"]
+    STATUSES = ["completed", "completed", "completed", "pending_completion"]
+    projects = await db.materiales.find(
+        {"project_status": {"$nin": ["anulado"]}},
+        {"id": 1, "materiales": 1, "manager_id": 1}
+    ).to_list(50000)
+
+    precios = {
+        "precio_obra": 35.5, "precio_sat": 40, "precio_sat_remoto": 45,
+        "precio_sat_desplazamiento": 50, "precio_sat_guardia_desplazamiento": 65,
+        "precio_guardia": 55, "precio_sat_guardia_remoto": 75, "precio_desplazamiento_obra": 72,
+    }
+    await db.config.update_one({"_id": "precios_mano_obra"}, {"$set": precios}, upsert=True)
+
+    now = datetime.now(timezone.utc)
+    total_h = 0.0
+    updated = 0
+    for p in projects:
+        venta_mat = round(random.uniform(200, 8000), 2)
+        venta_mo = round(random.uniform(300, 5000), 2)
+        coste_prev_mat = round(venta_mat * random.uniform(0.4, 0.75), 2)
+        coste_prev_mo = round(venta_mo * random.uniform(0.5, 0.8), 2)
+        coste_real_mat = round(coste_prev_mat * random.uniform(0.7, 1.3), 2)
+        venta_total = venta_mat + venta_mo
+        coste_prev_total = coste_prev_mat + coste_prev_mo
+        ben_inicial = round((venta_total - coste_prev_total) / venta_total * 100, 1) if venta_total > 0 else 0
+        ben_real = round(random.uniform(-5, 50), 1)
+        updated_at = datetime(random.randint(2024, 2026), random.randint(1, 12), random.randint(1, 28), tzinfo=timezone.utc)
+
+        await db.materiales.update_one(
+            {"id": p["id"]},
+            {"$set": {
+                "importe_venta_prev_materiales": venta_mat, "importe_venta_prev_mano_de_obra": venta_mo,
+                "coste_prev_materiales": coste_prev_mat, "coste_prev_mano_de_obra": coste_prev_mo,
+                "coste_real_materiales": coste_real_mat,
+                "beneficio_inicial": ben_inicial, "beneficio_real": ben_real,
+                "updated_at": updated_at.isoformat(),
+            }}
+        )
+
+        name = (p.get("materiales") or "")[:25]
+        hours = round(random.uniform(0.5, 8) * 2) / 2
+        if hours < 0.5: hours = 0.5
+        if hours > 8: hours = 8
+        tipo = random.choice(TIPOS)
+        status = random.choice(STATUSES)
+        days_ago = random.randint(1, 90)
+        start = (now - timedelta(days=days_ago)).replace(hour=8, minute=0, second=0)
+        end = start + timedelta(hours=hours)
+        ev = {
+            "id": str(__import__("uuid").uuid4()),
+            "title": name, "material_id": p["id"],
+            "start_at": start.isoformat(), "end_at": end.isoformat(),
+            "hours": hours, "tipo_mano_obra": tipo, "status": status,
+            "seguimiento": "OK" if status == "completed" else "Pendiente",
+            "manager_id": p.get("manager_id"), "created_by": "admin@isai.com",
+            "created_at": now.isoformat(),
+        }
+        await db.events.insert_one(ev)
+        if status in ("completed", "pending_completion"):
+            await db.materiales.update_one({"id": p["id"]}, {"$inc": {"horas_imputadas": hours}})
+            total_h += hours
+        updated += 1
+        if updated % 200 == 0:
+            print(f"  {updated}/{len(projects)}...")
+
+    print(f"  ✅ Financiero: {len(projects)} proyectos, {total_h:.0f}h imputadas, {len(precios)} precios configurados")
+
+
 # ---------------------------------------------------------------------------
 # MAIN
 # ---------------------------------------------------------------------------
@@ -837,6 +909,7 @@ async def main():
     await seed_project_history()
     await seed_budgets()
     await seed_sat()
+    await seed_datos_financieros()
     await seed_chats()
     await seed_events()
     await seed_documents()
