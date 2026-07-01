@@ -13,15 +13,16 @@
 
 import { useCallback, useState } from "react";
 import {
-  View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView,
-  TextInput, Modal, Platform, Alert,
+  View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView,
+  Alert, Modal, Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
-import { api, clearToken, COLORS } from "../src/api";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import { api, clearToken, COLORS, getToken, BACKEND_URL } from "../src/api";
 import { useThemedStyles } from "../src/theme";
 import { ios } from "../src/ui/iosTheme";
 import ResponsiveLayout from "../src/ResponsiveLayout";
@@ -314,7 +315,7 @@ export default function SATScreen() {
               onPress={() => setShowViewMenu(false)}
             />
             <View style={[s.viewMenu, !isWide && { left: 16 }]}>
-              {(["incidencias", "clientes"] as const).map((v) => (
+              {(["incidencias", "clientes", "mantenimientos"] as const).map((v) => (
                 <TouchableOpacity
                   key={v}
                   testID={`view-menu-${v}`}
@@ -322,18 +323,20 @@ export default function SATScreen() {
                   onPress={() => { setView(v); setShowViewMenu(false); }}
                 >
                   <Ionicons
-                    name={v === "incidencias" ? "alert-circle-outline" : "people-outline"}
+                    name={v === "incidencias" ? "alert-circle-outline" : v === "mantenimientos" ? "construct-outline" : "people-outline"}
                     size={18}
                     color={view === v ? COLORS.primary : COLORS.text}
                   />
                   <View style={{ flex: 1 }}>
                     <Text style={[s.viewMenuTitle, view === v && { color: COLORS.primary }]}>
-                      {v === "incidencias" ? "Incidencias" : "Clientes"}
+                      {v === "incidencias" ? "Incidencias" : v === "mantenimientos" ? "Mantenimientos" : "Clientes"}
                     </Text>
                     <Text style={s.viewMenuSub}>
                       {v === "incidencias"
                         ? `${pendingCount} pendientes · ${resolvedCount} resueltas`
-                        : `${clients.length} clientes en el catálogo`}
+                        : v === "mantenimientos"
+                        ? "Alertas y revisiones"
+                        : `${clients.length} clientes en el catalogo`}
                     </Text>
                   </View>
                   {view === v && <Ionicons name="checkmark" size={18} color={COLORS.primary} />}
@@ -504,6 +507,10 @@ export default function SATScreen() {
             )}
           </>
         )}
+
+        {view === "mantenimientos" && (
+          <MantenimientosView />
+        )}
       </SafeAreaView>
 
       {openItem && (
@@ -623,11 +630,14 @@ function IncidentCard({ item, clientName, onPress }:
 
 function ClientCard({ client, canEditSat, onEdit, onNewIncident, onViewIncidents }:
   { client: Client; canEditSat: boolean; onEdit: () => void; onNewIncident: () => void; onViewIncidents: () => void }) {
+  const router = useRouter();
   const s = useThemedStyles(useS);
   return (
     <View testID={`client-${client.id}`} style={s.clientCard}>
       <View style={{ flex: 1 }}>
-        <Text style={s.clientName} numberOfLines={1}>{client.cliente}</Text>
+        <TouchableOpacity onPress={() => router.push(`/clientes/${client.id}`)}>
+          <Text style={[s.clientName, { color: COLORS.primary }]} numberOfLines={1}>{client.cliente}</Text>
+        </TouchableOpacity>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 6 }}>
           {!!client.direccion && (
             <View style={s.clientChip}>
@@ -1423,6 +1433,255 @@ function ClientModal({ client, onClose, onSaved }: {
         </View>
       </View>
     </Modal>
+  );
+}
+
+function DatePickerRow({ value, onChange, onRemove }: { value: string; onChange: (v: string) => void; onRemove?: () => void }) {
+  const [show, setShow] = useState(false);
+
+  const handlePress = () => {
+    if (Platform.OS === "web") {
+      const input = document.createElement("input");
+      input.type = "date";
+      input.value = value;
+      input.style.position = "absolute";
+      input.style.left = "-9999px";
+      input.onchange = (e: any) => {
+        onChange(e.target.value);
+        document.body.removeChild(input);
+      };
+      input.onblur = () => { setTimeout(() => { if (document.body.contains(input)) document.body.removeChild(input); }, 200); };
+      document.body.appendChild(input);
+      input.showPicker?.();
+    } else {
+      setShow(true);
+    }
+  };
+
+  return (
+    <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+      <TouchableOpacity
+        style={{ flex: 1, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
+        onPress={handlePress}
+      >
+        <Text style={{ color: value ? COLORS.text : COLORS.textDisabled, fontWeight: "600" }}>
+          {value || "Seleccionar fecha"}
+        </Text>
+        <Ionicons name="calendar-outline" size={16} color={COLORS.textSecondary} />
+      </TouchableOpacity>
+      {onRemove && (
+        <TouchableOpacity onPress={onRemove}>
+          <Ionicons name="close-circle" size={20} color={COLORS.errorText} />
+        </TouchableOpacity>
+      )}
+      {show && Platform.OS !== "web" && (
+        <DateTimePicker
+          value={value ? new Date(value + "T00:00:00") : new Date()}
+          mode="date"
+          display="default"
+          onChange={(ev: any, d?: Date) => {
+            setShow(false);
+            if (d) {
+              const y = d.getFullYear();
+              const m = String(d.getMonth() + 1).padStart(2, "0");
+              const day = String(d.getDate()).padStart(2, "0");
+              onChange(`${y}-${m}-${day}`);
+            }
+          }}
+        />
+      )}
+    </View>
+  );
+}
+
+function MantenimientosView() {
+  const s = useThemedStyles(useS);
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [newFecha, setNewFecha] = useState("");
+  const [newCliente, setNewCliente] = useState("");
+  const [newClienteId, setNewClienteId] = useState("");
+  const [showClientPicker, setShowClientPicker] = useState(false);
+  const [clientSearch, setClientSearch] = useState("");
+  const [newTipo, setNewTipo] = useState("");
+  const [newObs, setNewObs] = useState("");
+  const [clientesMant, setClientesMant] = useState<any[]>([]);
+  const [newFechas, setNewFechas] = useState<string[]>([""]);
+  const [newTecnicos, setNewTecnicos] = useState<string[]>([]);
+  const [tecnicosList, setTecnicosList] = useState<any[]>([]);
+  const [showTecnicos, setShowTecnicos] = useState(false);
+
+  const load = async () => {
+    try {
+      const base = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/+$/, "");
+      const token = await getToken();
+      const [res, resClients] = await Promise.all([
+        fetch(`${base}/api/sat/mantenimientos`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${base}/api/sat/clients`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      setData(await res.json());
+      setClientesMant(await resClients.json());
+      try {
+        const t = await fetch(`${base}/api/technicians`, { headers: { Authorization: `Bearer ${token}` } });
+        setTecnicosList(await t.json());
+      } catch (e) {}
+    } catch (e) {} finally { setLoading(false); }
+  };
+
+  useFocusEffect(useCallback(() => { load(); }, []));
+
+  if (loading) return <View style={{ padding: 40, alignItems: "center" }}><ActivityIndicator color={COLORS.primary} /></View>;
+
+  const alertas: any[] = data?.alertas || [];
+  const agendados: any[] = data?.agendados || [];
+  const pendientes = alertas.flatMap(a => a.pendientes.map((f: string) => ({ ...a, fecha_alerta: f })));
+
+  return (
+    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 80, gap: 12 }}>
+      {/* Pendientes de agendar */}
+      <Text style={{ fontSize: 16, fontWeight: "800", color: COLORS.text, marginBottom: 4 }}>Pendientes de agendar ({pendientes.length})</Text>
+      {pendientes.length === 0 ? (
+        <Text style={{ color: COLORS.textDisabled, fontSize: 13, fontStyle: "italic" }}>No hay revisiones pendientes</Text>
+      ) : (
+        pendientes.slice(0, 20).map((a: any, i: number) => (
+          <View key={i} style={{ backgroundColor: COLORS.surface, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: COLORS.pendingText, borderLeftWidth: 4 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ fontWeight: "700", color: COLORS.text, fontSize: 15 }}>{a.cliente}</Text>
+              <Text style={{ fontSize: 12, fontWeight: "800", color: COLORS.pendingText }}>⚠ {a.fecha_alerta}</Text>
+            </View>
+            <Text style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: 2 }}>
+              {a.tipo || "Mantenimiento"} · {a.revisiones_ano} rev/ano · Alta: {a.alta}
+            </Text>
+          </View>
+        ))
+      )}
+
+      {/* Agendados */}
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+        <Text style={{ fontSize: 16, fontWeight: "800", color: COLORS.text }}>Agendados ({agendados.length})</Text>
+        <TouchableOpacity onPress={() => setShowAdd(!showAdd)} style={{ backgroundColor: COLORS.primary, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8 }}>
+          <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>{showAdd ? "—" : "+ Agendar"}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {showAdd && (
+        <View style={{ backgroundColor: COLORS.surface, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: COLORS.border, gap: 10 }}>
+          <Text style={{ fontWeight: "700", color: COLORS.text, fontSize: 14 }}>Nuevo mantenimiento agendado</Text>
+
+          <Text style={{ fontSize: 12, fontWeight: "600", color: COLORS.textSecondary }}>Cliente</Text>
+          <TouchableOpacity
+            style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
+            onPress={() => setShowClientPicker(!showClientPicker)}
+          >
+            <Text style={{ color: newClienteId ? COLORS.text : COLORS.textDisabled, fontWeight: "600" }}>
+              {newClienteId ? newCliente : "Seleccionar cliente"}
+            </Text>
+            <Ionicons name={showClientPicker ? "chevron-up" : "chevron-down"} size={16} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+          {showClientPicker && (
+            <View style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, overflow: "hidden" }}>
+              <TextInput
+                style={{ padding: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border, color: COLORS.text }}
+                value={clientSearch}
+                onChangeText={setClientSearch}
+                placeholder="Buscar cliente..."
+                placeholderTextColor={COLORS.textDisabled}
+                autoFocus
+              />
+              <ScrollView style={{ maxHeight: 160 }}>
+                {clientesMant.filter((c: any) => !clientSearch || c.cliente.toLowerCase().includes(clientSearch.toLowerCase())).map((c: any) => (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={{ padding: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: newClienteId === c.id ? COLORS.primarySoft : "transparent" }}
+                    onPress={() => { setNewCliente(c.cliente); setNewClienteId(c.id); setShowClientPicker(false); setClientSearch(""); }}
+                  >
+                    <Text style={{ fontWeight: "600", color: newClienteId === c.id ? COLORS.primary : COLORS.text }}>{c.cliente}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
+          <TextInput style={{...s.input, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 10, color: COLORS.text}} value={newFecha} onChangeText={setNewFecha} placeholder="Fecha (YYYY-MM-DD)" placeholderTextColor={COLORS.textDisabled} />
+
+          <Text style={{ fontSize: 12, fontWeight: "600", color: COLORS.textSecondary }}>Fechas</Text>
+          {newFechas.map((f, i) => (
+            <DatePickerRow key={i} value={f} onChange={(v) => { const nf = [...newFechas]; nf[i] = v; setNewFechas(nf); }} onRemove={newFechas.length > 1 ? () => setNewFechas(newFechas.filter((_, j) => j !== i)) : undefined} />
+          ))}
+          <TouchableOpacity onPress={() => setNewFechas([...newFechas, ""])}>
+            <Text style={{ color: COLORS.primary, fontWeight: "700", fontSize: 13 }}>+ Añadir fecha</Text>
+          </TouchableOpacity>
+
+          <Text style={{ fontSize: 12, fontWeight: "600", color: COLORS.textSecondary }}>Tecnicos</Text>
+          <TouchableOpacity
+            style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
+            onPress={() => setShowTecnicos(!showTecnicos)}
+          >
+            <Text style={{ color: newTecnicos.length > 0 ? COLORS.text : COLORS.textDisabled, fontWeight: "600", flex: 1 }} numberOfLines={1}>
+              {newTecnicos.length > 0 ? `${newTecnicos.length} técnico(s)` : "Seleccionar técnicos"}
+            </Text>
+            <Ionicons name={showTecnicos ? "chevron-up" : "chevron-down"} size={16} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+          {showTecnicos && (
+            <View style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, overflow: "hidden", maxHeight: 160 }}>
+              <ScrollView>
+                {tecnicosList.map((t: any) => {
+                  const sel = newTecnicos.includes(t.id);
+                  return (
+                    <TouchableOpacity
+                      key={t.id}
+                      style={{ padding: 10, flexDirection: "row", alignItems: "center", gap: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: sel ? COLORS.primarySoft : "transparent" }}
+                      onPress={() => setNewTecnicos(sel ? newTecnicos.filter(id => id !== t.id) : [...newTecnicos, t.id])}
+                    >
+                      <View style={{ width: 18, height: 18, borderRadius: 4, borderWidth: 2, borderColor: sel ? COLORS.primary : COLORS.border, alignItems: "center", justifyContent: "center", backgroundColor: sel ? COLORS.primary : "transparent" }}>
+                        {sel && <Ionicons name="checkmark" size={12} color="#fff" />}
+                      </View>
+                      <Text style={{ fontWeight: "600", color: COLORS.text }}>{t.name || t.email}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+
+          <TextInput style={{...s.input, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 10, color: COLORS.text}} value={newTipo} onChangeText={setNewTipo} placeholder="Tipo" placeholderTextColor={COLORS.textDisabled} />
+          <TextInput style={{...s.input, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 10, color: COLORS.text, minHeight: 60}} value={newObs} onChangeText={setNewObs} placeholder="Observaciones" placeholderTextColor={COLORS.textDisabled} multiline />
+          <TouchableOpacity
+            style={{ backgroundColor: COLORS.primary, borderRadius: 8, padding: 12, alignItems: "center" }}
+            onPress={async () => {
+              await fetch(`${(process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/+$/, "")}/api/sat/mantenimientos`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${await getToken()}` },
+                body: JSON.stringify({
+                  cliente_id: newClienteId,
+                  cliente: newCliente,
+                  fechas: newFechas.filter(f => f.trim()),
+                  tipo: newTipo,
+                  observaciones: newObs,
+                  tecnicos: newTecnicos,
+                }),
+              });
+              setNewCliente(""); setNewClienteId(""); setNewFechas([""]); setNewTipo(""); setNewObs(""); setNewTecnicos([]); setShowAdd(false);
+              load();
+            }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "800" }}>GUARDAR</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {agendados.map((a: any) => (
+        <View key={a.id} style={{ backgroundColor: COLORS.surface, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: COLORS.border, flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <Ionicons name="calendar" size={18} color={COLORS.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontWeight: "600", color: COLORS.text }}>{a.cliente}</Text>
+            <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>{a.fecha} · {a.tipo || ""}</Text>
+          </View>
+          <Text style={{ fontSize: 11, color: COLORS.textDisabled }}>{a.estado}</Text>
+        </View>
+      ))}
+    </ScrollView>
   );
 }
 

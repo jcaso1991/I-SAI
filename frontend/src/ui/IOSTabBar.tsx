@@ -10,7 +10,7 @@ import { useThemedStyles } from "../theme";
 export type BottomTab =
   | "home" | "dashboard" | "proyectos" | "calendario" | "planos"
   | "presupuestos" | "chat" | "ajustes" | "sat" | "documentos"
-  | "preciario" | "documentaciones" | "notas";
+  | "preciario" | "documentaciones" | "notas" | "clientes";
 
 const TAB_PERM_MAP: Record<BottomTab, string | null> = {
   home: null,
@@ -25,6 +25,7 @@ const TAB_PERM_MAP: Record<BottomTab, string | null> = {
   preciario: "preciario.view",
   documentaciones: "preciario.view",
   notas: "notas.view",
+  clientes: null,
   ajustes: null,
 
 };
@@ -42,6 +43,7 @@ const TAB_ROUTES: Record<BottomTab, string> = {
   preciario: "/preciario",
   documentaciones: "/documentaciones",
   notas: "/notas",
+  clientes: "/clientes",
   ajustes: "/admin",
 
 };
@@ -60,6 +62,7 @@ const LABELS: Record<BottomTab, string> = {
   preciario: "Preciario",
   documentaciones: "Docs. y Software",
   notas: "Notas",
+  clientes: "Clientes",
 
 };
 
@@ -76,6 +79,8 @@ function Icon({ tab, on, size }: { tab: BottomTab; on: boolean; size: number }) 
   if (tab === "sat") return <Ionicons name={on ? "headset" : "headset-outline"} size={size} color={color} />;
   if (tab === "documentos") return <Ionicons name={on ? "folder-open" : "folder-open-outline"} size={size} color={color} />;
   if (tab === "notas") return <Ionicons name={on ? "book" : "book-outline"} size={size} color={color} />;
+
+  if (tab === "clientes") return <Ionicons name={on ? "people" : "people-outline"} size={size} color={color} />;
 
   return <Ionicons name={on ? "settings" : "settings-outline"} size={size} color={color} />;
 }
@@ -132,7 +137,7 @@ export default function IOSTabBar({ active, isAdmin: _isAdmin }: { active: Botto
     router.replace(TAB_ROUTES[tab] as any);
   };
 
-  const allTabs: BottomTab[] = ["ajustes", "proyectos", "home", "dashboard", "calendario", "planos", "presupuestos", "sat", "documentos", "notas"];
+  const allTabs: BottomTab[] = ["ajustes", "proyectos", "home", "dashboard", "calendario", "planos", "presupuestos", "sat", "documentos", "notas", "clientes"];
   const isReady = perms !== null;
   const visibleTabs = !isReady
     ? allTabs.filter((t) => t !== "sat")
@@ -141,7 +146,7 @@ export default function IOSTabBar({ active, isAdmin: _isAdmin }: { active: Botto
         return p === null || perms!.includes(p);
       });
 
-  const ORDER: BottomTab[] = ["home", "dashboard", "calendario", "planos", "proyectos", "documentos", "presupuestos", "chat", "notas", "sat", "ajustes"];
+  const ORDER: BottomTab[] = ["home", "dashboard", "calendario", "planos", "proyectos", "documentos", "presupuestos", "chat", "notas", "sat", "clientes", "ajustes"];
   const ordered = ORDER.filter((t) => visibleTabs.includes(t));
 
   return (

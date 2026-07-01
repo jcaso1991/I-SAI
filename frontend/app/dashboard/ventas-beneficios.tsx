@@ -68,6 +68,7 @@ export default function VentasBeneficios() {
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
   const [showAllPerdidas, setShowAllPerdidas] = useState(false);
+  const [activeTab, setActiveTab] = useState<"ventas" | "obra">("ventas");
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [selectedYear, setSelectedYear] = useState<string>((params.year as string) || "");
@@ -242,6 +243,27 @@ export default function VentasBeneficios() {
           <View style={{ width: 40 }} />
         </View>
 
+        {/* Tabs */}
+        <View style={{ flexDirection: "row", borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.surface }}>
+          <TouchableOpacity
+            style={{ flex: 1, alignItems: "center", paddingVertical: 12, borderBottomWidth: 2, borderBottomColor: activeTab === "ventas" ? COLORS.primary : "transparent" }}
+            onPress={() => setActiveTab("ventas")}
+          >
+            <Text style={{ ...fontStyle("callout"), color: activeTab === "ventas" ? COLORS.primary : COLORS.textSecondary, fontWeight: activeTab === "ventas" ? "800" : "600" }}>
+              <Ionicons name="cash" size={14} color={activeTab === "ventas" ? COLORS.primary : COLORS.textSecondary} /> Ventas y Beneficios
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{ flex: 1, alignItems: "center", paddingVertical: 12, borderBottomWidth: 2, borderBottomColor: activeTab === "obra" ? COLORS.primary : "transparent" }}
+            onPress={() => setActiveTab("obra")}
+          >
+            <Text style={{ ...fontStyle("callout"), color: activeTab === "obra" ? COLORS.primary : COLORS.textSecondary, fontWeight: activeTab === "obra" ? "800" : "600" }}>
+              <Ionicons name="construct" size={14} color={activeTab === "obra" ? COLORS.primary : COLORS.textSecondary} /> Obra en curso
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {activeTab === "obra" ? <ObraEnCursoContent /> : (
         <ScrollView
           contentContainerStyle={[s.scroll, isWide && s.scrollWide]}
           showsVerticalScrollIndicator={false}
@@ -713,8 +735,108 @@ export default function VentasBeneficios() {
           )}
           <View style={{ height: 80 }} />
         </ScrollView>
+        )}
       </SafeAreaView>
     </ResponsiveLayout>
+  );
+}
+
+function ObraEnCursoContent() {
+  const router = useRouter();
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [searchObra, setSearchObra] = useState("");
+  const s = useThemedStyles(useS);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await getToken();
+        const base = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/+$/, "");
+        const res = await fetch(`${base}/api/dashboard/obra-en-curso`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setData(await res.json());
+      } catch (e: any) {} finally { setLoading(false); }
+    })();
+  }, []);
+
+  if (loading) {
+    return <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 40 }}><ActivityIndicator color={COLORS.primary} size="large" /></View>;
+  }
+
+  const proyectosAll: any[] = data?.proyectos || [];
+  const proyectos = searchObra
+    ? proyectosAll.filter((p: any) => {
+        const q = searchObra.toLowerCase();
+        return (p.materiales || "").toLowerCase().includes(q) || (p.cliente || "").toLowerCase().includes(q);
+      })
+    : proyectosAll;
+
+  return (
+    <ScrollView contentContainerStyle={[{ padding: ios.spacing.lg, gap: 12 }]} showsVerticalScrollIndicator={false}>
+      {data && (
+        <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+          <View style={{ flex: 1, minWidth: 140, backgroundColor: COLORS.surface, borderRadius: ios.radius.lg, padding: ios.spacing.md, borderWidth: 1, borderColor: COLORS.border, alignItems: "center" }}>
+            <Text style={{ ...fontStyle("title1"), color: COLORS.text, fontWeight: "900" }}>{data.total_proyectos}</Text>
+            <Text style={{ ...fontStyle("caption"), color: COLORS.textSecondary, marginTop: 4, textAlign: "center" }}>Proyectos en curso</Text>
+          </View>
+          <View style={{ flex: 1, minWidth: 140, backgroundColor: COLORS.surface, borderRadius: ios.radius.lg, padding: ios.spacing.md, borderWidth: 1, borderColor: COLORS.border, alignItems: "center" }}>
+            <Text style={{ ...fontStyle("title1"), color: COLORS.text, fontWeight: "900" }}>{fmtEur(data.total_coste_incurrido)}</Text>
+            <Text style={{ ...fontStyle("caption"), color: COLORS.textSecondary, marginTop: 4, textAlign: "center" }}>Coste incurrido total</Text>
+          </View>
+          <View style={{ flex: 1, minWidth: 140, backgroundColor: COLORS.surface, borderRadius: ios.radius.lg, padding: ios.spacing.md, borderWidth: 1, borderColor: COLORS.border, alignItems: "center" }}>
+            <Text style={{ ...fontStyle("title1"), color: COLORS.text, fontWeight: "900" }}>{fmtEur(data.total_ingreso_reconocido)}</Text>
+            <Text style={{ ...fontStyle("caption"), color: COLORS.textSecondary, marginTop: 4, textAlign: "center" }}>Ingreso reconocido</Text>
+          </View>
+        </View>
+      )}
+
+      <Text style={{ ...fontStyle("title3"), color: COLORS.text, fontWeight: "800", marginTop: 8 }}>Proyectos activos ({proyectos.length})</Text>
+
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.surface, borderRadius: ios.radius.md, borderWidth: 1, borderColor: COLORS.borderInput, paddingHorizontal: ios.spacing.md, height: 42 }}>
+        <Ionicons name="search" size={16} color={COLORS.textDisabled} />
+        <TextInput
+          style={{ flex: 1, fontSize: ios.font.callout.size, color: COLORS.text, height: 42 }}
+          value={searchObra}
+          onChangeText={setSearchObra}
+          placeholder="Buscar por codigo o cliente..."
+          placeholderTextColor={COLORS.textDisabled}
+        />
+        {searchObra !== "" && (
+          <TouchableOpacity onPress={() => setSearchObra("")}>
+            <Ionicons name="close-circle" size={16} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <View style={{ flexDirection: "row", gap: 8, paddingVertical: 8, borderBottomWidth: 2, borderBottomColor: COLORS.border }}>
+        <Text style={{ ...fontStyle("caption"), color: COLORS.textSecondary, fontWeight: "800", flex: 1.8 }}>Proyecto</Text>
+        <Text style={{ ...fontStyle("caption"), color: COLORS.textSecondary, fontWeight: "800", flex: 1, textAlign: "center" }}>% Material</Text>
+        <Text style={{ ...fontStyle("caption"), color: COLORS.textSecondary, fontWeight: "800", flex: 1, textAlign: "center" }}>% M.Obra</Text>
+        <Text style={{ ...fontStyle("caption"), color: COLORS.textSecondary, fontWeight: "800", flex: 1, textAlign: "center" }}>Grado Avance</Text>
+        <Text style={{ ...fontStyle("caption"), color: COLORS.textSecondary, fontWeight: "800", flex: 1.2, textAlign: "right" }}>Ingreso Rec.</Text>
+      </View>
+
+      {proyectos.map((p) => (
+          <TouchableOpacity
+            key={p.id}
+            style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border }}
+            onPress={() => router.push(`/material/${p.id}` as any)}
+          >
+            <View style={{ flex: 1.8 }}>
+              <Text style={{ ...fontStyle("callout"), color: COLORS.text, fontWeight: "700" }} numberOfLines={1}>{p.materiales || "—"}</Text>
+              <Text style={{ ...fontStyle("caption"), color: COLORS.textSecondary, marginTop: 1 }} numberOfLines={1}>{p.cliente || ""}</Text>
+            </View>
+            <Text style={{ flex: 1, textAlign: "center", ...fontStyle("callout"), color: p.pct_mat > 100 ? COLORS.errorText : COLORS.text, fontWeight: "700" }}>{p.pct_mat}%</Text>
+            <Text style={{ flex: 1, textAlign: "center", ...fontStyle("callout"), color: p.pct_mo > 100 ? COLORS.errorText : COLORS.text, fontWeight: "700" }}>{p.pct_mo}%</Text>
+            <Text style={{ flex: 1, textAlign: "center", ...fontStyle("callout"), color: p.grado_avance > 90 ? COLORS.syncedText : COLORS.text, fontWeight: "800" }}>{p.grado_avance}%</Text>
+            <Text style={{ flex: 1.2, textAlign: "right", ...fontStyle("callout"), color: COLORS.text, fontWeight: "700" }}>{fmtEur(p.ingreso_reconocido)}</Text>
+          </TouchableOpacity>
+      ))}
+      <View style={{ height: 80 }} />
+    </ScrollView>
   );
 }
 

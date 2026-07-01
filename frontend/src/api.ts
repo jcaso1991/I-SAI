@@ -437,6 +437,24 @@ export const api = {
     if (year) params.set("year", year);
     return request(`/dashboard/financiero${params.toString() ? "?" + params.toString() : ""}`);
   },
+
+  // Clientes
+  listClientes: () => request("/clientes"),
+  getCliente: (id: string) => request(`/clientes/${id}`),
+  createCliente: (body: any) => request("/clientes", { method: "POST", body: JSON.stringify(body) }),
+  updateCliente: (id: string, body: any) => request(`/clientes/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteCliente: (id: string) => request(`/clientes/${id}`, { method: "DELETE" }),
+  uploadClientDoc: (cid: string, nombre: string, base64: string, mime_type: string) =>
+    request(`/clientes/${cid}/documentos`, { method: "POST", body: JSON.stringify({ nombre, base64, mime_type }) }),
+  deleteClientDoc: (cid: string, did: string) =>
+    request(`/clientes/${cid}/documentos/${did}`, { method: "DELETE" }),
+
+  // Certificaciones
+  listCertificaciones: (materialId: string) => request(`/certificaciones?material_id=${encodeURIComponent(materialId)}`),
+  getCertificacion: (id: string) => request(`/certificaciones/${id}`),
+  createCertificacion: (body: any) => request("/certificaciones", { method: "POST", body: JSON.stringify(body) }),
+  updateCertificacion: (id: string, body: any) => request(`/certificaciones/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteCertificacion: (id: string) => request(`/certificaciones/${id}`, { method: "DELETE" }),
 };
 
 export const COLORS = {

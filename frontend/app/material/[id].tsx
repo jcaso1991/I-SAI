@@ -1,13 +1,13 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { api, COLORS } from "../../src/api";
+import { api, COLORS, getToken } from "../../src/api";
 import { useThemedStyles } from "../../src/theme";
 import { usePermissions } from "../../src/permissions";
 import { ios } from "../../src/ui/iosTheme";
@@ -76,6 +76,8 @@ export default function MaterialDetail() {
   const [desgloseHoras, setDesgloseHoras] = useState<any[]>([]);
   const [linkedBudgets, setLinkedBudgets] = useState<any[]>([]);
   const [showLinkedBudgets, setShowLinkedBudgets] = useState(false);
+  const [linkedCertificaciones, setLinkedCertificaciones] = useState<any[]>([]);
+  const [showLinkedCertificaciones, setShowLinkedCertificaciones] = useState(false);
   const [showTechPicker, setShowTechPicker] = useState(false);
   const [showManagerPicker, setShowManagerPicker] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
@@ -88,6 +90,9 @@ export default function MaterialDetail() {
   const [costeRealMO, setCosteRealMO] = useState("");
   const [beneficioInicial, setBeneficioInicial] = useState("");
   const [beneficioReal, setBeneficioReal] = useState("");
+  const [clienteId, setClienteId] = useState("");
+  const [clientes, setClientes] = useState<{ id: string; nombre: string; razon_social: string }[]>([]);
+  const [showClientePicker, setShowClientePicker] = useState(false);
 
   const s = useThemedStyles(useS);
   const { has } = usePermissions();
@@ -134,6 +139,9 @@ export default function MaterialDetail() {
           api.listTechnicians().catch(() => []),
           api.listManagers().catch(() => []),
         ]);
+        const clist = await api.listClientes().catch(() => []);
+        setClientes(clist);
+        setClienteId(data.cliente_id || "");
         setM(data);
         setFecha(data.fecha || todayISO());
         setEntrega(data.entrega_recogida || "");
@@ -160,6 +168,7 @@ export default function MaterialDetail() {
         ).catch(() => []);
         setLinkedEvents((events || []).filter((e: any) => e.material_id === id));
         api.listBudgets(id).then(setLinkedBudgets).catch(() => {});
+        api.listCertificaciones(id).then(setLinkedCertificaciones).catch(() => {});
         // Cargar desglose de horas por tipo de mano de obra
         api.getDashboardFinanciero().then((data) => {
           const proj = (data.detalle || []).find((d: any) => d.id === id);
@@ -194,6 +203,10 @@ export default function MaterialDetail() {
     })();
   }, [id]);
 
+  useFocusEffect(useCallback(() => {
+    api.listCertificaciones(id).then(setLinkedCertificaciones).catch(() => {});
+  }, [id]));
+
   const updateEventStatus = (eventId: string, newStatus: string) => {
     setLinkedEvents((prev) =>
       prev.map((ev) =>
@@ -214,6 +227,7 @@ export default function MaterialDetail() {
         comentarios: comentarios || null,
         manager_id: managerId || null,
         project_status: projectStatus || null,
+        cliente_id: clienteId || null,
         importe_venta_prev_materiales: impVentaMat ? parseFloat(impVentaMat) : null,
         importe_venta_prev_mano_de_obra: impVentaMO ? parseFloat(impVentaMO) : null,
         coste_prev_materiales: costePrevMat ? parseFloat(costePrevMat) : null,
@@ -267,7 +281,7 @@ export default function MaterialDetail() {
         style={{ flex: 1 }}
       >
         <ScrollView
-          contentContainerStyle={{ padding: 16, paddingBottom: 120, gap: 20 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: 160, gap: 20 }}
           keyboardShouldPersistTaps="handled"
         >
           <View style={s.titleBlock}>
@@ -494,6 +508,32 @@ export default function MaterialDetail() {
               )}
             </TouchableOpacity>
 
+            <Text style={s.fieldLabel}>Cliente</Text>
+            <TouchableOpacity
+              testID="picker-cliente"
+              style={s.picker}
+              onPress={() => setShowClientePicker(true)}
+              activeOpacity={0.7}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                <Ionicons name="business-outline" size={20} color={COLORS.primary} />
+                <Text style={[s.pickerText, !clienteId && { color: COLORS.textDisabled }]}>
+                  {clienteId
+                    ? (clientes.find((c) => c.id === clienteId)?.nombre || "Cliente seleccionado")
+                    : "Selecciona cliente..."}
+                </Text>
+              </View>
+              {clienteId !== "" && (
+                <TouchableOpacity
+                  testID="btn-clear-cliente"
+                  onPress={() => { setClienteId(""); setDirty(true); }}
+                  hitSlop={10}
+                >
+                  <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+              )}
+            </TouchableOpacity>
+
             <Text style={s.fieldLabel}>Fecha</Text>
             <TouchableOpacity
               testID="picker-fecha"
@@ -626,10 +666,10 @@ export default function MaterialDetail() {
     })}
   </View>
 )}
-            </>
-            )}
+             </>
+             )}
 
-            <Text style={s.fieldLabel}>Entrega / Recogida</Text>
+             <Text style={s.fieldLabel}>Entrega / Recogida</Text>
             <ChipGroup
               testID="chips-entrega"
               value={entrega}
@@ -655,8 +695,66 @@ export default function MaterialDetail() {
               placeholderTextColor={COLORS.textDisabled}
               multiline
               textAlignVertical="top"
-            />
-            {/* Adjuntos del proyecto (presupuestos, PDFs) */}
+             />
+             {/* Certificaciones */}
+             <View style={{ marginTop: 8 }}>
+               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                 <TouchableOpacity
+                   style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                   onPress={() => { setShowLinkedCertificaciones(!showLinkedCertificaciones); if (!showLinkedCertificaciones) api.listCertificaciones(id).then(setLinkedCertificaciones).catch(() => {}); }}
+                 >
+                   <Ionicons name="ribbon-outline" size={16} color={COLORS.primary} />
+                   <Text style={s.fieldLabel}>Certificaciones ({linkedCertificaciones.length})</Text>
+                   <Ionicons name={showLinkedCertificaciones ? "chevron-up" : "chevron-down"} size={14} color={COLORS.textSecondary} />
+                 </TouchableOpacity>
+                 <TouchableOpacity onPress={() => router.push(`/material/certificacion/nuevo?material_id=${encodeURIComponent(id)}` as any)} style={{ padding: 4 }}>
+                   <Ionicons name="add-circle" size={22} color={COLORS.primary} />
+                 </TouchableOpacity>
+               </View>
+               {showLinkedCertificaciones && linkedCertificaciones.map((c: any) => (
+                 <TouchableOpacity
+                   key={c.id}
+                   onPress={() => router.push(`/material/certificacion/${c.id}`)}
+                   style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.sm, padding: ios.spacing.sm, backgroundColor: COLORS.bg, borderRadius: ios.radius.sm, marginTop: 4 }}
+                 >
+                   <Ionicons name="document-text-outline" size={16} color={COLORS.primary} />
+                   <View style={{ flex: 1 }}>
+                     <Text style={{ color: COLORS.text, fontWeight: "600", fontSize: ios.font.footnote.size }} numberOfLines={1}>
+                       {c.nombre || "Certificacion"} · {c.fecha_certificacion || "Sin fecha"}
+                     </Text>
+                   </View>
+                   <Text style={{ fontSize: ios.font.caption.size, color: COLORS.textSecondary }}>{c.lineas?.length || 0} lineas</Text>
+                   <Ionicons name="chevron-forward" size={14} color={COLORS.textDisabled} />
+                 </TouchableOpacity>
+               ))}
+             </View>
+             {/* Historial de cambios */}
+             <View style={{ marginTop: 8 }}>
+               <TouchableOpacity
+                 style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                 onPress={async () => { setShowHistory(!showHistory); if (!showHistory) setHistory(await api.getMaterialHistory(id).catch(() => [])); }}
+               >
+                 <Ionicons name="time-outline" size={16} color={COLORS.primary} />
+                 <Text style={s.fieldLabel}>Historial de cambios ({history.length})</Text>
+                 <Ionicons name={showHistory ? "chevron-up" : "chevron-down"} size={14} color={COLORS.textSecondary} />
+               </TouchableOpacity>
+               {showHistory && (
+                 <View style={{ marginTop: 4 }}>
+                   {history.length === 0 ? (
+                     <Text style={{ color: COLORS.textDisabled, fontStyle: "italic", fontSize: ios.font.footnote.size, padding: ios.spacing.xs }}>Sin cambios registrados</Text>
+                   ) : history.map((h, i) => (
+                     <View key={h.id || i} style={{ flexDirection: "row", paddingVertical: 3, gap: ios.spacing.sm, borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border }}>
+                       <Text style={{ fontSize: 10, color: COLORS.textDisabled, minWidth: 60 }}>{(h.created_at || "").slice(0, 16).replace("T", " ")}</Text>
+                       <Text style={{ fontSize: 10, fontWeight: "700", color: COLORS.primary, minWidth: 60 }}>{h.changed_by?.split("@")[0]}</Text>
+                       <Text style={{ fontSize: 10, color: COLORS.text, flex: 1 }} numberOfLines={2}>
+                         <Text style={{ fontWeight: "600" }}>{h.field}</Text>: {h.old_value || "—"} → {h.new_value || "—"}
+                       </Text>
+                     </View>
+                   ))}
+                 </View>
+               )}
+             </View>
+             {/* Adjuntos del proyecto (presupuestos, PDFs) */}
             {m.attachments?.length > 0 && (
               <View style={{ marginTop: 12 }}>
                 <Text style={s.fieldLabel}>Adjuntos ({m.attachments.length})</Text>
@@ -698,14 +796,7 @@ export default function MaterialDetail() {
                 {dirty ? "GUARDAR CAMBIOS" : "SIN CAMBIOS"}
               </Text>
             )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[s.btnPrimarySmall, { backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border }]}
-            onPress={async () => { setShowHistory(!showHistory); if (!showHistory) setHistory(await api.getMaterialHistory(id).catch(() => [])); }}
-          >
-            <Ionicons name="time-outline" size={18} color={COLORS.textSecondary} />
-            <Text style={[s.btnPrimaryText, { color: COLORS.textSecondary }]}>Historial</Text>
-          </TouchableOpacity>
+           </TouchableOpacity>
         </View>
         {showHistory && (
           <View style={{ padding: ios.spacing.xs }}>
@@ -954,6 +1045,69 @@ export default function MaterialDetail() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={showClientePicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowClientePicker(false)}
+      >
+        <View style={s.modalRoot}>
+          <View style={s.modalCard}>
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitle}>Selecciona cliente</Text>
+              <TouchableOpacity onPress={() => setShowClientePicker(false)}>
+                <Ionicons name="close" size={26} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 440 }}>
+              {clienteId !== "" && (
+                <TouchableOpacity
+                  testID="cliente-clear"
+                  style={s.techRow}
+                  onPress={() => {
+                    setClienteId("");
+                    setDirty(true);
+                    setShowClientePicker(false);
+                  }}
+                >
+                  <Ionicons name="close-circle" size={20} color={COLORS.errorText} />
+                  <Text style={[s.techName, { color: COLORS.errorText }]}>Sin cliente (desvincular)</Text>
+                </TouchableOpacity>
+              )}
+              {clientes.length === 0 && (
+                <Text style={{ color: COLORS.textSecondary, padding: 20, textAlign: "center" }}>
+                  No hay clientes registrados
+                </Text>
+              )}
+              {clientes.map((c) => {
+                const active = clienteId === c.id;
+                return (
+                  <TouchableOpacity
+                    key={c.id}
+                    testID={`cliente-opt-${c.id}`}
+                    style={[s.techRow, active && s.techRowActive]}
+                    onPress={() => {
+                      setClienteId(c.id);
+                      setDirty(true);
+                      setShowClientePicker(false);
+                    }}
+                  >
+                    <View style={[s.techAvatar, active && { backgroundColor: COLORS.primary }]}>
+                      <Ionicons name="business-outline" size={18} color={active ? "#fff" : COLORS.textSecondary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.techName}>{c.nombre}</Text>
+                      {c.razon_social ? <Text style={s.techEmail}>{c.razon_social}</Text> : null}
+                    </View>
+                    {active && <Ionicons name="checkmark-circle" size={22} color={COLORS.primary} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1009,17 +1163,11 @@ const useS = () => StyleSheet.create({
   chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   chipText: { fontSize: ios.font.callout.size, fontWeight: "800", color: COLORS.textSecondary, letterSpacing: 0.5 },
   chipTextActive: { color: "#fff" },
-  bottomBar: {
-    position: "absolute", bottom: 0, left: 0, right: 0,
-    padding: ios.spacing.lg, paddingBottom: 24,
-    backgroundColor: ios.colors.glassBg,
-    borderTopWidth: ios.hairline, borderTopColor: COLORS.border,
-    ...Platform.select({
-      web: { backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" } as any,
-      ios: { backdropFilter: "blur(16px)" } as any,
-    }),
-    ...ios.shadow.elevated,
-  },
+   bottomBar: {
+     position: "absolute", bottom: 0, left: 0, right: 0,
+     padding: ios.spacing.md, paddingBottom: 20,
+     backgroundColor: "transparent",
+   },
   btnPrimary: {
     height: 56, borderRadius: ios.radius.card, backgroundColor: COLORS.primary,
     alignItems: "center", justifyContent: "center",

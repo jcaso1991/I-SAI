@@ -208,6 +208,7 @@ class MaterialUpdate(BaseModel):
     comentarios: Optional[str] = None
     manager_id: Optional[str] = None
     project_status: Optional[str] = None
+    cliente_id: Optional[str] = None
     importe_venta_prev_materiales: Optional[float] = None
     importe_venta_prev_mano_de_obra: Optional[float] = None
     coste_prev_materiales: Optional[float] = None
@@ -216,6 +217,72 @@ class MaterialUpdate(BaseModel):
     coste_real_mano_de_obra: Optional[float] = None
     beneficio_inicial: Optional[float] = None
     beneficio_real: Optional[float] = None
+
+class DireccionCliente(BaseModel):
+    direccion: str = ""
+    representante: str = ""
+    telefono: str = ""
+    email: str = ""
+
+class ClienteCreate(BaseModel):
+    nombre: str
+    razon_social: str = ""
+    tipo_documento_id: Optional[str] = "NIF"
+    numero_documento: Optional[str] = None
+    direccion: str = ""
+    provincia: str = ""
+    poblacion: str = ""
+    representante: str = ""
+    telefono: str = ""
+    email: str = ""
+    direcciones: List[DireccionCliente] = []
+    mantenimiento_contratado: bool = False
+    tipo_mantenimiento: str = ""
+    numero_revisiones: int = 0
+    alta_mantenimiento: Optional[str] = None
+    fecha_primera_revision: Optional[str] = None
+
+class ClienteUpdate(BaseModel):
+    nombre: Optional[str] = None
+    razon_social: Optional[str] = None
+    tipo_documento_id: Optional[str] = None
+    numero_documento: Optional[str] = None
+    direccion: Optional[str] = None
+    provincia: Optional[str] = None
+    poblacion: Optional[str] = None
+    representante: Optional[str] = None
+    telefono: Optional[str] = None
+    email: Optional[str] = None
+    direcciones: Optional[List[DireccionCliente]] = None
+    mantenimiento_contratado: Optional[bool] = None
+    tipo_mantenimiento: Optional[str] = None
+    numero_revisiones: Optional[int] = None
+    alta_mantenimiento: Optional[str] = None
+    fecha_primera_revision: Optional[str] = None
+
+class ClienteOut(BaseModel):
+    id: str
+    nombre: str
+    razon_social: str = ""
+    tipo_documento_id: Optional[str] = "NIF"
+    numero_documento: Optional[str] = None
+    direccion: str = ""
+    provincia: str = ""
+    poblacion: str = ""
+    representante: str = ""
+    telefono: str = ""
+    email: str = ""
+    direcciones: List[DireccionCliente] = []
+    mantenimiento_contratado: bool = False
+    tipo_mantenimiento: str = ""
+    numero_revisiones: int = 0
+    alta_mantenimiento: Optional[str] = None
+    fecha_primera_revision: Optional[str] = None
+    created_at: Optional[str] = None
+    proyectos: Optional[List[dict]] = None
+    documentos: Optional[List[dict]] = None
+    incidencias: Optional[List[dict]] = None
+    mantenimientos: Optional[List[dict]] = None
 
 class OneDriveStatus(BaseModel):
     connected: bool
@@ -859,6 +926,7 @@ class TechnicianOut(BaseModel):
     id: str
     name: str
     email: str
+    color: Optional[str] = None
 
 @api_router.get("/technicians", response_model=List[TechnicianOut])
 async def list_technicians(user: dict = Depends(current_user)):
@@ -870,6 +938,7 @@ async def list_technicians(user: dict = Depends(current_user)):
             id=u["id"],
             name=u.get("name") or u.get("email", ""),
             email=u.get("email", ""),
+            color=u.get("color"),
         ) for u in users
     ]
 
@@ -883,6 +952,7 @@ async def list_managers(user: dict = Depends(current_user)):
             id=u["id"],
             name=u.get("name") or u.get("email", ""),
             email=u.get("email", ""),
+            color=u.get("color"),
         ) for u in users
     ]
 
@@ -2880,6 +2950,11 @@ async def get_material(mid: str, user: dict = Depends(require_permission("proyec
         {"material_id": mid},
         {"_id": 0, "firma_isai": 0, "firma_cliente": 0, "attachments.data": 0},
     ).sort("updated_at", -1).to_list(200)
+    # Certificaciones vinculadas
+    doc["certificaciones"] = await db.certificaciones.find(
+        {"material_id": mid},
+        {"_id": 0},
+    ).sort("created_at", -1).to_list(200)
     # Ocultar project_status a usuarios sin edición completa
     if not es_editor_completo:
         doc.pop("project_status", None)
@@ -2937,6 +3012,96 @@ async def update_material(mid: str, payload: MaterialUpdate, user: dict = Depend
 async def get_material_history(mid: str, user: dict = Depends(current_user)):
     items = await db.project_history.find({"project_id": mid}, {"_id": 0}).sort("created_at", -1).limit(50).to_list(50)
     return items
+
+# ---------------- Clientes ----------------
+@api_router.get("/clientes", response_model=List[ClienteOut])
+async def list_clientes(user: dict = Depends(current_user)):
+    clientes = await db.clientes.find({}, {"_id": 0}).sort("nombre", 1).to_list(2000)
+    for c in clientes:
+        c["proyectos"] = None
+    return clientes
+
+@api_router.post("/clientes", response_model=ClienteOut)
+async def create_cliente(payload: ClienteCreate, user: dict = Depends(require_any_permission("users.manage", "roles.manage"))):
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": str(uuid.uuid4()),
+        "nombre": payload.nombre.strip(),
+        "razon_social": payload.razon_social.strip(),
+        "tipo_documento_id": payload.tipo_documento_id or "NIF",
+        "numero_documento": (payload.numero_documento or "").strip() or None,
+        "direccion": payload.direccion.strip(),
+        "provincia": payload.provincia.strip(),
+        "poblacion": payload.poblacion.strip(),
+        "representante": payload.representante.strip(),
+        "telefono": payload.telefono.strip(),
+        "email": payload.email.strip(),
+        "direcciones": [d.dict() for d in payload.direcciones] if payload.direcciones else [],
+        "mantenimiento_contratado": payload.mantenimiento_contratado,
+        "tipo_mantenimiento": payload.tipo_mantenimiento.strip(),
+        "numero_revisiones": payload.numero_revisiones,
+        "alta_mantenimiento": payload.alta_mantenimiento,
+        "fecha_primera_revision": payload.fecha_primera_revision,
+        "created_at": now,
+    }
+    await db.clientes.insert_one(doc)
+    doc.pop("_id", None)
+    doc["proyectos"] = None
+    return doc
+
+@api_router.get("/clientes/{cid}", response_model=ClienteOut)
+async def get_cliente(cid: str, user: dict = Depends(current_user)):
+    doc = await db.clientes.find_one({"id": cid}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Cliente no encontrado")
+    proyectos = await db.materiales.find(
+        {"cliente_id": cid},
+        {"_id": 0, "id": 1, "materiales": 1, "project_status": 1, "updated_at": 1, "fecha": 1, "cliente": 1},
+    ).sort("updated_at", -1).to_list(500)
+    doc["proyectos"] = proyectos or []
+    incidencias = await db.sat_incidents.find(
+        {"cliente": {"$regex": doc.get("nombre", ""), "$options": "i"}},
+        {"_id": 0, "id": 1, "observaciones": 1, "status": 1, "created_at": 1, "cliente": 1, "direccion": 1},
+    ).sort("created_at", -1).to_list(500)
+    doc["incidencias"] = incidencias or []
+    mantenimientos = await db.mantenimientos.find(
+        {"cliente_id": cid},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(500)
+    doc["mantenimientos"] = mantenimientos or []
+    return doc
+
+@api_router.patch("/clientes/{cid}", response_model=ClienteOut)
+async def update_cliente(cid: str, payload: ClienteUpdate, user: dict = Depends(current_user)):
+    existing = await db.clientes.find_one({"id": cid})
+    if not existing:
+        raise HTTPException(404, "Cliente no encontrado")
+    upd = {}
+    for k, v in payload.dict(exclude_unset=True).items():
+        if v is not None:
+            if k == "direcciones" and isinstance(v, list):
+                upd[k] = [d.dict() if hasattr(d, "dict") else d for d in v]
+            elif isinstance(v, str):
+                upd[k] = v.strip()
+            else:
+                upd[k] = v
+    if not upd:
+        raise HTTPException(400, "Nada que actualizar")
+    await db.clientes.update_one({"id": cid}, {"$set": upd})
+    doc = await db.clientes.find_one({"id": cid}, {"_id": 0})
+    proyectos = await db.materiales.find(
+        {"cliente_id": cid},
+        {"_id": 0, "id": 1, "materiales": 1, "project_status": 1, "updated_at": 1, "fecha": 1, "cliente": 1},
+    ).sort("updated_at", -1).to_list(500)
+    doc["proyectos"] = proyectos or []
+    return doc
+
+@api_router.delete("/clientes/{cid}")
+async def delete_cliente(cid: str, admin: dict = Depends(current_admin)):
+    res = await db.clientes.delete_one({"id": cid})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Cliente no encontrado")
+    return {"ok": True}
 
 @api_router.post("/materiales/{mid}/attachments")
 async def upload_material_attachment(mid: str, payload: AttachmentUpload, user: dict = Depends(current_user)):
@@ -4072,6 +4237,91 @@ async def dashboard_financiero_export_excel(
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
+
+@api_router.get("/dashboard/obra-en-curso")
+async def dashboard_obra_en_curso(user: dict = Depends(current_user)):
+    perms = await get_user_permissions(user)
+    if "dashboard.view" not in perms:
+        raise HTTPException(403, "No tienes permiso para ver el panel de datos")
+
+    proyectos = await db.materiales.find(
+        {"project_status": {"$nin": ["anulado", "terminado"]}},
+        {"_id": 0, "id": 1, "materiales": 1, "cliente": 1, "ubicacion": 1,
+         "project_status": 1, "gestor": 1, "manager_name": 1,
+         "importe_venta_prev_materiales": 1, "importe_venta_prev_mano_de_obra": 1,
+         "coste_prev_materiales": 1, "coste_prev_mano_de_obra": 1,
+         "coste_real_materiales": 1, "coste_real_mano_de_obra": 1,
+         "horas_prev": 1, "horas_imputadas": 1}
+    ).to_list(10000)
+
+    precios_doc = await db.config.find_one({"_id": "precios_mano_obra"})
+    precios_mo = {k: v for k, v in (precios_doc or {}).items() if k != "_id" and v}
+
+    result = []
+    total_ingreso = 0.0
+    total_coste_incurrido = 0.0
+
+    for p in proyectos:
+        venta_mat = p.get("importe_venta_prev_materiales") or 0
+        venta_mo = p.get("importe_venta_prev_mano_de_obra") or 0
+        coste_prev_mat = p.get("coste_prev_materiales") or 0
+        coste_prev_mo = p.get("coste_prev_mano_de_obra") or 0
+        coste_real_mat = p.get("coste_real_materiales") or 0
+        horas_imp = p.get("horas_imputadas") or 0
+        horas_prev = _safe_float(p.get("horas_prev"))
+
+        venta_total = venta_mat + venta_mo
+        coste_prev_total = coste_prev_mat + coste_prev_mo
+        coste_incurrido = coste_real_mat  # starts with real materials
+
+        # Coste real MO desde eventos
+        eventos = await db.events.find(
+            {"material_id": p["id"], "status": {"$in": ["completed", "pending_completion"]},
+             "tipo_mano_obra": {"$ne": None}, "hours": {"$gt": 0}},
+            {"hours": 1, "tipo_mano_obra": 1}
+        ).to_list(1000)
+        coste_real_mo = 0.0
+        for ev in eventos:
+            tipo = ev.get("tipo_mano_obra", "")
+            precio = precios_mo.get(tipo, 0)
+            coste_real_mo += _safe_float(ev.get("hours")) * precio
+        coste_real_mo = round(coste_real_mo, 2)
+        coste_incurrido += coste_real_mo
+
+        has_data = coste_real_mat > 0 or coste_real_mo > 0
+        if not has_data:
+            continue
+
+        pct_mat = round((coste_real_mat / coste_prev_mat * 100), 1) if coste_prev_mat > 0 else 0
+        pct_mo = round((horas_imp / horas_prev * 100), 1) if horas_prev > 0 and horas_imp > 0 else 0
+        grado_avance = round((coste_incurrido / coste_prev_total * 100), 1) if coste_prev_total > 0 else 0
+        ingreso_reconocido = round(venta_total * grado_avance / 100, 2) if grado_avance > 0 else 0
+
+        total_ingreso += ingreso_reconocido
+        total_coste_incurrido += coste_incurrido
+
+        result.append({
+            "id": p["id"], "materiales": p.get("materiales", ""), "cliente": p.get("cliente", ""),
+            "gestor": p.get("manager_name") or p.get("gestor", ""),
+            "project_status": p.get("project_status", "pendiente"),
+            "venta_total": venta_total, "coste_prev_total": coste_prev_total,
+            "coste_real_mat": coste_real_mat, "coste_real_mo": coste_real_mo,
+            "coste_incurrido": coste_incurrido,
+            "pct_mat": pct_mat, "pct_mo": pct_mo,
+            "grado_avance": grado_avance,
+            "ingreso_reconocido": ingreso_reconocido,
+        })
+
+    result.sort(key=lambda x: x["grado_avance"], reverse=True)
+
+    return {
+        "proyectos": result[:500],
+        "total_proyectos": len(result),
+        "total_ingreso_reconocido": round(total_ingreso, 2),
+        "total_coste_incurrido": round(total_coste_incurrido, 2),
+    }
+
+
 # ---------------- Budgets (Presupuestos) ----------------
 async def current_budget_view(user: dict = Depends(current_user)):
     perms = await get_user_permissions(user)
@@ -5014,6 +5264,42 @@ async def seed_demo_data():
             upsert=True,
         )
 
+    # Seed demo clientes
+    demo_clientes = [
+        {"nombre": "Comunidad Edificio Centro", "razon_social": "Comunidad de Propietarios Edificio Centro", "tipo_documento_id": "CIF", "direccion": "Av. Principal 123", "provincia": "Madrid", "poblacion": "Madrid", "representante": "Administración Fincas Centro", "telefono": "600 123 456", "email": "admin@edificiocentro.es", "mantenimiento_contratado": True, "tipo_mantenimiento": "Preventivo y correctivo", "numero_revisiones": 4},
+        {"nombre": "Hotel Aurora", "razon_social": "Hotel Aurora S.L.", "tipo_documento_id": "CIF", "direccion": "C/ Marina 48", "provincia": "Barcelona", "poblacion": "Barcelona", "representante": "Marta Ruiz", "telefono": "600 111 222", "email": "marta@hotelaurora.com", "mantenimiento_contratado": True, "tipo_mantenimiento": "Mantenimiento integral PCI", "numero_revisiones": 2},
+        {"nombre": "Talleres Meridian", "razon_social": "Talleres Meridian S.A.", "tipo_documento_id": "CIF", "direccion": "Polígono Norte nave 12", "provincia": "Valencia", "poblacion": "Valencia", "representante": "Carlos Molina", "telefono": "600 222 333", "email": "cmolina@talleresmeridian.com", "mantenimiento_contratado": False, "tipo_mantenimiento": "", "numero_revisiones": 0},
+        {"nombre": "Logística Eurosur", "razon_social": "Logística Eurosur S.L.", "tipo_documento_id": "NIF", "direccion": "Centro logístico Sur", "provincia": "Sevilla", "poblacion": "Sevilla", "representante": "Nuria Campos", "telefono": "600 333 444", "email": "ncampos@logisticaeurosur.es", "mantenimiento_contratado": True, "tipo_mantenimiento": "Correctivo 24h", "numero_revisiones": 6},
+        {"nombre": "Colegio San Mateo", "razon_social": "Colegio San Mateo", "tipo_documento_id": "NIF", "direccion": "Av. Educación 22", "provincia": "Madrid", "poblacion": "Alcorcón", "representante": "Secretaría técnica", "telefono": "600 444 555", "email": "secretaria@colegiosanmateo.edu", "mantenimiento_contratado": True, "tipo_mantenimiento": "Revisión anual", "numero_revisiones": 1},
+        {"nombre": "Reformas Horizonte", "razon_social": "Reformas Horizonte S.L.", "tipo_documento_id": "CIF", "direccion": "C/ Norte 7", "provincia": "Barcelona", "poblacion": "Sabadell", "representante": "Sergio Vidal", "telefono": "600 555 666", "email": "sergio@reformashorizonte.es", "mantenimiento_contratado": False, "tipo_mantenimiento": "", "numero_revisiones": 0},
+    ]
+    for dc in demo_clientes:
+        dc_id = "demo-cliente-" + dc["nombre"].lower().replace(" ", "-").replace("ó", "o").replace("á", "a").replace("é", "e").replace("í", "i").replace("ú", "u").replace("ñ", "n")
+        existing_cli = await db.clientes.find_one({"id": dc_id})
+        if not existing_cli:
+            await db.clientes.update_one(
+                {"id": dc_id},
+                {"$setOnInsert": {
+                    "id": dc_id,
+                    "nombre": dc["nombre"],
+                    "razon_social": dc["razon_social"],
+                    "tipo_documento_id": dc["tipo_documento_id"],
+                    "direccion": dc["direccion"],
+                    "provincia": dc["provincia"],
+                    "poblacion": dc["poblacion"],
+                    "representante": dc["representante"],
+                    "telefono": dc["telefono"],
+                    "email": dc["email"],
+                    "direcciones": [{"direccion": dc["direccion"], "representante": dc["representante"], "telefono": dc["telefono"], "email": dc["email"]}],
+                    "mantenimiento_contratado": dc["mantenimiento_contratado"],
+                    "tipo_mantenimiento": dc["tipo_mantenimiento"],
+                    "numero_revisiones": dc["numero_revisiones"],
+                    "created_at": now_iso,
+                    "demo_seed": True,
+                }},
+                upsert=True,
+            )
+
 # ---------------- Root/Health ----------------
 @api_router.get("/")
 async def root():
@@ -5364,51 +5650,53 @@ class SATClientIn(BaseModel):
 
 @api_router.get("/sat/clients")
 async def sat_clients_list(user: dict = Depends(require_permission("sat.view"))):
-    rows = await db.sat_clients.find({}, {"_id": 0}).sort("cliente", 1).to_list(5000)
-    return rows
+    rows = await db.clientes.find({}, {"_id": 0}).sort("nombre", 1).to_list(5000)
+    # Map to old format expected by frontend
+    return [{"id": r["id"], "cliente": r.get("nombre",""), "direccion": r.get("direccion",""), "contacto": r.get("representante",""), "telefono": r.get("telefono",""), "created_at": r.get("created_at")} for r in rows]
 
 @api_router.get("/sat/clients/{cid}")
 async def sat_client_get(cid: str, user: dict = Depends(require_permission("sat.view"))):
-    doc = await db.sat_clients.find_one({"id": cid}, {"_id": 0})
+    doc = await db.clientes.find_one({"id": cid}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Cliente no encontrado")
-    return doc
+    return {"id": doc["id"], "cliente": doc.get("nombre",""), "direccion": doc.get("direccion",""), "contacto": doc.get("representante",""), "telefono": doc.get("telefono",""), "created_at": doc.get("created_at")}
 
 @api_router.post("/sat/clients")
 async def sat_client_create(body: SATClientIn, admin: dict = Depends(require_permission("sat.edit"))):
     now = datetime.now(timezone.utc).isoformat()
     doc = {
         "id": str(uuid.uuid4()),
-        "cliente": body.cliente.strip(),
-        "direccion": body.direccion.strip(),
-        "contacto": body.contacto.strip(),
-        "telefono": body.telefono.strip(),
+        "nombre": body.cliente.strip(),
+        "direccion": body.direccion.strip() or "",
+        "representante": body.contacto.strip() or "",
+        "telefono": body.telefono.strip() or "",
+        "razon_social": "", "provincia": "", "poblacion": "",
+        "email": "", "tipo_documento_id": "NIF", "direcciones": [],
+        "mantenimiento_contratado": False, "tipo_mantenimiento": "", "numero_revisiones": 0,
         "created_at": now,
-        "updated_at": now,
     }
-    await db.sat_clients.insert_one(doc)
+    await db.clientes.insert_one(doc)
     doc.pop("_id", None)
-    return doc
+    return {"id": doc["id"], "cliente": doc["nombre"], "direccion": doc.get("direccion",""), "contacto": body.contacto.strip(), "telefono": body.telefono.strip()}
 
 @api_router.patch("/sat/clients/{cid}")
 async def sat_client_update(cid: str, body: SATClientIn, admin: dict = Depends(require_permission("sat.edit"))):
-    existing = await db.sat_clients.find_one({"id": cid})
+    existing = await db.clientes.find_one({"id": cid})
     if not existing:
         raise HTTPException(404, "Cliente no encontrado")
     patch = {
-        "cliente": body.cliente.strip(),
+        "nombre": body.cliente.strip(),
         "direccion": body.direccion.strip(),
-        "contacto": body.contacto.strip(),
+        "representante": body.contacto.strip(),
         "telefono": body.telefono.strip(),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    await db.sat_clients.update_one({"id": cid}, {"$set": patch})
-    doc = await db.sat_clients.find_one({"id": cid}, {"_id": 0})
-    return doc
+    await db.clientes.update_one({"id": cid}, {"$set": patch})
+    doc = await db.clientes.find_one({"id": cid}, {"_id": 0})
+    return {"id": doc["id"], "cliente": doc.get("nombre",""), "direccion": doc.get("direccion",""), "contacto": doc.get("representante",""), "telefono": doc.get("telefono","")}
 
 @api_router.delete("/sat/clients/{cid}")
 async def sat_client_delete(cid: str, admin: dict = Depends(require_permission("sat.edit"))):
-    res = await db.sat_clients.delete_one({"id": cid})
+    res = await db.clientes.delete_one({"id": cid})
     if res.deleted_count == 0:
         raise HTTPException(404, "Cliente no encontrado")
     return {"ok": True}
@@ -5610,6 +5898,166 @@ async def sat_export_excel(user: dict = Depends(current_user)):
     filename = f"incidencias_sat_{datetime.now(timezone.utc).strftime('%Y%m%d')}.xlsx"
     return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+# ---- Mantenimientos SAT ----
+@api_router.get("/sat/mantenimientos")
+async def sat_mantenimientos(user: dict = Depends(current_user)):
+    """Devuelve mantenimientos agendados y alertas pendientes de agendar."""
+    clientes = await db.clientes.find(
+        {"mantenimiento_contratado": True, "alta_mantenimiento": {"$ne": ""}},
+        {"_id": 0, "id": 1, "nombre": 1, "tipo_mantenimiento": 1, "numero_revisiones": 1,
+         "alta_mantenimiento": 1, "fecha_primera_revision": 1, "telefono": 1}
+    ).to_list(5000)
+
+    now = datetime.now(timezone.utc).date()
+    alertas = []
+
+    for c in clientes:
+        try:
+            alta_str = c.get("alta_mantenimiento", "")
+            if isinstance(alta_str, str) and len(alta_str) >= 10:
+                alta = datetime.strptime(alta_str[:10], "%Y-%m-%d").date()
+            else:
+                continue
+        except (ValueError, TypeError):
+            continue
+
+        n_rev = c.get("numero_revisiones", 0) or 0
+        if n_rev <= 0:
+            n_rev = 1
+
+        # Calcular fechas de revision según n_rev:
+        #  1 → cada 12 meses
+        #  2 → cada 6 meses
+        #  3 → cada 4 meses
+        intervalo_meses = {1: 12, 2: 6, 3: 4, 4: 3, 6: 2}.get(n_rev, 12 // max(n_rev, 1))
+
+        # Empezar desde fecha_primera_revision si existe, si no desde alta_mantenimiento
+        primera_str = c.get("fecha_primera_revision", "") or alta_str
+        try:
+            primera = datetime.strptime(primera_str[:10], "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            primera = alta
+
+        revisiones_pendientes = []
+        cursor = primera
+        end_date = now + timedelta(days=30)
+        while cursor <= end_date:
+            if cursor >= now and cursor <= end_date:
+                revisiones_pendientes.append(cursor.strftime("%Y-%m-%d"))
+            cursor = cursor + timedelta(days=intervalo_meses * 30)
+
+        if revisiones_pendientes:
+            alertas.append({
+                "cliente_id": c["id"],
+                "cliente": c.get("nombre", ""),
+                "tipo": c.get("tipo_mantenimiento", ""),
+                "revisiones_ano": n_rev,
+                "alta": alta.strftime("%Y-%m-%d"),
+                "primera_revision": primera.strftime("%Y-%m-%d"),
+                "pendientes": revisiones_pendientes,
+            })
+
+    # Agendados: buscar en db.mantenimientos
+    agendados = await db.mantenimientos.find({}, {"_id": 0}).sort("fecha", 1).to_list(500)
+
+    return {"alertas": alertas, "agendados": agendados}
+
+
+@api_router.post("/sat/mantenimientos")
+async def sat_mantenimiento_create(body: dict, user: dict = Depends(current_user)):
+    cliente_id = body.get("cliente_id", "")
+    cliente_name = body.get("cliente", "")
+    fechas = body.get("fechas", [])  # lista de fechas "YYYY-MM-DD"
+    if isinstance(fechas, str):
+        fechas = [fechas]
+    tecnicos = body.get("tecnicos", [])  # lista de user_ids
+    if isinstance(tecnicos, str):
+        tecnicos = [tecnicos]
+
+    # Obtener datos del cliente
+    cl = await db.clientes.find_one({"id": cliente_id}) if cliente_id else None
+    direccion = cl.get("direccion", "") if cl else ""
+    contacto = cl.get("representante", "") if cl else ""
+    telefono = cl.get("telefono", "") if cl else ""
+    tipo_mtto = body.get("tipo", "") or (cl.get("tipo_mantenimiento", "") if cl else "")
+
+    doc = {
+        "id": str(uuid.uuid4()),
+        "cliente_id": cliente_id,
+        "cliente": cliente_name,
+        "fechas": fechas,
+        "tipo": tipo_mtto,
+        "observaciones": body.get("observaciones", ""),
+        "estado": body.get("estado", "agendado"),
+        "created_by": user.get("email", ""),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.mantenimientos.insert_one(doc)
+
+    # Crear eventos en calendario para cada técnico en cada fecha
+    events_created = 0
+    if fechas and tecnicos:
+        for fecha in fechas:
+            for tid in tecnicos:
+                ev = {
+                    "id": str(uuid.uuid4()),
+                    "title": f"Mtto: {cliente_name}",
+                    "description": f"Tipo: {tipo_mtto}\nCliente: {cliente_name}\nDirección: {direccion}\nContacto: {contacto}\nTel: {telefono}\n\n{body.get('observaciones','')}",
+                    "start_at": f"{fecha}T08:00:00",
+                    "end_at": f"{fecha}T12:00:00",
+                    "assigned_user_ids": [tid],
+                    "status": "in_progress",
+                    "seguimiento": "",
+                    "tipo_mano_obra": "obra",
+                    "hours": 4,
+                    "created_by": user.get("email", ""),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+                await db.events.insert_one(ev)
+                events_created += 1
+
+    doc.pop("_id", None)
+    return {"mantenimiento": doc, "events_created": events_created, "cliente_data": {"direccion": direccion, "contacto": contacto, "telefono": telefono}}
+
+
+@api_router.patch("/sat/mantenimientos/{mid}")
+async def sat_mantenimiento_update(mid: str, body: dict, user: dict = Depends(current_user)):
+    upd = {k: v for k, v in body.items() if v is not None}
+    await db.mantenimientos.update_one({"id": mid}, {"$set": upd})
+    doc = await db.mantenimientos.find_one({"id": mid}, {"_id": 0})
+    return doc
+
+
+@api_router.delete("/sat/mantenimientos/{mid}")
+async def sat_mantenimiento_delete(mid: str, user: dict = Depends(current_user)):
+    await db.mantenimientos.delete_one({"id": mid})
+    return {"ok": True}
+
+# ---- Documentos de cliente ----
+
+@api_router.post("/clientes/{cid}/documentos")
+async def upload_cliente_documento(cid: str, body: dict, user: dict = Depends(current_user)):
+    doc = {
+        "id": str(uuid.uuid4()),
+        "nombre": body.get("nombre", "Documento"),
+        "base64": body.get("base64", ""),
+        "mime_type": body.get("mime_type", "application/pdf"),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.clientes.update_one(
+        {"id": cid},
+        {"$push": {"documentos": doc}}
+    )
+    return doc
+
+@api_router.delete("/clientes/{cid}/documentos/{did}")
+async def delete_cliente_documento(cid: str, did: str, user: dict = Depends(current_user)):
+    await db.clientes.update_one(
+        {"id": cid},
+        {"$pull": {"documentos": {"id": did}}}
+    )
+    return {"ok": True}
 
 @api_router.post("/chats")
 async def chat_create(payload: ChatCreate, user: dict = Depends(current_user)):
@@ -6262,6 +6710,56 @@ async def mylock_products(product: Optional[str] = None, standard: Optional[str]
     except Exception as e:
         return {"error": str(e), "items": []}
 
+# ---------- Certificaciones ----------
+
+class CertificacionLinea(BaseModel):
+    concepto: str = ""
+    cantidad_alcance: Optional[float] = None
+    precio_alcance: Optional[float] = None
+    cantidad_ejecutado: Optional[float] = None
+    precio_ejecutado: Optional[float] = None
+
+class CertificacionCreate(BaseModel):
+    material_id: str
+    nombre: str = ""
+    cliente: str = ""
+    direccion: str = ""
+    poblacion: str = ""
+    provincia: str = ""
+    fecha_certificacion: str = ""
+    lineas: List[CertificacionLinea] = []
+    certificaciones_anteriores: Optional[float] = None
+    iva: float = 21
+    observaciones: str = ""
+
+class CertificacionUpdate(BaseModel):
+    nombre: Optional[str] = None
+    cliente: Optional[str] = None
+    direccion: Optional[str] = None
+    poblacion: Optional[str] = None
+    provincia: Optional[str] = None
+    fecha_certificacion: Optional[str] = None
+    lineas: Optional[List[CertificacionLinea]] = None
+    certificaciones_anteriores: Optional[float] = None
+    iva: Optional[float] = None
+    observaciones: Optional[str] = None
+
+class CertificacionOut(BaseModel):
+    id: str
+    material_id: str
+    nombre: str
+    cliente: str = ""
+    direccion: str = ""
+    poblacion: str = ""
+    provincia: str = ""
+    fecha_certificacion: str = ""
+    lineas: List[CertificacionLinea] = []
+    certificaciones_anteriores: Optional[float] = None
+    iva: float = 21
+    observaciones: str = ""
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
 # ---------- Solicitudes de presupuesto (cliente) ----------
 
 class BudgetRequestCreate(BaseModel):
@@ -6416,6 +6914,326 @@ async def download_encrypted_backup(user: dict = Depends(require_permission("use
     )
 
 from pdf_funcionalidades import generar_pdf
+
+
+CERTIF_TEMPLATE = ROOT_DIR.parent / "Ejemplo Certificacion.xlsx"
+
+# --------------- Certificaciones CRUD ---------------
+@api_router.get("/certificaciones", response_model=List[CertificacionOut])
+async def list_certificaciones(material_id: str = Query(...), user: dict = Depends(current_user)):
+    items = await db.certificaciones.find({"material_id": material_id}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return items
+
+@api_router.post("/certificaciones", response_model=CertificacionOut)
+async def create_certificacion(payload: CertificacionCreate, user: dict = Depends(current_user)):
+    now = datetime.now(timezone.utc).isoformat()
+    doc = payload.dict()
+    doc["id"] = str(uuid.uuid4())
+    doc["created_at"] = now
+    doc["updated_at"] = now
+    await db.certificaciones.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api_router.get("/certificaciones/{cid}", response_model=CertificacionOut)
+async def get_certificacion(cid: str, user: dict = Depends(current_user)):
+    doc = await db.certificaciones.find_one({"id": cid}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Certificacion no encontrada")
+    return doc
+
+@api_router.patch("/certificaciones/{cid}", response_model=CertificacionOut)
+async def update_certificacion(cid: str, payload: CertificacionUpdate, user: dict = Depends(current_user)):
+    upd = {k: v for k, v in payload.dict().items() if v is not None}
+    if not upd:
+        raise HTTPException(400, "Nada que actualizar")
+    upd["updated_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.certificaciones.update_one({"id": cid}, {"$set": upd})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Certificacion no encontrada")
+    doc = await db.certificaciones.find_one({"id": cid}, {"_id": 0})
+    return doc
+
+@api_router.delete("/certificaciones/{cid}")
+async def delete_certificacion(cid: str, user: dict = Depends(current_user)):
+    res = await db.certificaciones.delete_one({"id": cid})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Certificacion no encontrada")
+    return {"ok": True}
+
+async def _decode_query_token(token: str):
+    if not token: return None
+    try:
+        payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return await db.users.find_one({"email": payload.get("email")}, {"_id": 0, "password": 0})
+    except: return None
+
+
+# ---- Certificaciones ----
+
+@api_router.get("/certificaciones", response_model=List[CertificacionOut])
+async def list_certificaciones(material_id: str = Query(...), user: dict = Depends(current_user)):
+    items = await db.certificaciones.find({"material_id": material_id}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return items
+
+@api_router.post("/certificaciones", response_model=CertificacionOut)
+async def create_certificacion(payload: CertificacionCreate, user: dict = Depends(current_user)):
+    now = datetime.now(timezone.utc).isoformat()
+    doc = payload.dict()
+    doc["id"] = str(uuid.uuid4())
+    doc["created_at"] = now
+    doc["updated_at"] = now
+    await db.certificaciones.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api_router.get("/certificaciones/{cid}", response_model=CertificacionOut)
+async def get_certificacion(cid: str, user: dict = Depends(current_user)):
+    doc = await db.certificaciones.find_one({"id": cid}, {"_id": 0})
+    if not doc: raise HTTPException(404)
+    return doc
+
+@api_router.patch("/certificaciones/{cid}", response_model=CertificacionOut)
+async def update_certificacion(cid: str, payload: CertificacionUpdate, user: dict = Depends(current_user)):
+    upd = {k: v for k, v in payload.dict().items() if v is not None}
+    upd["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.certificaciones.update_one({"id": cid}, {"$set": upd})
+    doc = await db.certificaciones.find_one({"id": cid}, {"_id": 0})
+    return doc
+
+@api_router.delete("/certificaciones/{cid}")
+async def delete_certificacion(cid: str, user: dict = Depends(current_user)):
+    await db.certificaciones.delete_one({"id": cid})
+    return {"ok": True}
+
+
+@api_router.get("/certificaciones/{cid}/excel")
+async def generate_certificacion_excel(cid: str, request: Request, token: str = Query(None)):
+    user = None
+    if token: user = await _decode_query_token(token)
+    if not user: user = await _decode_query_token(request.headers.get("Authorization", "").replace("Bearer ", ""))
+    if not user: raise HTTPException(401, "Missing bearer token")
+
+    cert = await db.certificaciones.find_one({"id": cid}, {"_id": 0})
+    if not cert:
+        raise HTTPException(404, "Certificacion no encontrada")
+
+    import openpyxl
+    wb = openpyxl.load_workbook(str(CERTIF_TEMPLATE))
+    ws = wb.active
+
+    ws["H8"] = cert.get("nombre", "") or cert.get("material_id", "")
+    ws["B22"] = (cert.get("material_id") or "")[:15]
+    ws["D22"] = cert.get("fecha_certificacion") or ""
+    ws["G22"] = (cert.get("cliente") or "")[:50]
+
+    lineas = cert.get("lineas") or []
+    for i, linea in enumerate(lineas[:30]):
+        row = 29 + i
+        ws[f"B{row}"] = (linea.get("concepto") or "")[:80]
+        if linea.get("cantidad_alcance") is not None:
+            ws[f"F{row}"] = linea["cantidad_alcance"]
+        if linea.get("precio_alcance") is not None:
+            ws[f"G{row}"] = linea["precio_alcance"]
+        if linea.get("cantidad_alcance") is not None and linea.get("precio_alcance") is not None:
+            ws[f"H{row}"] = round(linea["cantidad_alcance"] * linea["precio_alcance"], 2)
+        if linea.get("cantidad_ejecutado") is not None:
+            ws[f"I{row}"] = linea["cantidad_ejecutado"]
+        if linea.get("precio_ejecutado") is not None:
+            ws[f"J{row}"] = linea["precio_ejecutado"]
+        if linea.get("cantidad_ejecutado") is not None and linea.get("precio_ejecutado") is not None:
+            ws[f"K{row}"] = round(linea["cantidad_ejecutado"] * linea["precio_ejecutado"], 2)
+
+    instalacion_row = 61
+    total_alcance = sum(
+        (l.get("cantidad_alcance") or 0) * (l.get("precio_alcance") or 0)
+        for l in lineas
+    )
+    total_ejecutado = sum(
+        (l.get("cantidad_ejecutado") or 0) * (l.get("precio_ejecutado") or 0)
+        for l in lineas
+    )
+    ws[f"B{instalacion_row}"] = "Instalacion y puesta en marcha"
+    ws[f"F{instalacion_row}"] = 1
+    ws[f"I{instalacion_row}"] = 1
+
+    certificaciones_anteriores = cert.get("certificaciones_anteriores") or 0
+    iva_pct = cert.get("iva") or 21
+    total_acumulado = total_ejecutado + certificaciones_anteriores
+    importe_iva = round(total_acumulado * iva_pct / 100, 2)
+    liquido = total_acumulado + importe_iva
+
+    if len(lineas) <= 30:
+        ws["F65"] = certificaciones_anteriores
+        ws["F66"] = total_acumulado
+
+    ws["D74"] = (cert.get("observaciones") or "")[:100]
+
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+    filename = f"certificacion_{(cert.get('nombre') or cid)[:20]}.xlsx"
+    safe = "".join(c for c in filename if c.isalnum() or c in "._-") or "certificacion.xlsx"
+    return StreamingResponse(out, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            headers={"Content-Disposition": f'attachment; filename="{safe}"'})
+
+@api_router.get("/certificaciones/{cid}/pdf")
+async def generate_certificacion_pdf(cid: str, request: Request, token: str = Query(None)):
+    user = None
+    if token: user = await _decode_query_token(token)
+    if not user: user = await _decode_query_token(request.headers.get("Authorization", "").replace("Bearer ", ""))
+    if not user: raise HTTPException(401, "Missing bearer token")
+    cert = await db.certificaciones.find_one({"id": cid}, {"_id": 0})
+    if not cert:
+        raise HTTPException(404, "Certificacion no encontrada")
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm, cm
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+
+    buf = io.BytesIO()
+    width, height = A4
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=20*mm, rightMargin=20*mm, topMargin=15*mm, bottomMargin=15*mm)
+    styles = getSampleStyleSheet()
+    elements = []
+
+    # Logo
+    logo_path = ROOT_DIR.parent / "Isai partner.jpeg"
+    if logo_path.exists():
+        from PIL import Image as PILImage
+        with PILImage.open(str(logo_path)) as pil_img:
+            w, h = pil_img.size
+        aspect = h / w if w > 0 else 0.5
+        logo_w = 60 * mm
+        logo_h = logo_w * aspect
+        img = Image(str(logo_path), width=logo_w, height=logo_h)
+        img.hAlign = "CENTER"
+        elements.append(img)
+        elements.append(Spacer(1, 4*mm))
+
+    title_style = ParagraphStyle("TitleCert", parent=styles["Title"], fontSize=14, alignment=TA_CENTER, textColor=colors.HexColor("#1E88E5"))
+    heading_style = ParagraphStyle("HeadingCert", parent=styles["Heading2"], fontSize=10, spaceAfter=4, textColor=colors.HexColor("#0F172A"))
+    normal_style = ParagraphStyle("NormalCert", parent=styles["Normal"], fontSize=8, leading=10)
+    small_style = ParagraphStyle("SmallCert", parent=styles["Normal"], fontSize=7, leading=9)
+
+    # Extraer numero de certificacion del nombre
+    cert_name = cert.get("nombre") or ""
+    cert_num = "1"
+    import re
+    m = re.search(r"Certificacion (\d+)", cert_name)
+    if m: cert_num = m.group(1)
+
+    elements.append(Paragraph("CERTIFICACION DE GARANTIA", title_style))
+    elements.append(Paragraph(f"Certificacion N {cert_num}", ParagraphStyle("CertNum", parent=normal_style, fontSize=10, alignment=TA_CENTER, textColor=colors.HexColor("#1E88E5"))))
+    elements.append(Spacer(1, 4*mm))
+
+    data_info = [
+        [Paragraph("<b>Proyecto:</b>", normal_style), Paragraph(cert.get("nombre") or "", normal_style)],
+        [Paragraph("<b>Cliente:</b>", normal_style), Paragraph(cert.get("cliente") or "", normal_style)],
+        [Paragraph("<b>Fecha:</b>", normal_style), Paragraph(cert.get("fecha_certificacion") or "", normal_style)],
+    ]
+    tinfo = Table(data_info, colWidths=[35*mm, 125*mm])
+    tinfo.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 1),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+        ("LINEBELOW", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+    ]))
+    elements.append(tinfo)
+    elements.append(Spacer(1, 6*mm))
+
+    lineas = cert.get("lineas") or []
+    header = [
+        Paragraph("<b>Concepto</b>", small_style),
+        Paragraph("<b>Cant. Alc.</b>", small_style),
+        Paragraph("<b>P.U. Alc.</b>", small_style),
+        Paragraph("<b>Total Alc.</b>", small_style),
+        Paragraph("<b>Cant. Eje.</b>", small_style),
+        Paragraph("<b>P.U. Eje.</b>", small_style),
+        Paragraph("<b>Total Eje.</b>", small_style),
+    ]
+    table_data = [header]
+    total_alcance = 0
+    total_ejecutado = 0
+    for l in lineas:
+        cant_a = l.get("cantidad_alcance") or 0
+        prec_a = l.get("precio_alcance") or 0
+        cant_e = l.get("cantidad_ejecutado") or 0
+        prec_e = l.get("precio_ejecutado") or 0
+        tot_a = round(cant_a * prec_a, 2)
+        tot_e = round(cant_e * prec_e, 2)
+        total_alcance += tot_a
+        total_ejecutado += tot_e
+        table_data.append([
+            Paragraph(l.get("concepto") or "", normal_style),
+            Paragraph(str(cant_a), normal_style),
+            Paragraph(f"{prec_a:.2f} €", normal_style),
+            Paragraph(f"{tot_a:.2f} €", normal_style),
+            Paragraph(str(cant_e), normal_style),
+            Paragraph(f"{prec_e:.2f} €", normal_style),
+            Paragraph(f"{tot_e:.2f} €", normal_style),
+        ])
+
+    col_widths = [65*mm, 15*mm, 18*mm, 18*mm, 15*mm, 18*mm, 18*mm]
+    t = Table(table_data, colWidths=col_widths, repeatRows=1)
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#DBEAFE")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1E40AF")),
+        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+    ]))
+    elements.append(t)
+    elements.append(Spacer(1, 4*mm))
+
+    cert_ant = cert.get("certificaciones_anteriores") or 0
+    iva_pct = cert.get("iva") or 21
+    total_cert = total_ejecutado - cert_ant
+    iva_importe = round(total_cert * iva_pct / 100, 2)
+    liquido = total_cert + iva_importe
+
+    totals_data = [
+        [Paragraph("<b>Total Ejecutado</b>", normal_style), Paragraph(f"{total_ejecutado:.2f} €", normal_style)],
+        [Paragraph("<b>Total Certificacion</b>", normal_style), Paragraph(f"{total_cert:.2f} €", normal_style)],
+        [Paragraph("<b>Certificaciones anteriores</b>", normal_style), Paragraph(f"{cert_ant:.2f} €", normal_style)],
+        [Paragraph(f"<b>IVA ({iva_pct}%)</b>", normal_style), Paragraph(f"{iva_importe:.2f} €", normal_style)],
+        [Paragraph("<b>LIQUIDO A PERCIBIR</b>", ParagraphStyle("BoldTot", parent=normal_style, fontSize=10, textColor=colors.HexColor("#1E88E5"))),
+         Paragraph(f"{liquido:.2f} €", ParagraphStyle("BoldTotR", parent=normal_style, fontSize=10, textColor=colors.HexColor("#1E88E5")))],
+
+    ]
+    tt = Table(totals_data, colWidths=[100*mm, 60*mm])
+    tt.setStyle(TableStyle([
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("LINEBELOW", (0, 0), (-1, -2), 0.5, colors.HexColor("#E2E8F0")),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    elements.append(tt)
+
+    obs = cert.get("observaciones") or ""
+    if obs:
+        elements.append(Spacer(1, 4*mm))
+        elements.append(Paragraph("<b>Observaciones:</b>", normal_style))
+        elements.append(Paragraph(obs, small_style))
+
+    # Footer legal
+    elements.append(Spacer(1, 10*mm))
+    footer_style = ParagraphStyle("FooterCert", parent=normal_style, fontSize=6, textColor=colors.grey, alignment=TA_CENTER)
+    elements.append(Paragraph("I-SAI Accesos y Presencia, S.L. Inscrita en el Registro Mercantil de Guipuzcoa, Tomo 2103, Libro 0 Folio 118 Hoja SS-24057 C.I.F.B20846481", footer_style))
+    elements.append(Paragraph("Torrebaso Kalea, 16, 1B, 20540 Eskoriatza, Gipuzkoa", footer_style))
+
+    doc.build(elements)
+    buf.seek(0)
+    filename = f"certificacion_{(cert.get('nombre') or cid)[:20]}.pdf"
+    safe = "".join(c for c in filename if c.isalnum() or c in "._-") or "certificacion.pdf"
+    return Response(buf.getvalue(), media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{safe}"'})
+
 
 app.include_router(api_router)
 @app.middleware("http")

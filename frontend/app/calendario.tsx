@@ -1223,7 +1223,7 @@ function MultiView({
                   <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: (user.color || COLORS.primary) + "22", alignItems: "center", justifyContent: "center" }}>
                     <Text style={{ fontSize: 11, fontWeight: "600", color: user.color || COLORS.primary }}>{(user.name || user.email || "?").charAt(0).toUpperCase()}</Text>
                   </View>
-                  <Text style={{ fontSize: 13, fontWeight: "600", color: COLORS.text }} numberOfLines={1}>{user.name || user.email}</Text>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: user.color || COLORS.text }} numberOfLines={1}>{user.name || user.email}</Text>
                 </View>
               </View>
               {/* Week column for this user */}
@@ -2392,7 +2392,49 @@ function EventDetailsModal({
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
   const [attachments, setAttachments] = useState<any[]>(event.attachments || []);
+  const [attDragOver, setAttDragOver] = useState(false);
+  const attRef = useRef<any>(null);
   const [linkedPlans, setLinkedPlans] = useState<any[]>([]);
+
+  const processFileUpload = async (file: File) => {
+    setUploading(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const dataUrl = reader.result as string;
+        const b64 = dataUrl.includes("base64,") ? dataUrl.split("base64,")[1] : dataUrl;
+        const meta = await api.uploadEventAttachment(event.id, { filename: file.name, mime_type: file.type || "application/octet-stream", base64: b64 });
+        setAttachments((prev: any[]) => [...prev, meta]);
+        onChanged(); // refrescar evento en el parent
+      };
+      reader.readAsDataURL(file);
+    } catch (e: any) { Alert.alert("Error", e.message); }
+    finally { setUploading(false); }
+  };
+
+  useEffect(() => {
+    const el = attRef.current;
+    if (!el) return;
+    const onDragOver = (e: DragEvent) => { e.preventDefault(); setAttDragOver(true); };
+    const onDragLeave = () => setAttDragOver(false);
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault();
+      setAttDragOver(false);
+      if (e.dataTransfer?.files?.length) {
+        for (let i = 0; i < e.dataTransfer.files.length; i++) {
+          processFileUpload(e.dataTransfer.files[i]);
+        }
+      }
+    };
+    el.addEventListener("dragover", onDragOver);
+    el.addEventListener("dragleave", onDragLeave);
+    el.addEventListener("drop", onDrop);
+    return () => {
+      el.removeEventListener("dragover", onDragOver);
+      el.removeEventListener("dragleave", onDragLeave);
+      el.removeEventListener("drop", onDrop);
+    };
+  }, [event.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3290,6 +3332,7 @@ function EventDetailsModal({
             )}
 
             {/* Attachments */}
+            <View ref={attRef} style={[attDragOver && { backgroundColor: COLORS.primarySoft, borderRadius: 8 }]}>
             <Text style={s.mLabel}>Archivos adjuntos</Text>
             {attachments.length === 0 ? (
               <Text style={[s.descText, { color: COLORS.textDisabled }]}>Sin archivos</Text>
@@ -3356,9 +3399,10 @@ function EventDetailsModal({
                   <Text style={{ color: COLORS.primary, fontWeight: "700" }}>Añadir PDF o imagen</Text>
                 </>
               )}
-            </TouchableOpacity>
+             </TouchableOpacity>
+            </View>
 
-            <Text style={[s.mLabel, { marginTop: 16 }]}>Creado por</Text>
+             <Text style={[s.mLabel, { marginTop: 16 }]}>Creado por</Text>
             <Text style={s.descText}>{event.created_by}</Text>
 
             {isAdmin && (

@@ -149,6 +149,7 @@ export default function ResponsiveLayout({
         {has("sat.view") && (
           <SideLink active={active === "sat"} label="CRM SAT" icon="headset" to="/sat" accent={ios.colors.pink} />
         )}
+        <SideLink active={active === "clientes"} label="Clientes" icon="people-outline" to="/clientes" accent={ios.colors.teal} />
 
         <Text style={s.sectionLabel}>Documentos internos</Text>
         {has("preciario.view") && (
