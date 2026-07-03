@@ -774,68 +774,121 @@ function ObraEnCursoContent() {
       })
     : proyectosAll;
 
+  const totalProy = proyectos.length;
+  const enCurso = proyectos.filter((p: any) => p.pct_avance > 0 && p.pct_avance < 80).length;
+  const holgado = proyectos.filter((p: any) => p.pct_avance <= 30).length;
+  const alLimite = proyectos.filter((p: any) => p.pct_avance > 70 && p.pct_avance <= 100).length;
+  const excedido = proyectos.filter((p: any) => p.pct_avance >= 100).length;
+
   return (
-    <ScrollView contentContainerStyle={[{ padding: ios.spacing.lg, gap: 12 }]} showsVerticalScrollIndicator={false}>
-      {data && (
-        <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-          <View style={{ flex: 1, minWidth: 140, backgroundColor: COLORS.surface, borderRadius: ios.radius.lg, padding: ios.spacing.md, borderWidth: 1, borderColor: COLORS.border, alignItems: "center" }}>
-            <Text style={{ ...fontStyle("title1"), color: COLORS.text, fontWeight: "900" }}>{data.total_proyectos}</Text>
-            <Text style={{ ...fontStyle("caption"), color: COLORS.textSecondary, marginTop: 4, textAlign: "center" }}>Proyectos en curso</Text>
-          </View>
-          <View style={{ flex: 1, minWidth: 140, backgroundColor: COLORS.surface, borderRadius: ios.radius.lg, padding: ios.spacing.md, borderWidth: 1, borderColor: COLORS.border, alignItems: "center" }}>
-            <Text style={{ ...fontStyle("title1"), color: COLORS.text, fontWeight: "900" }}>{fmtEur(data.total_coste_incurrido)}</Text>
-            <Text style={{ ...fontStyle("caption"), color: COLORS.textSecondary, marginTop: 4, textAlign: "center" }}>Coste incurrido total</Text>
-          </View>
-          <View style={{ flex: 1, minWidth: 140, backgroundColor: COLORS.surface, borderRadius: ios.radius.lg, padding: ios.spacing.md, borderWidth: 1, borderColor: COLORS.border, alignItems: "center" }}>
-            <Text style={{ ...fontStyle("title1"), color: COLORS.text, fontWeight: "900" }}>{fmtEur(data.total_ingreso_reconocido)}</Text>
-            <Text style={{ ...fontStyle("caption"), color: COLORS.textSecondary, marginTop: 4, textAlign: "center" }}>Ingreso reconocido</Text>
-          </View>
-        </View>
-      )}
-
-      <Text style={{ ...fontStyle("title3"), color: COLORS.text, fontWeight: "800", marginTop: 8 }}>Proyectos activos ({proyectos.length})</Text>
-
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.surface, borderRadius: ios.radius.md, borderWidth: 1, borderColor: COLORS.borderInput, paddingHorizontal: ios.spacing.md, height: 42 }}>
-        <Ionicons name="search" size={16} color={COLORS.textDisabled} />
-        <TextInput
-          style={{ flex: 1, fontSize: ios.font.callout.size, color: COLORS.text, height: 42 }}
-          value={searchObra}
-          onChangeText={setSearchObra}
-          placeholder="Buscar por codigo o cliente..."
-          placeholderTextColor={COLORS.textDisabled}
-        />
-        {searchObra !== "" && (
-          <TouchableOpacity onPress={() => setSearchObra("")}>
-            <Ionicons name="close-circle" size={16} color={COLORS.textSecondary} />
-          </TouchableOpacity>
-        )}
+    <ScrollView contentContainerStyle={{ paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
+      <View style={{ maxWidth: 900, alignSelf: "center", width: "100%" }}>
+      {/* Hero */}
+      <View style={{ backgroundColor: "#0A0E1A", paddingHorizontal: ios.spacing.lg, paddingVertical: 24, gap: 4 }}>
+        <Text style={{ color: "#64748B", fontSize: 11, fontWeight: "600", letterSpacing: 1.5, textTransform: "uppercase" }}>Panel Ejecutivo · Obra en curso · En vivo</Text>
+        <Text style={{ color: "#F1F5F9", fontSize: 24, fontWeight: "900" }}>PANEL EJECUTIVO</Text>
       </View>
 
-      <View style={{ flexDirection: "row", gap: 8, paddingVertical: 8, borderBottomWidth: 2, borderBottomColor: COLORS.border }}>
-        <Text style={{ ...fontStyle("caption"), color: COLORS.textSecondary, fontWeight: "800", flex: 1.8 }}>Proyecto</Text>
-        <Text style={{ ...fontStyle("caption"), color: COLORS.textSecondary, fontWeight: "800", flex: 1, textAlign: "center" }}>% Material</Text>
-        <Text style={{ ...fontStyle("caption"), color: COLORS.textSecondary, fontWeight: "800", flex: 1, textAlign: "center" }}>% M.Obra</Text>
-        <Text style={{ ...fontStyle("caption"), color: COLORS.textSecondary, fontWeight: "800", flex: 1, textAlign: "center" }}>Grado Avance</Text>
-        <Text style={{ ...fontStyle("caption"), color: COLORS.textSecondary, fontWeight: "800", flex: 1.2, textAlign: "right" }}>Ingreso Rec.</Text>
-      </View>
-
-      {proyectos.map((p) => (
-          <TouchableOpacity
-            key={p.id}
-            style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border }}
-            onPress={() => router.push(`/material/${p.id}` as any)}
-          >
-            <View style={{ flex: 1.8 }}>
-              <Text style={{ ...fontStyle("callout"), color: COLORS.text, fontWeight: "700" }} numberOfLines={1}>{p.materiales || "—"}</Text>
-              <Text style={{ ...fontStyle("caption"), color: COLORS.textSecondary, marginTop: 1 }} numberOfLines={1}>{p.cliente || ""}</Text>
+      {/* KPI cards */}
+      <View style={{ flexDirection: "row", gap: 10, padding: ios.spacing.lg, marginTop: -20, flexWrap: "wrap" }}>
+        {[
+          { label: "Total proyectos", value: String(totalProy), icon: "folder-open", bg: "#3B82F6" },
+          { label: "Obra en curso total", value: fmtEur(data?.total_obra_en_curso), icon: "cash", bg: "#8B5CF6" },
+          { label: "Coste incurrido", value: fmtEur(data?.total_coste_incurrido), icon: "trending-down", bg: "#F59E0B" },
+          { label: "En curso", value: `${enCurso} activos`, icon: "construct", bg: "#10B981" },
+        ].map((kpi, i) => (
+          <View key={i} style={{ flex: 1, minWidth: 150, backgroundColor: COLORS.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: COLORS.border, ...ios.shadow.card, gap: 12 }}>
+            <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: kpi.bg + "18", alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name={kpi.icon as any} size={22} color={kpi.bg} />
             </View>
-            <Text style={{ flex: 1, textAlign: "center", ...fontStyle("callout"), color: p.pct_mat > 100 ? COLORS.errorText : COLORS.text, fontWeight: "700" }}>{p.pct_mat}%</Text>
-            <Text style={{ flex: 1, textAlign: "center", ...fontStyle("callout"), color: p.pct_mo > 100 ? COLORS.errorText : COLORS.text, fontWeight: "700" }}>{p.pct_mo}%</Text>
-            <Text style={{ flex: 1, textAlign: "center", ...fontStyle("callout"), color: p.grado_avance > 90 ? COLORS.syncedText : COLORS.text, fontWeight: "800" }}>{p.grado_avance}%</Text>
-            <Text style={{ flex: 1.2, textAlign: "right", ...fontStyle("callout"), color: COLORS.text, fontWeight: "700" }}>{fmtEur(p.ingreso_reconocido)}</Text>
-          </TouchableOpacity>
-      ))}
-      <View style={{ height: 80 }} />
+            <View>
+              <Text style={{ ...fontStyle("caption"), color: COLORS.textSecondary }}>{kpi.label}</Text>
+              <Text style={{ ...fontStyle("title3"), color: COLORS.text, fontWeight: "900" }}>{kpi.value}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+
+      {/* Distribution bar */}
+      <View style={{ paddingHorizontal: ios.spacing.lg, gap: 8 }}>
+        <Text style={{ ...fontStyle("callout"), color: COLORS.text, fontWeight: "700" }}>Distribución de avance</Text>
+        <View style={{ height: 8, backgroundColor: COLORS.bg, borderRadius: 4, overflow: "hidden", flexDirection: "row" }}>
+          {totalProy > 0 && (
+            <>
+              <View style={{ flex: holgado, backgroundColor: "#10B981" }} />
+              {holgado < totalProy && <View style={{ flex: enCurso - holgado, backgroundColor: "#3B82F6" }} />}
+              {alLimite > 0 && <View style={{ flex: alLimite, backgroundColor: "#F59E0B" }} />}
+              {excedido > 0 && <View style={{ flex: excedido, backgroundColor: "#EF4444" }} />}
+            </>
+          )}
+        </View>
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          {[
+            { label: "Holgado", color: "#10B981", n: holgado },
+            { label: "En curso", color: "#3B82F6", n: enCurso - holgado },
+            { label: "Al límite", color: "#F59E0B", n: alLimite },
+            { label: "Excedido", color: "#EF4444", n: excedido },
+          ].map((seg) => (
+            <View key={seg.label} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: seg.color }} />
+              <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>{seg.label} ({seg.n})</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      {/* Search + chips */}
+      <View style={{ paddingHorizontal: ios.spacing.lg, paddingTop: ios.spacing.lg, gap: 10 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.borderInput, paddingHorizontal: 14, height: 44 }}>
+          <Ionicons name="search" size={16} color={COLORS.textDisabled} />
+          <TextInput style={{ flex: 1, fontSize: 14, color: COLORS.text, height: 44 }} value={searchObra} onChangeText={setSearchObra} placeholder="Buscar proyecto..." placeholderTextColor={COLORS.textDisabled} />
+          {searchObra ? <TouchableOpacity onPress={() => setSearchObra("")}><Ionicons name="close-circle" size={16} color={COLORS.textSecondary} /></TouchableOpacity> : null}
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, marginBottom: 4 }}>
+          {[
+            { label: "Todos", v: 0 }, { label: "Holgado ≤30%", v: 30 }, { label: "En curso 30-70%", v: 70 }, { label: "Al límite >70%", v: 100 }, { label: "Excedido 100%", v: 101 },
+          ].map((c) => (
+            <TouchableOpacity key={c.label} onPress={() => {/* filter */}} style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border, marginRight: 6, backgroundColor: c.label === "Todos" ? COLORS.primary : COLORS.surface }}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: c.label === "Todos" ? "#fff" : COLORS.textSecondary }}>{c.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* Project table */}
+      <View style={{ paddingHorizontal: ios.spacing.lg, paddingBottom: ios.spacing.lg }}>
+        <Text style={{ ...fontStyle("callout"), color: COLORS.text, fontWeight: "700", marginBottom: 8 }}>Proyectos ({proyectos.length})</Text>
+        <View style={s.tableHeader}>
+          <Text style={[s.th, { flex: 1.8 }]}>Proyecto</Text>
+          <Text style={[s.th, { flex: 0.8, textAlign: "center" }]}>% Avance</Text>
+          <Text style={[s.th, { flex: 0.8, textAlign: "right" }]}>MOD Real</Text>
+          <Text style={[s.th, { flex: 0.9, textAlign: "right" }]}>Bº Avance</Text>
+          <Text style={[s.th, { flex: 0.9, textAlign: "right" }]}>Facturado</Text>
+          <Text style={[s.th, { flex: 1, textAlign: "right" }]}>Obra Curso</Text>
+        </View>
+        {proyectos.map((p: any) => {
+          const modColor = p.pct_avance >= 100 ? COLORS.errorText : p.pct_avance > 70 ? COLORS.pendingText : p.pct_avance > 30 ? COLORS.primary : COLORS.syncedText;
+          return (
+            <TouchableOpacity key={p.id} style={s.tableRow} onPress={() => router.push(`/material/${p.id}` as any)}>
+              <View style={{ flex: 1.8 }}>
+                <Text style={s.cellName} numberOfLines={1}>{p.materiales || "—"}</Text>
+                <Text style={s.cellSub} numberOfLines={1}>{p.cliente || ""}</Text>
+              </View>
+              <View style={{ flex: 0.8, alignItems: "center" }}>
+                <View style={{ height: 3, width: "100%", backgroundColor: COLORS.bg, borderRadius: 2, overflow: "hidden" }}>
+                  <View style={{ height: 3, borderRadius: 2, backgroundColor: modColor, width: `${Math.min(p.pct_avance, 100)}%` }} />
+                </View>
+                <Text style={[s.cell, { fontSize: 10, color: modColor, fontWeight: "800", marginTop: 2 }]}>{p.pct_avance}%</Text>
+              </View>
+              <Text style={[s.cell, { flex: 0.8, textAlign: "right" }]}>{fmtEur(p.mod_real)}</Text>
+              <Text style={[s.cell, { flex: 0.9, textAlign: "right", color: p.beneficio_avance >= 0 ? COLORS.syncedText : COLORS.errorText }]}>{fmtEur(p.beneficio_avance)}</Text>
+              <Text style={[s.cell, { flex: 0.9, textAlign: "right", color: COLORS.textSecondary }]}>{fmtEur(p.ingreso_facturado || 0)}</Text>
+              <Text style={[s.cell, { flex: 1, textAlign: "right" }]}>{fmtEur(p.obra_en_curso)}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      </View>
     </ScrollView>
   );
 }

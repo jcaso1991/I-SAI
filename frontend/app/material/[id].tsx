@@ -90,6 +90,7 @@ export default function MaterialDetail() {
   const [costeRealMO, setCosteRealMO] = useState("");
   const [beneficioInicial, setBeneficioInicial] = useState("");
   const [beneficioReal, setBeneficioReal] = useState("");
+  const [ingresoFacturado, setIngresoFacturado] = useState("");
   const [clienteId, setClienteId] = useState("");
   const [clientes, setClientes] = useState<{ id: string; nombre: string; razon_social: string }[]>([]);
   const [showClientePicker, setShowClientePicker] = useState(false);
@@ -159,6 +160,7 @@ export default function MaterialDetail() {
         setCosteRealMO(data.coste_real_mano_de_obra != null ? String(data.coste_real_mano_de_obra) : "");
         setBeneficioInicial(data.beneficio_inicial != null ? String(data.beneficio_inicial) : "");
         setBeneficioReal(data.beneficio_real != null ? String(data.beneficio_real) : "");
+        setIngresoFacturado(data.ingreso_facturado != null ? String(data.ingreso_facturado) : "");
         setTechs(tlist);
         setManagers(mlist);
         // Load linked events
@@ -236,6 +238,7 @@ export default function MaterialDetail() {
         coste_real_mano_de_obra: costeRealMO ? parseFloat(costeRealMO) : null,
         beneficio_inicial: beneficioInicial ? parseFloat(beneficioInicial) : null,
         beneficio_real: beneficioReal ? parseFloat(beneficioReal) : null,
+        ingreso_facturado: ingresoFacturado ? parseFloat(ingresoFacturado) : null,
       } : {
         entrega_recogida: entrega || "",
         total_parcial: tp || "",
@@ -448,6 +451,21 @@ export default function MaterialDetail() {
                   keyboardType="numeric"
                 />
               </View>
+            </View>
+
+            <View style={s.finRow}>
+              <View style={s.finCol}>
+                <Text style={s.fieldLabel}>Ingreso facturado</Text>
+                <TextInput
+                  style={s.finInput}
+                  value={ingresoFacturado}
+                  onChangeText={(v) => { if (puedeEditar) { setIngresoFacturado(v); setDirty(true); } }}
+                  placeholder="0.00"
+                  placeholderTextColor={COLORS.textDisabled}
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={s.finCol} />
             </View>
           </View>
 
@@ -713,19 +731,33 @@ export default function MaterialDetail() {
                </View>
                {showLinkedCertificaciones && linkedCertificaciones.map((c: any) => (
                  <TouchableOpacity
-                   key={c.id}
-                   onPress={() => router.push(`/material/certificacion/${c.id}`)}
-                   style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.sm, padding: ios.spacing.sm, backgroundColor: COLORS.bg, borderRadius: ios.radius.sm, marginTop: 4 }}
-                 >
-                   <Ionicons name="document-text-outline" size={16} color={COLORS.primary} />
-                   <View style={{ flex: 1 }}>
-                     <Text style={{ color: COLORS.text, fontWeight: "600", fontSize: ios.font.footnote.size }} numberOfLines={1}>
-                       {c.nombre || "Certificacion"} · {c.fecha_certificacion || "Sin fecha"}
-                     </Text>
-                   </View>
-                   <Text style={{ fontSize: ios.font.caption.size, color: COLORS.textSecondary }}>{c.lineas?.length || 0} lineas</Text>
-                   <Ionicons name="chevron-forward" size={14} color={COLORS.textDisabled} />
-                 </TouchableOpacity>
+                  key={c.id}
+                    onPress={() => router.push(`/material/certificacion/${c.id}`)}
+                    style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.sm, padding: ios.spacing.sm, backgroundColor: COLORS.bg, borderRadius: ios.radius.sm, marginTop: 4 }}
+                  >
+                    <Ionicons name="document-text-outline" size={16} color={COLORS.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: COLORS.text, fontWeight: "600", fontSize: ios.font.footnote.size }} numberOfLines={1}>
+                        {c.nombre || "Certificacion"} · {c.fecha_certificacion || "Sin fecha"}
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: ios.font.caption.size, color: COLORS.textSecondary }}>{c.lineas?.length || 0} lineas</Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        Alert.alert("Eliminar certificacion", "¿Seguro que queres borrar esta certificacion?", [
+                          { text: "Cancelar", style: "cancel" },
+                          { text: "Eliminar", style: "destructive", onPress: async () => {
+                            try { await api.deleteCertificacion(c.id); setLinkedCertificaciones((prev: any) => prev.filter((x: any) => x.id !== c.id)); } catch (err: any) { Alert.alert("Error", err.message); }
+                          }},
+                        ]);
+                      }}
+                      style={{ padding: 4 }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="trash-outline" size={16} color={COLORS.errorText} />
+                    </TouchableOpacity>
+                    <Ionicons name="chevron-forward" size={14} color={COLORS.textDisabled} />
+                  </TouchableOpacity>
                ))}
              </View>
              {/* Historial de cambios */}

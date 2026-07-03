@@ -338,6 +338,8 @@ export const api = {
   deleteBudget: (id: string) => request(`/budgets/${id}`, { method: "DELETE" }),
   budgetsDefaultEquipos: () => request("/budgets-defaults/equipos"),
 
+  voiceParse: (text: string) => request("/utils/voice-parse", { method: "POST", body: JSON.stringify({ text }) }),
+
   // Versions
   listBudgetVersions: (bid: string) => request(`/budgets/${bid}/versions`),
   getBudgetVersion: (bid: string, vid: string) => request(`/budgets/${bid}/versions/${vid}`),

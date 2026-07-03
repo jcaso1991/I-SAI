@@ -12,6 +12,7 @@ import ResponsiveLayout from "../../src/ResponsiveLayout";
 import { useBreakpoint } from "../../src/useBreakpoint";
 import { useThemedStyles } from "../../src/theme";
 import SignaturePad from "../../src/SignaturePad";
+import VoiceAIButton from "../../src/VoiceAIButton";
 import { ios, fontStyle } from "../../src/ui/iosTheme";
 
 type Equipo = { elemento: string; cantidad?: string; ubicacion?: string; observaciones?: string };
@@ -39,19 +40,19 @@ export default function BudgetEditor() {
     placeholder?: string;
     multiline?: boolean;
   }) {
-    return (
-      <View style={{ gap: 4, flex: 1 }}>
-        {label && <Text style={s.lbl}>{label}</Text>}
-        <TextInput
-          value={value}
-          onChangeText={onChange}
-          placeholder={placeholder}
-          placeholderTextColor={COLORS.textDisabled}
-          multiline={multiline}
-          style={[s.inp, multiline && { minHeight: 80, textAlignVertical: "top" }]}
-        />
-      </View>
-    );
+     return (
+       <View style={{ gap: 4, flex: 1 }}>
+         {label && <Text style={s.lbl}>{label}</Text>}
+         <TextInput
+            value={value}
+            onChangeText={onChange}
+            placeholder={placeholder}
+            placeholderTextColor={COLORS.textDisabled}
+            multiline={multiline}
+            style={[s.inp, multiline && { minHeight: 80, textAlignVertical: "top" }]}
+          />
+       </View>
+     );
   }
   function Check({ label, value, onChange }: {
     label: string;
@@ -335,6 +336,7 @@ export default function BudgetEditor() {
           {budgetId ? "Editar presupuesto" : "Nuevo presupuesto"}
         </Text>
         <View style={{ flexDirection: "row", gap: 6 }}>
+          <VoiceAIButton onFill={(vals) => setF((p: any) => ({ ...p, ...vals, equipos: vals.equipos?.length ? vals.equipos : p.equipos }))} />
           {budgetId && (
             <TouchableOpacity style={s.iconBtn} onPress={del}>
               <Ionicons name="trash-outline" size={22} color={COLORS.errorText} />

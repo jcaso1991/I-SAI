@@ -192,6 +192,8 @@ class Material(BaseModel):
     coste_real_mano_de_obra: Optional[float] = None
     beneficio_inicial: Optional[float] = None
     beneficio_real: Optional[float] = None
+    # facturacion
+    ingreso_facturado: Optional[float] = None
     # historial de horas imputadas desde eventos
     historial_horas: Optional[List[dict]] = None
     # meta
@@ -217,6 +219,7 @@ class MaterialUpdate(BaseModel):
     coste_real_mano_de_obra: Optional[float] = None
     beneficio_inicial: Optional[float] = None
     beneficio_real: Optional[float] = None
+    ingreso_facturado: Optional[float] = None
 
 class DireccionCliente(BaseModel):
     direccion: str = ""
@@ -4251,6 +4254,7 @@ async def dashboard_obra_en_curso(user: dict = Depends(current_user)):
          "importe_venta_prev_materiales": 1, "importe_venta_prev_mano_de_obra": 1,
          "coste_prev_materiales": 1, "coste_prev_mano_de_obra": 1,
          "coste_real_materiales": 1, "coste_real_mano_de_obra": 1,
+         "ingreso_facturado": 1,
          "horas_prev": 1, "horas_imputadas": 1}
     ).to_list(10000)
 
@@ -4260,6 +4264,22 @@ async def dashboard_obra_en_curso(user: dict = Depends(current_user)):
     result = []
     total_ingreso = 0.0
     total_coste_incurrido = 0.0
+
+    # Batch query all events instead of per-project
+    all_eventos = await db.events.find(
+        {"status": {"$in": ["completed", "pending_completion"]},
+         "tipo_mano_obra": {"$ne": None}, "hours": {"$gt": 0}},
+        {"hours": 1, "tipo_mano_obra": 1, "material_id": 1}
+    ).to_list(50000)
+    mod_by_project = {}
+    for ev in all_eventos:
+        mid = ev.get("material_id")
+        if not mid: continue
+        tipo = ev.get("tipo_mano_obra", "")
+        precio = precios_mo.get(tipo, 0)
+        if precio == 0: precio = 35.5  # fallback
+        mod_by_project[mid] = mod_by_project.get(mid, 0) + _safe_float(ev.get("hours")) * precio
+    logging.getLogger(__name__).info(f"OEC: {len(all_eventos)} events, {len(mod_by_project)} projects with MOD")
 
     for p in proyectos:
         venta_mat = p.get("importe_venta_prev_materiales") or 0
@@ -4272,32 +4292,34 @@ async def dashboard_obra_en_curso(user: dict = Depends(current_user)):
 
         venta_total = venta_mat + venta_mo
         coste_prev_total = coste_prev_mat + coste_prev_mo
-        coste_incurrido = coste_real_mat  # starts with real materials
+        beneficio_previsto = venta_total - coste_prev_total
 
-        # Coste real MO desde eventos
-        eventos = await db.events.find(
-            {"material_id": p["id"], "status": {"$in": ["completed", "pending_completion"]},
-             "tipo_mano_obra": {"$ne": None}, "hours": {"$gt": 0}},
-            {"hours": 1, "tipo_mano_obra": 1}
-        ).to_list(1000)
-        coste_real_mo = 0.0
-        for ev in eventos:
-            tipo = ev.get("tipo_mano_obra", "")
-            precio = precios_mo.get(tipo, 0)
-            coste_real_mo += _safe_float(ev.get("hours")) * precio
-        coste_real_mo = round(coste_real_mo, 2)
-        coste_incurrido += coste_real_mo
+        # MOD Real desde eventos (pre-calculado)
+        mod_real = round(mod_by_project.get(p["id"], 0), 2)
 
+        coste_real_mo = mod_real
+        coste_incurrido = coste_real_mat + coste_real_mo
         has_data = coste_real_mat > 0 or coste_real_mo > 0
         if not has_data:
             continue
 
-        pct_mat = round((coste_real_mat / coste_prev_mat * 100), 1) if coste_prev_mat > 0 else 0
-        pct_mo = round((horas_imp / horas_prev * 100), 1) if horas_prev > 0 and horas_imp > 0 else 0
-        grado_avance = round((coste_incurrido / coste_prev_total * 100), 1) if coste_prev_total > 0 else 0
-        ingreso_reconocido = round(venta_total * grado_avance / 100, 2) if grado_avance > 0 else 0
+        # Formula: % Avance = MOD Real / MOD Previsto
+        mod_previsto = coste_prev_mo if coste_prev_mo > 0 else 1
+        pct_avance = round((mod_real / mod_previsto * 100), 1) if mod_previsto > 0 else 0
+        # Caps at 100% as per PPT
+        if pct_avance > 100: pct_avance = 100
 
-        total_ingreso += ingreso_reconocido
+        # Beneficio segun Avance = Beneficio Previsto x % Avance
+        beneficio_avance = round(beneficio_previsto * pct_avance / 100, 2)
+
+        # Obra en Curso = Gasto Realizado + BeneficioAvance - IngresoFacturado
+        ingreso_facturado = p.get("ingreso_facturado") or 0
+        obra_en_curso = round(coste_incurrido + beneficio_avance - ingreso_facturado, 2)
+
+        pct_mat = round((coste_real_mat / coste_prev_mat * 100), 1) if coste_prev_mat > 0 else 0
+        pct_mo = round((mod_real / mod_previsto * 100), 1) if mod_previsto > 0 else 0
+
+        total_ingreso += obra_en_curso
         total_coste_incurrido += coste_incurrido
 
         result.append({
@@ -4307,17 +4329,21 @@ async def dashboard_obra_en_curso(user: dict = Depends(current_user)):
             "venta_total": venta_total, "coste_prev_total": coste_prev_total,
             "coste_real_mat": coste_real_mat, "coste_real_mo": coste_real_mo,
             "coste_incurrido": coste_incurrido,
+            "mod_real": mod_real, "mod_previsto": mod_previsto,
+            "beneficio_previsto": beneficio_previsto,
+            "beneficio_avance": beneficio_avance,
             "pct_mat": pct_mat, "pct_mo": pct_mo,
-            "grado_avance": grado_avance,
-            "ingreso_reconocido": ingreso_reconocido,
+            "pct_avance": pct_avance,
+            "obra_en_curso": obra_en_curso,
+            "ingreso_facturado": ingreso_facturado,
         })
 
-    result.sort(key=lambda x: x["grado_avance"], reverse=True)
+    result.sort(key=lambda x: x["pct_avance"], reverse=True)
 
     return {
         "proyectos": result[:500],
         "total_proyectos": len(result),
-        "total_ingreso_reconocido": round(total_ingreso, 2),
+        "total_obra_en_curso": round(total_ingreso, 2),
         "total_coste_incurrido": round(total_coste_incurrido, 2),
     }
 
@@ -6919,54 +6945,7 @@ from pdf_funcionalidades import generar_pdf
 CERTIF_TEMPLATE = ROOT_DIR.parent / "Ejemplo Certificacion.xlsx"
 
 # --------------- Certificaciones CRUD ---------------
-@api_router.get("/certificaciones", response_model=List[CertificacionOut])
-async def list_certificaciones(material_id: str = Query(...), user: dict = Depends(current_user)):
-    items = await db.certificaciones.find({"material_id": material_id}, {"_id": 0}).sort("created_at", -1).to_list(200)
-    return items
 
-@api_router.post("/certificaciones", response_model=CertificacionOut)
-async def create_certificacion(payload: CertificacionCreate, user: dict = Depends(current_user)):
-    now = datetime.now(timezone.utc).isoformat()
-    doc = payload.dict()
-    doc["id"] = str(uuid.uuid4())
-    doc["created_at"] = now
-    doc["updated_at"] = now
-    await db.certificaciones.insert_one(doc)
-    doc.pop("_id", None)
-    return doc
-
-@api_router.get("/certificaciones/{cid}", response_model=CertificacionOut)
-async def get_certificacion(cid: str, user: dict = Depends(current_user)):
-    doc = await db.certificaciones.find_one({"id": cid}, {"_id": 0})
-    if not doc:
-        raise HTTPException(404, "Certificacion no encontrada")
-    return doc
-
-@api_router.patch("/certificaciones/{cid}", response_model=CertificacionOut)
-async def update_certificacion(cid: str, payload: CertificacionUpdate, user: dict = Depends(current_user)):
-    upd = {k: v for k, v in payload.dict().items() if v is not None}
-    if not upd:
-        raise HTTPException(400, "Nada que actualizar")
-    upd["updated_at"] = datetime.now(timezone.utc).isoformat()
-    res = await db.certificaciones.update_one({"id": cid}, {"$set": upd})
-    if res.matched_count == 0:
-        raise HTTPException(404, "Certificacion no encontrada")
-    doc = await db.certificaciones.find_one({"id": cid}, {"_id": 0})
-    return doc
-
-@api_router.delete("/certificaciones/{cid}")
-async def delete_certificacion(cid: str, user: dict = Depends(current_user)):
-    res = await db.certificaciones.delete_one({"id": cid})
-    if res.deleted_count == 0:
-        raise HTTPException(404, "Certificacion no encontrada")
-    return {"ok": True}
-
-async def _decode_query_token(token: str):
-    if not token: return None
-    try:
-        payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        return await db.users.find_one({"email": payload.get("email")}, {"_id": 0, "password": 0})
-    except: return None
 
 
 # ---- Certificaciones ----
@@ -7198,6 +7177,7 @@ async def generate_certificacion_pdf(cid: str, request: Request, token: str = Qu
     liquido = total_cert + iva_importe
 
     totals_data = [
+        [Paragraph("<b>Total Alcance</b>", normal_style), Paragraph(f"{total_alcance:.2f} €", normal_style)],
         [Paragraph("<b>Total Ejecutado</b>", normal_style), Paragraph(f"{total_ejecutado:.2f} €", normal_style)],
         [Paragraph("<b>Total Certificacion</b>", normal_style), Paragraph(f"{total_cert:.2f} €", normal_style)],
         [Paragraph("<b>Certificaciones anteriores</b>", normal_style), Paragraph(f"{cert_ant:.2f} €", normal_style)],
@@ -7233,6 +7213,43 @@ async def generate_certificacion_pdf(cid: str, request: Request, token: str = Qu
     safe = "".join(c for c in filename if c.isalnum() or c in "._-") or "certificacion.pdf"
     return Response(buf.getvalue(), media_type="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="{safe}"'})
+
+
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
+
+
+@api_router.post("/utils/voice-parse")
+async def voice_parse_presupuesto(body: dict, user: dict = Depends(current_user)):
+    text = (body.get("text") or "").strip()
+    if not text:
+        raise HTTPException(400, "Texto vacio")
+    if not GOOGLE_API_KEY:
+        raise HTTPException(503, "GOOGLE_API_KEY no configurada")
+
+    prompt = f"""Eres un asistente que rellena presupuestos de instalaciones.
+Dado este texto dictado por voz, extrae los campos para rellenar un formulario.
+Devuelve SOLO un JSON valido con estas claves:
+n_proyecto, cliente, nombre_instalacion, direccion, contacto_1, contacto_2.
+Para equipos, usa el array "equipos" con objetos {{elemento, cantidad, ubicacion}}.
+Si no reconoces un campo, pon "".
+
+Texto: "{text}"
+
+JSON:"""
+
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=GOOGLE_API_KEY)
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        response = model.generate_content(prompt)
+        raw = response.text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0]
+        import json as _json
+        result = _json.loads(raw)
+        return result
+    except Exception as e:
+        raise HTTPException(500, f"Error IA: {str(e)[:200]}")
 
 
 app.include_router(api_router)
