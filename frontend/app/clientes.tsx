@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Alert, Modal, Platform,
+  ActivityIndicator, Alert, Modal, KeyboardAvoidingView, Platform
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -37,17 +37,6 @@ export default function ClientesIndex() {
   const [formRevisiones, setFormRevisiones] = useState("0");
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const list = await api.listClientes();
-      setClientes(list);
-    } catch (e: any) {
-      if (/401|Invalid|expired/i.test(e.message)) { await clearToken(); router.replace("/login"); }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useFocusEffect(useCallback(() => {
     setLoading(true);
     let alive = true;
@@ -60,7 +49,7 @@ export default function ClientesIndex() {
       } finally { if (alive) setLoading(false); }
     })();
     return () => { alive = false; };
-  }, []));
+  }, [router]));
 
   const resetForm = () => {
     setFormNombre(""); setFormRazon(""); setFormDocId("NIF"); setFormDireccion("");
@@ -96,7 +85,8 @@ export default function ClientesIndex() {
       await api.createCliente(body);
       setShowCreate(false);
       resetForm();
-      load();
+      const list = await api.listClientes();
+      setClientes(list);
     } catch (e: any) { Alert.alert("Error", e.message); }
     finally { setSaving(false); }
   };
@@ -110,39 +100,45 @@ export default function ClientesIndex() {
   const content = (
     <SafeAreaView style={s.root} edges={["top"]}>
       <View style={s.header}>
-        <Text style={s.headerTitle}>Clientes</Text>
-        <TouchableOpacity style={s.addBtn} onPress={() => setShowCreate(true)}>
-          <Ionicons name="add" size={22} color="#fff" />
-          <Text style={s.addBtnText}>Nuevo cliente</Text>
+        <View>
+          <Text style={s.headerTitle}>Clientes</Text>
+          <Text style={s.headerSubtitle}>{filtered.length} registrados</Text>
+        </View>
+        <TouchableOpacity style={s.addBtn} onPress={() => setShowCreate(true)} activeOpacity={0.8}>
+          <Ionicons name="add" size={20} color="#fff" />
+          <Text style={s.addBtnText}>Nuevo</Text>
         </TouchableOpacity>
       </View>
 
       <View style={s.searchWrap}>
-        <Ionicons name="search" size={18} color={COLORS.textSecondary} style={{ marginRight: 8 }} />
+        <Ionicons name="search-outline" size={18} color={COLORS.textSecondary} style={{ marginRight: 8 }} />
         <TextInput
           style={s.searchInput}
           value={search}
           onChangeText={setSearch}
-          placeholder="Buscar por nombre, razón social, población..."
+          placeholder="Buscar cliente, población o teléfono..."
           placeholderTextColor={COLORS.textDisabled}
         />
         {search !== "" && (
           <TouchableOpacity onPress={() => setSearch("")} hitSlop={8}>
-            <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
+            <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
           </TouchableOpacity>
         )}
       </View>
 
       {loading ? (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+        <View style={s.centered}>
           <ActivityIndicator color={COLORS.primary} size="large" />
         </View>
       ) : (
-        <ScrollView contentContainerStyle={{ padding: ios.spacing.lg, paddingBottom: 120, gap: ios.spacing.sm }}>
+        <ScrollView contentContainerStyle={s.scrollContainer}>
           {filtered.length === 0 ? (
-            <Text style={{ color: COLORS.textDisabled, textAlign: "center", marginTop: 40, fontSize: ios.font.callout.size }}>
-              {search ? "Sin resultados" : "No hay clientes registrados. Crea el primero."}
-            </Text>
+            <View style={s.emptyState}>
+              <Ionicons name="people-outline" size={48} color={COLORS.textDisabled} />
+              <Text style={s.emptyText}>
+                {search ? "No se encontraron coincidencias" : "No hay clientes registrados en el sistema."}
+              </Text>
+            </View>
           ) : (
             filtered.map((c) => (
               <TouchableOpacity
@@ -151,36 +147,39 @@ export default function ClientesIndex() {
                 onPress={() => router.push(`/clientes/${c.id}`)}
                 activeOpacity={0.7}
               >
-                <View style={s.cardLeft}>
-                  <View style={s.avatarCircle}>
-                    <Ionicons name="business-outline" size={22} color={COLORS.primary} />
-                  </View>
+                <View style={s.avatarCircle}>
+                  <Ionicons name="business" size={20} color={COLORS.primary} />
                 </View>
+
                 <View style={s.cardCenter}>
                   <Text style={s.cardName} numberOfLines={1}>{c.nombre}</Text>
                   {c.razon_social ? <Text style={s.cardRazon} numberOfLines={1}>{c.razon_social}</Text> : null}
+
                   <View style={s.cardMeta}>
-                    {c.poblacion ? (
+                    {c.poblacion && (
                       <View style={s.cardMetaItem}>
-                        <Ionicons name="location-outline" size={12} color={COLORS.textSecondary} />
-                        <Text style={s.cardMetaText}>{c.poblacion}</Text>
+                        <Ionicons name="location-outline" size={13} color={COLORS.textSecondary} />
+                        <Text style={s.cardMetaText} numberOfLines={1}>{c.poblacion}</Text>
                       </View>
-                    ) : null}
-                    {c.telefono ? (
+                    )}
+                    {c.telefono && (
                       <View style={s.cardMetaItem}>
-                        <Ionicons name="call-outline" size={12} color={COLORS.textSecondary} />
+                        <Ionicons name="call-outline" size={13} color={COLORS.textSecondary} />
                         <Text style={s.cardMetaText}>{c.telefono}</Text>
                       </View>
-                    ) : null}
+                    )}
                   </View>
+                </View>
+
+                <View style={s.cardRight}>
                   {c.mantenimiento_contratado && (
                     <View style={s.mantBadge}>
-                      <Ionicons name="shield-checkmark-outline" size={12} color={COLORS.syncedText} />
+                      <Ionicons name="shield-checkmark" size={10} color={COLORS.syncedText} />
                       <Text style={s.mantBadgeText}>Mantenimiento</Text>
                     </View>
                   )}
+                  <Ionicons name="chevron-forward" size={18} color={COLORS.textDisabled} style={{ alignSelf: 'flex-end', marginTop: 'auto', marginBottom: 'auto' }} />
                 </View>
-                <Ionicons name="chevron-forward" size={20} color={COLORS.textDisabled} />
               </TouchableOpacity>
             ))
           )}
@@ -188,75 +187,83 @@ export default function ClientesIndex() {
       )}
 
       <Modal visible={showCreate} transparent animationType="slide" onRequestClose={() => setShowCreate(false)}>
-        <View style={s.modalRoot}>
-          <ScrollView style={s.modalCard}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={s.modalRoot}>
+          <View style={s.modalCard}>
             <View style={s.modalHeader}>
-              <Text style={s.modalTitle}>Nuevo cliente</Text>
-              <TouchableOpacity onPress={() => { setShowCreate(false); resetForm(); }}>
-                <Ionicons name="close" size={26} color={COLORS.text} />
+              <Text style={s.modalTitle}>Nuevo Cliente</Text>
+              <TouchableOpacity onPress={() => { setShowCreate(false); resetForm(); }} style={s.closeModalBtn}>
+                <Ionicons name="close" size={22} color={COLORS.text} />
               </TouchableOpacity>
             </View>
 
-            <Text style={s.fieldLabel}>Nombre *</Text>
-            <TextInput style={s.input} value={formNombre} onChangeText={setFormNombre} placeholder="Nombre del cliente" placeholderTextColor={COLORS.textDisabled} />
+            <ScrollView style={s.modalForm} showsVerticalScrollIndicator={false}>
+              <Text style={s.fieldLabel}>Nombre comercial *</Text>
+              <TextInput style={s.input} value={formNombre} onChangeText={setFormNombre} placeholder="Ej: Electrónica S.A." placeholderTextColor={COLORS.textDisabled} />
 
-            <Text style={s.fieldLabel}>Razón social</Text>
-            <TextInput style={s.input} value={formRazon} onChangeText={setFormRazon} placeholder="Razón social" placeholderTextColor={COLORS.textDisabled} />
+              <Text style={s.fieldLabel}>Razón social</Text>
+              <TextInput style={s.input} value={formRazon} onChangeText={setFormRazon} placeholder="Nombre fiscal completo" placeholderTextColor={COLORS.textDisabled} />
 
-            <Text style={s.fieldLabel}>Tipo documento</Text>
-            <View style={s.chipRow}>
-              {["NIF", "CIF", "Otro"].map((t) => (
-                <TouchableOpacity key={t} style={[s.chip, formDocId === t && s.chipActive]} onPress={() => setFormDocId(t)}>
-                  <Text style={[s.chipText, formDocId === t && s.chipTextActive]}>{t}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={s.fieldLabel}>Dirección</Text>
-            <TextInput style={s.input} value={formDireccion} onChangeText={setFormDireccion} placeholder="Dirección" placeholderTextColor={COLORS.textDisabled} />
-
-            <View style={{ flexDirection: "row", gap: ios.spacing.sm }}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.fieldLabel}>Provincia</Text>
-                <TextInput style={s.input} value={formProvincia} onChangeText={setFormProvincia} placeholder="Provincia" placeholderTextColor={COLORS.textDisabled} />
+              <Text style={s.fieldLabel}>Tipo de documento</Text>
+              <View style={s.chipRow}>
+                {["NIF", "CIF", "Otro"].map((t) => (
+                  <TouchableOpacity key={t} style={[s.chip, formDocId === t && s.chipActive]} onPress={() => setFormDocId(t)}>
+                    <Text style={[s.chipText, formDocId === t && s.chipTextActive]}>{t}</Text>
+                  </TouchableOpacity>
+                ))}
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.fieldLabel}>Población</Text>
-                <TextInput style={s.input} value={formPoblacion} onChangeText={setFormPoblacion} placeholder="Población" placeholderTextColor={COLORS.textDisabled} />
+
+              <Text style={s.fieldLabel}>Dirección principal</Text>
+              <TextInput style={s.input} value={formDireccion} onChangeText={setFormDireccion} placeholder="Calle, número, planta..." placeholderTextColor={COLORS.textDisabled} />
+
+              <View style={s.rowFields}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.fieldLabel}>Población</Text>
+                  <TextInput style={s.input} value={formPoblacion} onChangeText={setFormPoblacion} placeholder="Localidad" placeholderTextColor={COLORS.textDisabled} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.fieldLabel}>Provincia</Text>
+                  <TextInput style={s.input} value={formProvincia} onChangeText={setFormProvincia} placeholder="Provincia" placeholderTextColor={COLORS.textDisabled} />
+                </View>
               </View>
-            </View>
 
-            <Text style={s.fieldLabel}>Representante</Text>
-            <TextInput style={s.input} value={formRepresentante} onChangeText={setFormRepresentante} placeholder="Nombre del representante" placeholderTextColor={COLORS.textDisabled} />
+              <Text style={s.fieldLabel}>Persona de contacto / Representante</Text>
+              <TextInput style={s.input} value={formRepresentante} onChangeText={setFormRepresentante} placeholder="Nombre del gestor" placeholderTextColor={COLORS.textDisabled} />
 
-            <Text style={s.fieldLabel}>Teléfono</Text>
-            <TextInput style={s.input} value={formTelefono} onChangeText={setFormTelefono} placeholder="Teléfono" placeholderTextColor={COLORS.textDisabled} keyboardType="phone-pad" />
+              <Text style={s.fieldLabel}>Teléfono</Text>
+              <TextInput style={s.input} value={formTelefono} onChangeText={setFormTelefono} placeholder="Número telefónico" placeholderTextColor={COLORS.textDisabled} keyboardType="phone-pad" />
 
-            <Text style={s.fieldLabel}>Email</Text>
-            <TextInput style={s.input} value={formEmail} onChangeText={setFormEmail} placeholder="Email" placeholderTextColor={COLORS.textDisabled} keyboardType="email-address" autoCapitalize="none" />
+              <Text style={s.fieldLabel}>Email</Text>
+              <TextInput style={s.input} value={formEmail} onChangeText={setFormEmail} placeholder="correo@empresa.com" placeholderTextColor={COLORS.textDisabled} keyboardType="email-address" autoCapitalize="none" />
 
-            <Text style={s.sectionTitle}>Mantenimiento</Text>
-            <TouchableOpacity style={s.switchRow} onPress={() => setFormMantenimiento(!formMantenimiento)}>
-              <Text style={s.switchLabel}>Mantenimiento contratado</Text>
-              <View style={[s.toggle, formMantenimiento && s.toggleOn]}>
-                <View style={[s.toggleKnob, formMantenimiento && s.toggleKnobOn]} />
-              </View>
-            </TouchableOpacity>
-            {formMantenimiento && (
-              <>
-                <Text style={s.fieldLabel}>Tipo de mantenimiento</Text>
-                <TextInput style={s.input} value={formTipoMantenimiento} onChangeText={setFormTipoMantenimiento} placeholder="Ej: Preventivo y correctivo" placeholderTextColor={COLORS.textDisabled} />
-                <Text style={s.fieldLabel}>Nº revisiones al año</Text>
-                <TextInput style={s.input} value={formRevisiones} onChangeText={setFormRevisiones} placeholder="0" placeholderTextColor={COLORS.textDisabled} keyboardType="numeric" />
-              </>
-            )}
+              <View style={s.divider} />
 
-            <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.4 }]} onPress={createCliente} disabled={saving}>
-              {saving ? <ActivityIndicator color="#fff" /> : <Text style={s.saveBtnText}>CREAR CLIENTE</Text>}
-            </TouchableOpacity>
-            <View style={{ height: 40 }} />
-          </ScrollView>
-        </View>
+              <Text style={s.formSectionTitle}>Mantenimiento</Text>
+              <TouchableOpacity style={s.switchRow} onPress={() => setFormMantenimiento(!formMantenimiento)} activeOpacity={0.8}>
+                <View>
+                  <Text style={s.switchLabel}>Contrato de mantenimiento activo</Text>
+                  <Text style={s.switchSublabel}>Habilita el seguimiento de visitas SAT</Text>
+                </View>
+                <View style={[s.toggle, formMantenimiento && s.toggleOn]}>
+                  <View style={[s.toggleKnob, formMantenimiento && s.toggleKnobOn]} />
+                </View>
+              </TouchableOpacity>
+
+              {formMantenimiento && (
+                <View style={s.nestedFields}>
+                  <Text style={s.fieldLabel}>Tipo de mantenimiento</Text>
+                  <TextInput style={s.input} value={formTipoMantenimiento} onChangeText={setFormTipoMantenimiento} placeholder="Ej: Preventivo semestral" placeholderTextColor={COLORS.textDisabled} />
+                  <Text style={s.fieldLabel}>Nº revisiones estimadas / año</Text>
+                  <TextInput style={s.input} value={formRevisiones} onChangeText={setFormRevisiones} placeholder="2" placeholderTextColor={COLORS.textDisabled} keyboardType="numeric" />
+                </View>
+              )}
+
+              <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.7 }]} onPress={createCliente} disabled={saving}>
+                {saving ? <ActivityIndicator color="#fff" /> : <Text style={s.saveBtnText}>CREAR CLIENTE</Text>}
+              </TouchableOpacity>
+              <View style={{ height: 60 }} />
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -271,99 +278,80 @@ export default function ClientesIndex() {
 
 const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
+  centered: { flex: 1, alignItems: "center", justifyContent: "center" },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: ios.spacing.lg, paddingVertical: ios.spacing.md,
-    backgroundColor: COLORS.surface, borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border,
+    backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
-  headerTitle: { fontSize: ios.font.title3.size, fontWeight: ios.font.title3.weight, color: COLORS.text },
+  headerTitle: { fontSize: 24, fontWeight: "800", color: COLORS.text, letterSpacing: -0.5 },
+  headerSubtitle: { fontSize: 13, color: COLORS.textSecondary, marginTop: 2 },
   addBtn: {
-    flexDirection: "row", alignItems: "center", gap: 6,
-    backgroundColor: COLORS.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: ios.radius.pill,
+    flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: COLORS.primary,
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: ios.radius.md,
   },
-  addBtnText: { color: "#fff", fontSize: ios.font.footnote.size, fontWeight: "700" },
+  addBtnText: { color: "#fff", fontSize: ios.font.footnote.size, fontWeight: "600" },
   searchWrap: {
-    flexDirection: "row", alignItems: "center",
-    marginHorizontal: ios.spacing.lg, marginVertical: ios.spacing.md,
-    backgroundColor: COLORS.surface, borderRadius: ios.radius.card,
-    paddingHorizontal: ios.spacing.md, height: 44,
+    flexDirection: "row", alignItems: "center", marginHorizontal: ios.spacing.lg, marginVertical: ios.spacing.md,
+    backgroundColor: COLORS.surface, borderRadius: ios.radius.md, paddingHorizontal: ios.spacing.sm, height: 40,
     borderWidth: 1, borderColor: COLORS.border,
   },
-  searchInput: { flex: 1, fontSize: ios.font.callout.size, color: COLORS.text },
+  searchInput: { flex: 1, fontSize: ios.font.callout.size, color: COLORS.text, paddingVertical: 0 },
+  scrollContainer: { padding: ios.spacing.lg, paddingBottom: 100, gap: ios.spacing.sm },
+  emptyState: { alignItems: "center", justifyContent: "center", marginTop: 60, gap: ios.spacing.xs },
+  emptyText: { color: COLORS.textDisabled, textAlign: "center", fontSize: 14, paddingHorizontal: 32 },
   card: {
-    flexDirection: "row", alignItems: "center",
-    backgroundColor: COLORS.surface, borderRadius: ios.radius.card,
-    padding: ios.spacing.md, borderWidth: 1, borderColor: COLORS.border,
-    gap: ios.spacing.sm,
+    flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surface, borderRadius: ios.radius.md,
+    padding: ios.spacing.md, borderWidth: 1, borderColor: COLORS.border, gap: ios.spacing.md,
+    ...Platform.select({ ios: { shadowColor: "#000", shadowOpacity: 0.02, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } }, android: { elevation: 1 } }),
   },
-  cardLeft: {},
   avatarCircle: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: COLORS.primarySoft, alignItems: "center", justifyContent: "center",
-  },
-  cardCenter: { flex: 1, gap: 2 },
-  cardName: { fontSize: ios.font.body.size, fontWeight: "700", color: COLORS.text },
-  cardRazon: { fontSize: ios.font.footnote.size, color: COLORS.textSecondary },
-  cardMeta: { flexDirection: "row", gap: ios.spacing.md, marginTop: 2 },
-  cardMetaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
-  cardMetaText: { fontSize: ios.font.caption.size, color: COLORS.textSecondary },
-  mantBadge: {
-    flexDirection: "row", alignItems: "center", gap: 4,
-    backgroundColor: COLORS.syncedBg, paddingHorizontal: 8, paddingVertical: 2, borderRadius: ios.radius.pill,
-    alignSelf: "flex-start", marginTop: 4,
-  },
-  mantBadgeText: { fontSize: 10, fontWeight: "700", color: COLORS.syncedText },
-  modalRoot: {
-    flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)",
-  },
-  modalCard: {
-    backgroundColor: COLORS.surface, borderTopLeftRadius: ios.radius.xl, borderTopRightRadius: ios.radius.xl,
-    maxHeight: "90%", padding: ios.spacing.lg, paddingBottom: ios.spacing.xxl,
-  },
-  modalHeader: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    marginBottom: ios.spacing.md,
-  },
-  modalTitle: { fontSize: ios.font.title2.size, fontWeight: ios.font.title2.weight, color: COLORS.text },
-  fieldLabel: {
-    fontSize: ios.font.section.size, fontWeight: ios.font.section.weight, color: COLORS.textSecondary,
-    letterSpacing: ios.font.section.letter, marginTop: ios.spacing.md, marginBottom: ios.spacing.xs,
-  },
-  input: {
-    height: 48, backgroundColor: COLORS.bg,
-    borderWidth: 2, borderColor: COLORS.borderInput, borderRadius: ios.radius.md,
-    paddingHorizontal: ios.spacing.md, fontSize: ios.font.callout.size, color: COLORS.text,
-  },
-  chipRow: { flexDirection: "row", gap: ios.spacing.sm },
-  chip: {
-    flex: 1, height: 44, borderRadius: ios.radius.md, borderWidth: 2,
-    borderColor: COLORS.borderInput, backgroundColor: COLORS.bg,
+    width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primarySoft,
     alignItems: "center", justifyContent: "center",
   },
+  cardCenter: { flex: 1, gap: 2 },
+  cardName: { fontSize: 16, fontWeight: "700", color: COLORS.text, letterSpacing: -0.2 },
+  cardRazon: { fontSize: 12, color: COLORS.textSecondary },
+  cardMeta: { flexDirection: "row", gap: ios.spacing.md, marginTop: 4, flexWrap: 'wrap' },
+  cardMetaItem: { flexDirection: "row", alignItems: "center", gap: 4, maxWidth: 140 },
+  cardMetaText: { fontSize: 12, color: COLORS.textSecondary },
+  cardRight: { alignItems: 'flex-end', justifyContent: 'space-between', height: '100%', minHeight: 40 },
+  mantBadge: {
+    flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: COLORS.syncedBg,
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4,
+  },
+  mantBadgeText: { fontSize: 10, fontWeight: "600", color: COLORS.syncedText },
+
+  modalRoot: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" },
+  modalCard: {
+    backgroundColor: COLORS.surface, borderTopLeftRadius: ios.radius.lg, borderTopRightRadius: ios.radius.lg,
+    maxHeight: "92%", padding: ios.spacing.lg,
+  },
+  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: ios.spacing.sm },
+  modalTitle: { fontSize: 20, fontWeight: "700", color: COLORS.text },
+  closeModalBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 16, backgroundColor: COLORS.bg },
+  modalForm: { marginTop: ios.spacing.xs },
+  fieldLabel: { fontSize: 12, fontWeight: "600", color: COLORS.textSecondary, marginTop: ios.spacing.sm, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.3 },
+  input: {
+    height: 42, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: ios.radius.sm, paddingHorizontal: ios.spacing.sm, fontSize: 14, color: COLORS.text,
+  },
+  rowFields: { flexDirection: "row", gap: ios.spacing.sm },
+  chipRow: { flexDirection: "row", gap: ios.spacing.sm, marginVertical: 2 },
+  chip: { flex: 1, height: 38, borderRadius: ios.radius.sm, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.bg, alignItems: "center", justifyContent: "center" },
   chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  chipText: { fontSize: ios.font.callout.size, fontWeight: "700", color: COLORS.textSecondary },
+  chipText: { fontSize: 13, fontWeight: "600", color: COLORS.textSecondary },
   chipTextActive: { color: "#fff" },
-  sectionTitle: {
-    fontSize: ios.font.title3.size, fontWeight: "700", color: COLORS.text, marginTop: ios.spacing.xl, marginBottom: ios.spacing.sm,
-  },
-  switchRow: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingVertical: ios.spacing.sm, paddingHorizontal: ios.spacing.xs,
-  },
-  switchLabel: { fontSize: ios.font.callout.size, color: COLORS.text },
-  toggle: {
-    width: 48, height: 28, borderRadius: 14, backgroundColor: COLORS.borderInput,
-    justifyContent: "center", paddingHorizontal: 2,
-  },
+  divider: { height: 1, backgroundColor: COLORS.border, marginVertical: ios.spacing.md },
+  formSectionTitle: { fontSize: 15, fontWeight: "700", color: COLORS.text, marginBottom: ios.spacing.xs },
+  switchRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: ios.spacing.xs },
+  switchLabel: { fontSize: 14, fontWeight: "500", color: COLORS.text },
+  switchSublabel: { fontSize: 12, color: COLORS.textSecondary, marginTop: 1 },
+  toggle: { width: 44, height: 24, borderRadius: 12, backgroundColor: COLORS.border, justifyContent: "center", paddingHorizontal: 2 },
   toggleOn: { backgroundColor: COLORS.primary },
-  toggleKnob: {
-    width: 24, height: 24, borderRadius: 12, backgroundColor: "#fff",
-    shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2,
-  },
+  toggleKnob: { width: 20, height: 20, borderRadius: 10, backgroundColor: "#fff" },
   toggleKnobOn: { alignSelf: "flex-end" },
-  saveBtn: {
-    height: 52, borderRadius: ios.radius.card, backgroundColor: COLORS.primary,
-    alignItems: "center", justifyContent: "center", marginTop: ios.spacing.xl,
-  },
-  saveBtnText: { color: "#fff", fontSize: ios.font.callout.size, fontWeight: "800", letterSpacing: 1 },
+  nestedFields: { backgroundColor: COLORS.bg, padding: ios.spacing.sm, borderRadius: ios.radius.sm, marginTop: ios.spacing.sm, gap: 2 },
+  saveBtn: { height: 46, borderRadius: ios.radius.sm, backgroundColor: COLORS.primary, alignItems: "center", justifyContent: "center", marginTop: ios.spacing.xl },
+  saveBtnText: { color: "#fff", fontSize: 14, fontWeight: "700", letterSpacing: 0.5 },
 });

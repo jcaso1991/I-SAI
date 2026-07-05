@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Platform, Animated } from "react-native";
+import { useEffect, useRef, useState, useCallback, memo } from "react";
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Animated, Vibration } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";

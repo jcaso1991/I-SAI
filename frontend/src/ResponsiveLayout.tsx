@@ -158,9 +158,6 @@ export default function ResponsiveLayout({
         {has("preciario.view") && (
           <SideLink active={active === "preciario"} label="Preciario" icon="pricetags" to="/preciario" />
         )}
-        {has("preciario.view") && (
-          <SideLink active={active === "documentaciones"} label="Documentación y Software" icon="document-text" to="/documentaciones" />
-        )}
 
         {(canOnedrive || canManageUsers || canManageRoles) && (
           <>
@@ -249,6 +246,7 @@ const useS = () =>
     flexDirection: "row", alignItems: "center", gap: 10,
     paddingRight: 12, paddingVertical: 10, paddingLeft: 8,
     borderRadius: 10, marginBottom: 1,
+    ...Platform.select({ web: { transition: "all 0.2s ease" } as any }),
   },
   linkRowActive: { backgroundColor: COLORS.primarySoft + "80" },
   linkBar: {
@@ -270,5 +268,5 @@ const useS = () =>
   },
   themeToggleTxt: { fontSize: 11, color: COLORS.textSecondary, fontWeight: "500" },
 
-  content: { flex: 1, backgroundColor: '#0A0E1A' },
+  content: { flex: 1, backgroundColor: COLORS.bg },
 });

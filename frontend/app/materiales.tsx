@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  View, Text, TextInput, TouchableOpacity, FlatList,
+  View, Text, TextInput, TouchableOpacity,
   StyleSheet, ActivityIndicator, RefreshControl, Alert, Platform,
   LayoutAnimation, ScrollView,
 } from "react-native";
@@ -12,34 +12,29 @@ import { api, clearToken, COLORS } from "../src/api";
 import { usePermissions } from "../src/permissions";
 import ResponsiveLayout from "../src/ResponsiveLayout";
 import { useBreakpoint } from "../src/useBreakpoint";
-import { useThemedStyles, useTheme } from "../src/theme";
+import { useThemedStyles } from "../src/theme";
 import { ios } from "../src/ui/iosTheme";
 
 const STATUS_COLORS: Record<string, string> = {
-  pendiente: COLORS.pendingText,
-  planificado: COLORS.pillBlueText,
-  a_facturar: COLORS.primary,
-  facturado: COLORS.syncedText,
-  terminado: COLORS.pillPurpleText,
-  bloqueado: COLORS.pillOrangeText,
-  anulado: COLORS.textSecondary,
-  en_curso: COLORS.pillBlueText,
-  completado: COLORS.syncedText,
-  cancelado: COLORS.errorText,
+  pendiente: COLORS.pendingText || "#F59E0B",
+  planificado: COLORS.pillBlueText || "#3B82F6",
+  a_facturar: COLORS.primary || "#8B5CF6",
+  facturado: COLORS.syncedText || "#10B981",
+  terminado: COLORS.pillPurpleText || "#6366F1",
+  bloqueado: COLORS.pillOrangeText || "#EF4444",
+  anulado: COLORS.textSecondary || "#6B7280",
+  en_curso: COLORS.pillBlueText || "#3B82F6",
+  completado: COLORS.syncedText || "#10B981",
+  cancelado: COLORS.errorText || "#EF4444",
 };
 
 const STATUS_BADGES: Record<string, { bg: string; fg: string; label: string }> = {
-  a_facturar: { bg: COLORS.pillBlueBg, fg: COLORS.primary, label: "Facturar" },
-  planificado: { bg: COLORS.pillBlueBg, fg: COLORS.pillBlueText, label: "Planif." },
-  facturado: { bg: COLORS.syncedBg, fg: COLORS.syncedText, label: "Facturado" },
-  terminado: { bg: COLORS.pillPurpleBg, fg: COLORS.pillPurpleText, label: "Terminado" },
-  bloqueado: { bg: COLORS.pillOrangeBg, fg: COLORS.pillOrangeText, label: "Bloqueado" },
-  anulado: { bg: COLORS.statusAnuladoBg, fg: COLORS.textSecondary, label: "Anulado" },
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  pendiente: "Pend.", planificado: "Plan.", a_facturar: "Fact.",
-  facturado: "Fact.", terminado: "Term.", bloqueado: "Bloq.", anulado: "Anul.",
+  a_facturar: { bg: COLORS.pillBlueBg || "#EFF6FF", fg: COLORS.primary, label: "Facturar" },
+  planificado: { bg: COLORS.pillBlueBg || "#EFF6FF", fg: COLORS.pillBlueText, label: "Planif." },
+  facturado: { bg: COLORS.syncedBg || "#ECFDF5", fg: COLORS.syncedText, label: "Facturado" },
+  terminado: { bg: COLORS.pillPurpleBg || "#F5F3FF", fg: COLORS.pillPurpleText, label: "Terminado" },
+  bloqueado: { bg: COLORS.pillOrangeBg || "#FEF2F2", fg: COLORS.pillOrangeText, label: "Bloqueado" },
+  anulado: { bg: COLORS.statusAnuladoBg || "#F3F4F6", fg: COLORS.textSecondary, label: "Anulado" },
 };
 
 export default function Materiales() {
@@ -48,6 +43,7 @@ export default function Materiales() {
   routerRef.current = router;
   const params = useLocalSearchParams<{ project_status?: string; year?: string; month?: string }>();
   const { isWide } = useBreakpoint();
+
   const [items, setItems] = useState<any[]>([]);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
@@ -63,14 +59,10 @@ export default function Materiales() {
   );
   const [showStatusFilter, setShowStatusFilter] = useState(false);
   const [managerStats, setManagerStats] = useState<any[]>([]);
-  const [showManagerPanel, setShowManagerPanel] = useState(false);
   const [yearFilter, setYearFilter] = useState(params.year || "todos");
   const [monthFilter, setMonthFilter] = useState(params.month || "");
 
-  const s = useThemedStyles(useS);
-  const { theme } = useTheme();
-
-  const PROJECT_STATUSES = [
+  const PROJECT_STATUSES = useMemo(() => [
     { key: "pendiente", label: "Pendiente", color: STATUS_COLORS.pendiente },
     { key: "planificado", label: "Planificado", color: STATUS_COLORS.planificado },
     { key: "a_facturar", label: "A facturar", color: STATUS_COLORS.a_facturar },
@@ -78,18 +70,15 @@ export default function Materiales() {
     { key: "terminado", label: "Terminado", color: STATUS_COLORS.terminado },
     { key: "bloqueado", label: "Bloqueado", color: STATUS_COLORS.bloqueado },
     { key: "anulado", label: "Anulado", color: STATUS_COLORS.anulado },
-    { key: "en_curso", label: "En curso", color: STATUS_COLORS.en_curso },
-    { key: "completado", label: "Completado", color: STATUS_COLORS.completado },
-    { key: "cancelado", label: "Cancelado", color: STATUS_COLORS.cancelado },
-  ];
+  ], []);
 
   useEffect(() => {
     if (!params.project_status && !params.year && !params.month) {
-      AsyncStorage.getItem("mat_manager_filter").then((v) => {
-        if (v) try { setManagerFilterIds(JSON.parse(v)); } catch {}
-      }).catch(() => {});
-      AsyncStorage.getItem("mat_status_filter").then((v) => {
-        if (v) try { setStatusFilterIds(JSON.parse(v)); } catch {}
+      AsyncStorage.multiGet(["mat_manager_filter", "mat_status_filter"]).then((stores) => {
+        const managersVal = stores[0][1];
+        const statusVal = stores[1][1];
+        if (managersVal) try { setManagerFilterIds(JSON.parse(managersVal)); } catch {}
+        if (statusVal) try { setStatusFilterIds(JSON.parse(statusVal)); } catch {}
       }).catch(() => {});
     }
   }, []);
@@ -108,6 +97,7 @@ export default function Materiales() {
         ? managerFilterIds.join(",") : undefined;
       const unassigned = managerFilterIds.includes("__none__");
       const statusParam = statusFilterIds.length > 0 ? statusFilterIds.join(",") : undefined;
+
       const [list, st, u] = await Promise.all([
         api.listMateriales(q || undefined, pendingOnly, managerId, unassigned, statusParam, yearFilter, monthFilter),
         api.stats(),
@@ -136,7 +126,7 @@ export default function Materiales() {
   }, [load, yearFilter]));
 
   useEffect(() => {
-    const t = setTimeout(load, 300);
+    const t = setTimeout(load, 250);
     return () => clearTimeout(t);
   }, [load]);
 
@@ -150,25 +140,17 @@ export default function Materiales() {
     setStatusFilterIds((prev) => prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]);
   };
 
-  const clearManagerFilter = () => setManagerFilterIds([]);
-
-  const logout = async () => {
-    await clearToken();
-    router.replace("/login");
-  };
-
   const isAdmin = me?.role === "admin";
-
   const { has } = usePermissions();
   const esEditorCompleto = has("proyectos.edit");
+  const logout = async () => { await clearToken(); router.replace("/login"); };
 
-  const renderItem = ({ item }: any) => {
+  const renderItem = (item: any) => {
     const pending = item.sync_status === "pending";
     const projectStatus = item.project_status || "pendiente";
     const statusColor = STATUS_COLORS[projectStatus] || COLORS.pendingText;
-    const st = esEditorCompleto && item.project_status && item.project_status !== "pendiente" ? STATUS_BADGES[item.project_status] : null;
-    const horasPrev = parseFloat(item.horas_prev) || 0;
-    const horasImp = parseFloat(item.horas_imputadas) || 0;
+    const badgeConfig = esEditorCompleto && item.project_status && item.project_status !== "pendiente" ? STATUS_BADGES[item.project_status] : null;
+
     const initials = (item.gestor || item.manager_name || "?")
       .split(" ")
       .map((n: string) => n[0])
@@ -179,53 +161,58 @@ export default function Materiales() {
     return (
       <TouchableOpacity
         testID={`material-item-${item.id}`}
-        style={s.card}
+        style={styles.card}
         onPress={() => router.push(`/material/${item.id}`)}
         activeOpacity={0.7}
       >
-        <View style={[s.cardBar, { backgroundColor: statusColor }]} />
-        <View style={s.cardBody}>
-          <View style={s.cardAvatar}>
-            <Text style={s.cardAvatarText}>{initials || "?"}</Text>
+        <View style={[styles.cardBar, { backgroundColor: statusColor }]} />
+        <View style={styles.cardBody}>
+          <View style={[styles.cardAvatar, { backgroundColor: statusColor + "15" }]}>
+            <Text style={[styles.cardAvatarText, { color: statusColor }]}>{initials || "?"}</Text>
           </View>
-          <View style={s.cardInfo}>
-            <View style={s.cardTopRow}>
-              <Text style={s.cardCode} numberOfLines={1}>{item.materiales || "—"}</Text>
-              <Text style={s.cardClient} numberOfLines={1}>{item.cliente || ""}</Text>
+
+          <View style={styles.cardInfo}>
+            <View style={styles.cardTopRow}>
+              <Text style={styles.cardCode} numberOfLines={1}>{item.materiales || "—"}</Text>
+              <Text style={styles.cardClient} numberOfLines={1}>{item.cliente || "Sin Cliente"}</Text>
             </View>
+
             {item.ubicacion ? (
-              <View style={s.cardAddressRow}>
-                <Ionicons name="location-outline" size={10} color={COLORS.textSecondary} />
-                <Text style={s.cardAddress} numberOfLines={1}>{item.ubicacion}</Text>
+              <View style={styles.cardAddressRow}>
+                <Ionicons name="location-outline" size={12} color={COLORS.textSecondary} />
+                <Text style={styles.cardAddress} numberOfLines={1}>{item.ubicacion}</Text>
               </View>
             ) : null}
-            <View style={s.cardMetaRow}>
-              <View style={s.cardMetaTag}>
-                <Text style={s.cardMetaText}>{item.horas_prev || "—"}h</Text>
+
+            <View style={styles.cardMetaRow}>
+              <View style={styles.cardMetaTag}>
+                <Ionicons name="time-outline" size={10} color={COLORS.textSecondary} />
+                <Text style={styles.cardMetaText}>{item.horas_prev || "0"}h prev.</Text>
               </View>
-              {item.tecnicos?.length ? (
-                <View style={s.cardMetaTag}>
-                  <Text style={s.cardMetaText}>{item.tecnicos.join(", ")}</Text>
+              {item.horas_imputadas > 0 ? (
+                <View style={[styles.cardMetaTag, { backgroundColor: COLORS.primarySoft + "30" }]}>
+                  <Text style={[styles.cardMetaText, { color: COLORS.primary, fontWeight: "700" }]}>
+                    {item.horas_imputadas}h imp.
+                  </Text>
                 </View>
               ) : null}
             </View>
           </View>
-          <View style={s.cardRight}>
-            <View style={{ flexDirection: "row", gap: 4 }}>
-              {st && (
-                <View style={[s.cardBadge, { backgroundColor: st.bg }]}>
-                  <Text style={[s.cardBadgeText, { color: st.fg }]}>{st.label}</Text>
+
+          <View style={styles.cardRight}>
+            <View style={styles.badgeContainer}>
+              {badgeConfig && (
+                <View style={[styles.cardBadge, { backgroundColor: badgeConfig.bg }]}>
+                  <Text style={[styles.cardBadgeText, { color: badgeConfig.fg }]}>{badgeConfig.label}</Text>
                 </View>
               )}
-              <View style={[s.cardBadge, { backgroundColor: pending ? COLORS.pendingBg : COLORS.syncedBg }]}>
-                <Text style={[s.cardBadgeText, { color: pending ? COLORS.pendingText : COLORS.syncedText }]}>
+              <View style={[styles.cardBadge, { backgroundColor: pending ? "#FEF3C7" : "#D1FAE5" }]}>
+                <Text style={[styles.cardBadgeText, { color: pending ? "#D97706" : "#059669" }]}>
                   {pending ? "PEND" : "SINC"}
                 </Text>
               </View>
             </View>
-            <TouchableOpacity style={s.cardMoreBtn}>
-              <Ionicons name="ellipsis-horizontal" size={16} color={COLORS.textSecondary} />
-            </TouchableOpacity>
+            <Ionicons name="chevron-forward" size={16} color={COLORS.textDisabled || "#9CA3AF"} />
           </View>
         </View>
       </TouchableOpacity>
@@ -235,315 +222,117 @@ export default function Materiales() {
   const renderStatsSidebar = () => {
     if (managerStats.length === 0) return null;
     const totalProyectos = managerStats.reduce((s, m) => s + m.total, 0);
-    const totalByStatus: Record<string, number> = {};
-    managerStats.forEach((m) => {
-      Object.entries(m.by_status as Record<string, { count: number }>).forEach(([st, info]) => {
-        totalByStatus[st] = (totalByStatus[st] || 0) + info.count;
-      });
-    });
+
     return (
-      <>
-        {Platform.OS === "web" ? (
+      <View style={styles.sidebarContainer}>
+        <View style={styles.sidebarHeader}>
+          <Text style={styles.sidebarTitle}>Filtros Avanzados</Text>
+        </View>
+
+        <View style={styles.selectWrapper}>
           <select
             value={yearFilter}
             onChange={(e: any) => setYearFilter(e.target.value)}
             style={{
-              width: "100%", fontSize: 12, fontWeight: "600", color: COLORS.text,
-              backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
-              borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, marginBottom: 4,
-              outline: "none", fontFamily: "inherit",
-            } as any}
+              width: "100%", fontSize: 13, fontWeight: "600" as any, color: "#334155",
+              backgroundColor: "#F1F5F9", borderWidth: 0, borderRadius: 10, padding: 10,
+              outline: "none", fontFamily: "inherit", cursor: "pointer",
+            }}
           >
             <option value="todos">Todos los años</option>
             {Array.from({ length: new Date().getFullYear() - 2021 }, (_, i) => 2022 + i).map((y) => (
               <option key={y} value={String(y)}>{y}</option>
             ))}
           </select>
-        ) : (
-          <TouchableOpacity
-            style={s.teamSelector}
-            onPress={() => {
-              const years = ["todos", ...Array.from({ length: new Date().getFullYear() - 2021 }, (_, i) => String(2022 + i))];
-              const idx = years.indexOf(yearFilter);
-              setYearFilter(years[(idx + 1) % years.length]);
-            }}
-          >
-            <Ionicons name="calendar-outline" size={14} color={COLORS.primary} />
-            <Text style={{ flex: 1, color: COLORS.text, fontSize: 13, fontWeight: "600" }}>
-              {yearFilter === "todos" ? "Todos los años" : yearFilter}
-            </Text>
-            <Ionicons name="chevron-down" size={12} color={COLORS.textSecondary} />
-          </TouchableOpacity>
-        )}
-
-        <TouchableOpacity
-          style={s.totalKpiCard}
-          onPress={() => { setManagerFilterIds([]); setStatusFilterIds([]); }}
-          activeOpacity={0.7}
-        >
-          <View style={s.totalKpiHeader}>
-            <Ionicons name="layers-outline" size={14} color={COLORS.primary} />
-            <Text style={s.totalKpiLabel}>TOTAL</Text>
-          </View>
-          <Text style={s.totalKpiNumber}>{totalProyectos}</Text>
-          <View style={s.totalKpiPills}>
-            {Object.entries(totalByStatus).sort(([a], [b]) => a.localeCompare(b)).map(([st, count]) => {
-              const color = STATUS_COLORS[st] || COLORS.textSecondary;
-              const active = statusFilterIds.includes(st);
-              return (
-                <TouchableOpacity
-                  key={st}
-                  style={[s.statusPill, { backgroundColor: active ? color : color + "18" }]}
-                  onPress={() => {
-                    setStatusFilterIds((p) => p.includes(st) ? p.filter((x) => x !== st) : [...p, st]);
-                  }}
-                >
-                  <Text style={[s.statusPillText, { color: active ? "#fff" : color }]}>
-                    {STATUS_LABELS[st] || st} {count}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </TouchableOpacity>
-
-        <View style={s.managerSection}>
-          <Text style={s.managerSectionTitle}>RESPONSABLES</Text>
-          {managerStats.map((mgr) => (
-            <TouchableOpacity
-              key={mgr.id}
-              style={[s.managerRow, managerFilterIds.includes(mgr.id) && s.managerRowActive]}
-              onPress={() => {
-                setManagerFilterIds((p) => p.includes(mgr.id) ? p.filter((x) => x !== mgr.id) : [...p, mgr.id]);
-              }}
-              activeOpacity={0.7}
-            >
-              <View style={[s.managerDot, { backgroundColor: mgr.color }]} />
-              <Text style={[s.managerName, managerFilterIds.includes(mgr.id) && { color: COLORS.text, fontWeight: "700" }]} numberOfLines={1}>
-                {mgr.name.split(" ")[0]}
-              </Text>
-              <Text style={s.managerTotal}>{mgr.total}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </>
-    );
-  };
-
-  const renderMobileStats = () => {
-    if (managerStats.length === 0) return null;
-    const totalProyectos = managerStats.reduce((s, m) => s + m.total, 0);
-    const totalByStatus: Record<string, number> = {};
-    managerStats.forEach((m) => {
-      Object.entries(m.by_status as Record<string, { count: number }>).forEach(([st, info]) => {
-        totalByStatus[st] = (totalByStatus[st] || 0) + info.count;
-      });
-    });
-    return (
-      <View style={s.mobileStats}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
-          <Text style={{ fontSize: 12, fontWeight: "600", color: COLORS.textSecondary }}>Año:</Text>
-          {Platform.OS === "web" ? (
-            <select
-              value={yearFilter}
-              onChange={(e: any) => setYearFilter(e.target.value)}
-              style={{
-                fontSize: 12, fontWeight: "600", color: COLORS.text,
-                backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
-                borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10,
-                outline: "none",
-              } as any}
-            >
-              <option value="todos">Todos</option>
-              {Array.from({ length: new Date().getFullYear() - 2021 }, (_, i) => 2022 + i).map((y) => (
-                <option key={y} value={String(y)}>{y}</option>
-              ))}
-            </select>
-          ) : (
-            <TouchableOpacity
-              style={{
-                flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surface,
-                borderWidth: 1, borderColor: COLORS.border, borderRadius: 10,
-                paddingVertical: 6, paddingHorizontal: 10, gap: 6,
-              }}
-              onPress={() => {
-                const years = ["todos", ...Array.from({ length: new Date().getFullYear() - 2021 }, (_, i) => String(2022 + i))];
-                const idx = years.indexOf(yearFilter);
-                setYearFilter(years[(idx + 1) % years.length]);
-              }}
-            >
-              <Text style={{ fontSize: 12, fontWeight: "600", color: COLORS.text }}>
-                {yearFilter === "todos" ? "Todos" : yearFilter}
-              </Text>
-            </TouchableOpacity>
-          )}
         </View>
 
         <TouchableOpacity
-          style={s.totalKpiCardMobile}
+          style={styles.totalKpiCard}
           onPress={() => { setManagerFilterIds([]); setStatusFilterIds([]); }}
-          activeOpacity={0.7}
+          activeOpacity={0.8}
         >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 }}>
-            <Ionicons name="layers-outline" size={14} color={COLORS.primary} />
-            <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.primary, letterSpacing: 1, textTransform: "uppercase", flex: 1 }}>TOTAL</Text>
-            <Text style={{ fontSize: 20, fontWeight: "800", color: COLORS.text }}>{totalProyectos}</Text>
-          </View>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-            {Object.entries(totalByStatus).sort(([a], [b]) => a.localeCompare(b)).map(([st, count]) => {
-              const color = STATUS_COLORS[st] || COLORS.textSecondary;
-              const active = statusFilterIds.includes(st);
-              return (
-                <TouchableOpacity
-                  key={st}
-                  style={{ backgroundColor: active ? color : color + "18", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}
-                  onPress={() => {
-                    setStatusFilterIds((p) => p.includes(st) ? p.filter((x) => x !== st) : [...p, st]);
-                  }}
-                >
-                  <Text style={{ fontSize: 11, fontWeight: "700", color: active ? "#fff" : color }}>
-                    {STATUS_LABELS[st] || st} {count}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <Text style={styles.totalKpiLabel}>Proyectos Totales</Text>
+          <Text style={styles.totalKpiNumber}>{totalProyectos}</Text>
         </TouchableOpacity>
 
-        <View style={{ marginTop: 8 }}>
-          <Text style={{ fontSize: 10, fontWeight: "700", color: COLORS.textSecondary, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>RESPONSABLES</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={{ flexDirection: "row", gap: 8, paddingRight: 8 }}>
-              {managerStats.map((mgr) => (
-                <TouchableOpacity
-                  key={mgr.id}
-                  style={{
-                    backgroundColor: managerFilterIds.includes(mgr.id) ? COLORS.border : COLORS.surface,
-                    borderRadius: 14, borderWidth: 1,
-                    borderColor: managerFilterIds.includes(mgr.id) ? mgr.color : COLORS.border,
-                    padding: 12, minWidth: 150,
-                  }}
-                  onPress={() => {
-                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                    setManagerFilterIds((p) => p.includes(mgr.id) ? p.filter((x) => x !== mgr.id) : [...p, mgr.id]);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: mgr.color }} />
-                    <Text style={{ fontSize: 13, fontWeight: "700", color: COLORS.text }} numberOfLines={1}>
-                      {mgr.name.split(" ")[0]}
-                    </Text>
-                    <Text style={{ fontSize: 11, color: COLORS.textSecondary, fontWeight: "600" }}>{mgr.total}</Text>
-                  </View>
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
-                    {Object.entries(mgr.by_status as Record<string, { count: number; label: string; color: string }>).map(([st, info]) => (
-                      <TouchableOpacity
-                        key={st}
-                        style={{
-                          backgroundColor: info.color + "20", borderRadius: 6,
-                          paddingHorizontal: 8, paddingVertical: 2,
-                          borderWidth: statusFilterIds.includes(st) ? 1 : 0,
-                          borderColor: info.color,
-                        }}
-                        onPress={() => {
-                          setStatusFilterIds((p) => p.includes(st) ? p.filter((x) => x !== st) : [...p, st]);
-                        }}
-                      >
-                        <Text style={{ fontSize: 10, fontWeight: "700", color: info.color }}>
-                          {info.label} {info.count}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
+        <View style={styles.managerSection}>
+          <Text style={styles.managerSectionTitle}>Por Responsable</Text>
+          {managerStats.map((mgr) => {
+            const isSelected = managerFilterIds.includes(mgr.id);
+            return (
+              <TouchableOpacity
+                key={mgr.id}
+                style={[styles.managerRow, isSelected && styles.managerRowActive]}
+                onPress={() => toggleManagerFilter(mgr.id)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.managerDot, { backgroundColor: mgr.color || COLORS.primary }]} />
+                <Text style={[styles.managerName, isSelected && styles.textBold]} numberOfLines={1}>
+                  {mgr.name.split(" ")[0]}
+                </Text>
+                <View style={styles.managerCountBadge}>
+                  <Text style={styles.managerTotal}>{mgr.total}</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
         </View>
-
-        <TouchableOpacity style={s.newProjectBtnMobile} activeOpacity={0.8}>
-          <Text style={s.newProjectBtnText}>+ Nuevo proyecto</Text>
-        </TouchableOpacity>
       </View>
     );
   };
 
   return (
     <ResponsiveLayout active="proyectos" isAdmin={isAdmin} onLogout={logout} userName={me?.name}>
-      <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
-        <View style={s.container}>
+      <SafeAreaView style={styles.root} edges={isWide ? [] : ["top"]}>
+        <View style={styles.container}>
           {isWide && (
-            <ScrollView style={s.leftPanel} contentContainerStyle={s.leftPanelContent}>
+            <ScrollView style={styles.leftPanel} showsVerticalScrollIndicator={false}>
               {renderStatsSidebar()}
             </ScrollView>
           )}
 
-          <View style={s.mainContent}>
-            <View style={s.header}>
-              <View style={s.headerLeft}>
-                <Text style={s.headerTitle}>Proyectos</Text>
-                <Text style={s.headerSubtitle}>Todos tus proyectos en un solo lugar</Text>
-              </View>
-              <View style={s.headerRight}>
-                <TouchableOpacity style={s.headerIcon}>
-                  <Ionicons name="search-outline" size={18} color={COLORS.textSecondary} />
-                </TouchableOpacity>
-                <TouchableOpacity style={s.headerIcon}>
-                  <Ionicons name="notifications-outline" size={18} color={COLORS.textSecondary} />
-                </TouchableOpacity>
-                <TouchableOpacity style={s.headerIcon}>
-                  <Ionicons name="settings-outline" size={18} color={COLORS.textSecondary} />
-                </TouchableOpacity>
+          <View style={styles.mainContent}>
+            <View style={styles.header}>
+              <View style={styles.headerLeft}>
+                <Text style={styles.headerTitle}>Módulo Proyectos</Text>
+                <Text style={styles.headerSubtitle}>Gestión operativa y control de horas</Text>
               </View>
             </View>
 
-            {!isWide && renderMobileStats()}
-
             {stats && (
-              <View style={s.kpiStrip}>
-                <View style={s.kpiCard}>
-                  <View style={[s.kpiIconWrap, { backgroundColor: COLORS.pillBlueBg }]}>
-                    <Ionicons name="folder-outline" size={14} color={COLORS.primary} />
-                  </View>
-                  <Text style={s.kpiNumber}>{stats.total}</Text>
-                  <Text style={s.kpiLabel}>Total</Text>
+              <View style={styles.kpiStrip}>
+                <View style={styles.kpiCard}>
+                  <Text style={styles.kpiNumber}>{stats.total}</Text>
+                  <Text style={styles.kpiLabel}>Globales</Text>
                 </View>
                 <TouchableOpacity
-                  style={[s.kpiCard, pendingOnly && s.kpiCardActive]}
+                  style={[styles.kpiCard, pendingOnly && styles.kpiCardActive]}
                   onPress={() => {
                     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                     setPendingOnly(!pendingOnly);
                   }}
-                  testID="stat-pending"
-                  activeOpacity={0.75}
+                  activeOpacity={0.8}
                 >
-                  <View style={[s.kpiIconWrap, { backgroundColor: COLORS.pendingBg }]}>
-                    <Ionicons name="time-outline" size={14} color={COLORS.pendingText} />
-                  </View>
-                  <Text style={s.kpiNumber}>{stats.pending}</Text>
-                  <Text style={s.kpiLabel}>Pendientes</Text>
+                  <Text style={[styles.kpiNumber, pendingOnly && { color: "#FFF" }]}>{stats.pending}</Text>
+                  <Text style={[styles.kpiLabel, pendingOnly && { color: "#FFF" }]}>Por Sincronizar</Text>
                 </TouchableOpacity>
-                <View style={s.kpiCard}>
-                  <View style={[s.kpiIconWrap, { backgroundColor: COLORS.syncedBg }]}>
-                    <Ionicons name="checkmark-circle-outline" size={14} color={COLORS.syncedText} />
-                  </View>
-                  <Text style={s.kpiNumber}>{stats.synced}</Text>
-                  <Text style={s.kpiLabel}>Sincronizados</Text>
+                <View style={styles.kpiCard}>
+                  <Text style={styles.kpiNumber}>{stats.synced}</Text>
+                  <Text style={styles.kpiLabel}>En la Nube</Text>
                 </View>
               </View>
             )}
 
-            <View style={s.searchRow}>
-              <View style={s.searchBox}>
-                <Ionicons name="search-outline" size={16} color={COLORS.textSecondary} />
+            <View style={styles.searchRow}>
+              <View style={styles.searchBox}>
+                <Ionicons name="search-outline" size={18} color={COLORS.textSecondary} />
                 <TextInput
                   testID="input-search"
-                  style={s.searchInput}
+                  style={styles.searchInput}
                   value={q}
                   onChangeText={setQ}
-                  placeholder="Buscar cliente, proyecto, ubicación..."
-                  placeholderTextColor={COLORS.textDisabled}
+                  placeholder="Buscar cliente, código, localización..."
+                  placeholderTextColor="#9CA3AF"
                 />
                 {q.length > 0 && (
                   <TouchableOpacity onPress={() => setQ("")}>
@@ -551,133 +340,88 @@ export default function Materiales() {
                   </TouchableOpacity>
                 )}
               </View>
+
               <TouchableOpacity
-                testID="btn-filter-pending"
-                style={[s.actionChip, pendingOnly && s.actionChipActive]}
-                onPress={() => setPendingOnly(!pendingOnly)}
+                style={[styles.actionChip, managerFilterIds.length > 0 && styles.actionChipActive]}
+                onPress={() => { setShowManagerFilter(!showManagerFilter); setShowStatusFilter(false); }}
               >
-                <Ionicons name="time-outline" size={14} color={pendingOnly ? "#fff" : COLORS.textSecondary} />
+                <Ionicons name="people-outline" size={18} color={managerFilterIds.length > 0 ? "#FFF" : COLORS.primary} />
               </TouchableOpacity>
-              <TouchableOpacity
-                testID="btn-filter-manager"
-                style={[s.actionChip, managerFilterIds.length > 0 && s.actionChipActive]}
-                onPress={() => { setShowManagerFilter((v) => !v); setShowStatusFilter(false); }}
-              >
-                <Ionicons name="people-outline" size={14} color={managerFilterIds.length > 0 ? "#fff" : COLORS.textSecondary} />
-              </TouchableOpacity>
+
               {esEditorCompleto && (
                 <TouchableOpacity
-                  testID="btn-filter-status"
-                  style={[s.actionChip, statusFilterIds.length > 0 && s.actionChipActive]}
-                  onPress={() => { setShowStatusFilter((v) => !v); setShowManagerFilter(false); }}
+                  style={[styles.actionChip, statusFilterIds.length > 0 && styles.actionChipActive]}
+                  onPress={() => { setShowStatusFilter(!showStatusFilter); setShowManagerFilter(false); }}
                 >
-                  <Ionicons name="flag-outline" size={14} color={statusFilterIds.length > 0 ? "#fff" : COLORS.textSecondary} />
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={[s.actionChip, { borderColor: COLORS.syncedText }]}
-                onPress={async () => {
-                  try { await api.exportProjectsExcel(); }
-                  catch (e: any) { Alert.alert("Error", "No se pudo exportar"); }
-                }}
-              >
-                <Ionicons name="download-outline" size={13} color={COLORS.syncedText} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.actionChip, { borderColor: COLORS.primary }]}
-                onPress={() => router.push("/mapa")}
-              >
-                <Ionicons name="map-outline" size={13} color={COLORS.primary} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.actionChip, { borderColor: COLORS.pendingText }]}
-                onPress={() => router.push("/archivos")}
-              >
-                <Ionicons name="folder-open-outline" size={13} color={COLORS.pendingText} />
-              </TouchableOpacity>
-              {(managerFilterIds.length > 0 || statusFilterIds.length > 0) && (
-                <TouchableOpacity
-                  style={[s.actionChip, { borderColor: COLORS.errorText }]}
-                  onPress={() => { clearManagerFilter(); setStatusFilterIds([]); }}
-                >
-                  <Ionicons name="close-outline" size={14} color={COLORS.errorText} />
+                  <Ionicons name="flag-outline" size={18} color={statusFilterIds.length > 0 ? "#FFF" : COLORS.primary} />
                 </TouchableOpacity>
               )}
             </View>
 
             {showManagerFilter && (
-              <View style={s.filterChipsRow}>
-                <View style={s.filterChips}>
+              <View style={styles.filterChipsRow}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChips}>
                   <TouchableOpacity
-                    style={[s.filterChip, managerFilterIds.includes("__none__") && s.filterChipActive]}
+                    style={[styles.filterChip, managerFilterIds.includes("__none__") && styles.filterChipActive]}
                     onPress={() => toggleManagerFilter("__none__")}
                   >
-                    <Text style={[s.filterChipText, managerFilterIds.includes("__none__") && s.filterChipTextActive]}>⚡ Sin gestor</Text>
+                    <Text style={[styles.filterChipText, managerFilterIds.includes("__none__") && styles.filterChipTextActive]}>Sin gestor</Text>
                   </TouchableOpacity>
                   {managers.map((mgr) => {
                     const on = managerFilterIds.includes(mgr.id);
                     return (
                       <TouchableOpacity
                         key={mgr.id}
-                        style={[s.filterChip, on && s.filterChipActive]}
+                        style={[styles.filterChip, on && styles.filterChipActive]}
                         onPress={() => toggleManagerFilter(mgr.id)}
                       >
-                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: (mgr as any).color || COLORS.primary }} />
-                        <Text style={[s.filterChipText, on && s.filterChipTextActive]} numberOfLines={1}>{mgr.name || mgr.email}</Text>
+                        <Text style={[styles.filterChipText, on && styles.filterChipTextActive]}>{mgr.name || mgr.email}</Text>
                       </TouchableOpacity>
                     );
                   })}
-                </View>
+                </ScrollView>
               </View>
             )}
 
             {showStatusFilter && (
-              <View style={s.filterChipsRow}>
-                <View style={s.filterChips}>
+              <View style={styles.filterChipsRow}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChips}>
                   {PROJECT_STATUSES.map((st) => {
                     const on = statusFilterIds.includes(st.key);
                     return (
                       <TouchableOpacity
                         key={st.key}
-                        style={[s.filterChip, on && { backgroundColor: st.color + "18", borderColor: st.color }]}
+                        style={[styles.filterChip, on && { backgroundColor: st.color + "20", borderColor: st.color }]}
                         onPress={() => toggleStatusFilter(st.key)}
                       >
-                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: st.color }} />
-                        <Text style={[s.filterChipText, on && { color: st.color, fontWeight: "800" }]}>{st.label}</Text>
-                        {on && <Ionicons name="checkmark" size={12} color={st.color} />}
+                        <Text style={[styles.filterChipText, on && { color: st.color, fontWeight: "700" }]}>{st.label}</Text>
                       </TouchableOpacity>
                     );
                   })}
-                </View>
+                </ScrollView>
               </View>
             )}
 
             {loading ? (
-              <View style={s.centerBox}>
+              <View style={styles.centerBox}>
                 <ActivityIndicator color={COLORS.primary} size="large" />
               </View>
             ) : items.length === 0 ? (
-              <View style={s.centerBox}>
-                <Ionicons name="cube-outline" size={48} color={COLORS.textDisabled} />
-                <Text style={{ color: COLORS.textSecondary, fontSize: 15, fontWeight: "500", marginTop: 8 }}>Sin resultados</Text>
+              <View style={styles.centerBox}>
+                <Ionicons name="cube-outline" size={44} color="#D1D5DB" />
+                <Text style={styles.noResultsText}>No se encontraron proyectos activos</Text>
               </View>
             ) : (
               <ScrollView
                 testID="materiales-list"
-                contentContainerStyle={s.listContent}
+                contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
                 refreshControl={
-                  <RefreshControl
-                    refreshing={refreshing}
-                    onRefresh={() => { setRefreshing(true); load(); }}
-                    tintColor={COLORS.primary}
-                  />
+                  <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={COLORS.primary} />
                 }
               >
                 {items.map((item) => (
-                  <View key={item.id}>
-                    {renderItem({ item })}
-                  </View>
+                  <View key={item.id}>{renderItem(item)}</View>
                 ))}
               </ScrollView>
             )}
@@ -688,434 +432,66 @@ export default function Materiales() {
   );
 }
 
-const useS = () =>
-  StyleSheet.create({
-    root: {
-      flex: 1,
-      backgroundColor: COLORS.bg,
-    },
-    container: {
-      flex: 1,
-      flexDirection: "row",
-    },
-    leftPanel: {
-      flex: 0.2,
-      maxWidth: 280,
-      backgroundColor: COLORS.surface,
-      borderRightWidth: 1,
-      borderRightColor: COLORS.border,
-    },
-    leftPanelContent: {
-      padding: 16,
-      gap: 14,
-      paddingBottom: 40,
-    },
-    teamSelector: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: COLORS.surface,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      paddingVertical: 12,
-      paddingHorizontal: 14,
-      gap: 10,
-    },
-    teamSelectorLeft: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      flex: 1,
-    },
-    teamSelectorText: {
-      color: COLORS.text,
-      fontSize: 13,
-      fontWeight: "600",
-      flex: 1,
-    },
-    totalKpiCard: {
-      backgroundColor: COLORS.surface,
-      borderRadius: 20,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      padding: 16,
-      shadowColor: COLORS.primary,
-      shadowOffset: { width: 0, height: 0 },
-      shadowOpacity: 0.15,
-      shadowRadius: 20,
-      elevation: 5,
-    },
-    totalKpiHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      marginBottom: 8,
-    },
-    totalKpiLabel: {
-      fontSize: 11,
-      fontWeight: "700",
-      color: COLORS.primary,
-      letterSpacing: 1,
-      textTransform: "uppercase",
-    },
-    totalKpiNumber: {
-      fontSize: 32,
-      fontWeight: "800",
-      color: COLORS.text,
-      marginBottom: 12,
-    },
-    totalKpiPills: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 6,
-    },
-    statusPill: {
-      borderRadius: 8,
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-    },
-    statusPillText: {
-      fontSize: 11,
-      fontWeight: "700",
-    },
-    managerSection: {
-      gap: 2,
-    },
-    managerSectionTitle: {
-      fontSize: 10,
-      fontWeight: "700",
-      color: COLORS.textSecondary,
-      letterSpacing: 1,
-      textTransform: "uppercase",
-      marginBottom: 6,
-    },
-    managerRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingVertical: 8,
-      paddingHorizontal: 10,
-      borderRadius: 12,
-      gap: 10,
-    },
-    managerRowActive: {
-      backgroundColor: COLORS.surface,
-    },
-    managerDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-    },
-    managerName: {
-      flex: 1,
-      fontSize: 13,
-      fontWeight: "600",
-      color: COLORS.textSecondary,
-    },
-    managerTotal: {
-      fontSize: 12,
-      fontWeight: "700",
-      color: COLORS.textSecondary,
-    },
-    newProjectBtn: {
-      backgroundColor: COLORS.primary,
-      borderRadius: 16,
-      paddingVertical: 14,
-      alignItems: "center",
-      marginTop: 4,
-      shadowColor: COLORS.primary,
-      shadowOffset: { width: 0, height: 0 },
-      shadowOpacity: 0.3,
-      shadowRadius: 20,
-      elevation: 8,
-    },
-    newProjectBtnText: {
-      color: "#fff",
-      fontSize: 15,
-      fontWeight: "700",
-    },
-    mainContent: {
-      flex: 0.8,
-    },
-    header: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      paddingHorizontal: 24,
-      paddingTop: 16,
-      paddingBottom: 12,
-    },
-    headerLeft: {
-      flex: 1,
-    },
-    headerTitle: {
-      fontSize: 28,
-      fontWeight: "800",
-      color: COLORS.text,
-    },
-    headerSubtitle: {
-      fontSize: 13,
-      color: COLORS.textSecondary,
-      fontWeight: "500",
-      marginTop: 2,
-    },
-    headerRight: {
-      flexDirection: "row",
-      gap: 8,
-    },
-    headerIcon: {
-      width: 38,
-      height: 38,
-      borderRadius: 12,
-      backgroundColor: COLORS.surface,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    mobileStats: {
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-      gap: 12,
-    },
-    totalKpiCardMobile: {
-      backgroundColor: COLORS.surface,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      padding: 14,
-    },
-    newProjectBtnMobile: {
-      backgroundColor: COLORS.primary,
-      borderRadius: 14,
-      paddingVertical: 12,
-      alignItems: "center",
-      marginTop: 4,
-    },
-    kpiStrip: {
-      flexDirection: "row",
-      gap: 12,
-      paddingHorizontal: 24,
-      paddingTop: 4,
-      paddingBottom: 12,
-    },
-    kpiCard: {
-      flex: 1,
-      backgroundColor: COLORS.surface,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      padding: 14,
-      gap: 6,
-      alignItems: "flex-start",
-    },
-    kpiCardActive: {
-      borderColor: COLORS.pendingText,
-      backgroundColor: COLORS.pendingBg,
-    },
-    kpiIconWrap: {
-      width: 28,
-      height: 28,
-      borderRadius: 8,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    kpiNumber: {
-      fontSize: 22,
-      fontWeight: "800",
-      color: COLORS.text,
-    },
-    kpiLabel: {
-      fontSize: 11,
-      fontWeight: "600",
-      color: COLORS.textSecondary,
-      textTransform: "uppercase",
-      letterSpacing: 0.5,
-    },
-    searchRow: {
-      flexDirection: "row",
-      gap: 8,
-      paddingHorizontal: 24,
-      paddingVertical: 8,
-      alignItems: "center",
-    },
-    searchBox: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      backgroundColor: COLORS.surface,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      paddingHorizontal: 14,
-      height: 40,
-    },
-    searchInput: {
-      flex: 1,
-      fontSize: 14,
-      color: COLORS.text,
-      outlineStyle: "none" as any,
-    },
-    actionChip: {
-      height: 36,
-      width: 36,
-      borderRadius: 10,
-      backgroundColor: COLORS.surface,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    actionChipActive: {
-      backgroundColor: COLORS.primary,
-      borderColor: COLORS.primary,
-    },
-    filterChipsRow: {
-      paddingHorizontal: 24,
-      paddingBottom: 8,
-    },
-    filterChips: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 6,
-    },
-    filterChip: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 10,
-      backgroundColor: COLORS.surface,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-    },
-    filterChipActive: {
-      backgroundColor: COLORS.pillBlueBg,
-      borderColor: COLORS.primary,
-    },
-    filterChipText: {
-      fontSize: 12,
-      fontWeight: "600",
-      color: COLORS.textSecondary,
-    },
-    filterChipTextActive: {
-      color: COLORS.text,
-      fontWeight: "800",
-    },
-    centerBox: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 8,
-    },
-    listContent: {
-      padding: 16,
-      gap: 12,
-      paddingBottom: 60,
-      maxWidth: 900,
-      alignSelf: "center",
-      width: "100%",
-    },
-    card: {
-      flexDirection: "row",
-      backgroundColor: COLORS.surface,
-      borderRadius: 18,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      overflow: "hidden",
-    },
-    cardBar: {
-      width: 4,
-    },
-    cardBody: {
-      flex: 1,
-      flexDirection: "row",
-      padding: 14,
-      alignItems: "center",
-      gap: 12,
-    },
-    cardAvatar: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: COLORS.pillBlueBg,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    cardAvatarText: {
-      fontSize: 12,
-      fontWeight: "700",
-      color: COLORS.primary,
-    },
-    cardInfo: {
-      flex: 1,
-      gap: 4,
-    },
-    cardTopRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    cardCode: {
-      fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
-      fontSize: 13,
-      fontWeight: "700",
-      color: COLORS.text,
-      letterSpacing: 0.3,
-    },
-    cardClient: {
-      fontSize: 13,
-      fontWeight: "600",
-      color: COLORS.textSecondary,
-      flexShrink: 1,
-    },
-    cardAddressRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-    },
-    cardAddress: {
-      fontSize: 11,
-      color: COLORS.textSecondary,
-      fontWeight: "500",
-    },
-    cardMetaRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      flexWrap: "wrap",
-    },
-    cardMetaTag: {
-      backgroundColor: COLORS.surface,
-      borderRadius: 6,
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-    },
-    cardMetaText: {
-      fontSize: 10,
-      color: COLORS.textSecondary,
-      fontWeight: "600",
-    },
-    cardRight: {
-      alignItems: "flex-end",
-      gap: 6,
-    },
-    cardBadge: {
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-      borderRadius: 7,
-    },
-    cardBadgeText: {
-      fontSize: 9,
-      fontWeight: "700",
-      letterSpacing: 0.2,
-    },
-    cardMoreBtn: {
-      width: 24,
-      height: 24,
-      borderRadius: 6,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-  });
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: "#F8FAFC" },
+  container: { flex: 1, flexDirection: "row" },
+  leftPanel: { flex: 0.25, maxWidth: 300, backgroundColor: "#FFFFFF", borderRightWidth: 1, borderRightColor: "#E2E8F0" },
+  sidebarContainer: { padding: 20, gap: 16 },
+  sidebarHeader: { marginBottom: 4 },
+  sidebarTitle: { fontSize: 16, fontWeight: "700", color: "#1E293B" },
+  selectWrapper: { borderRadius: 10, overflow: "hidden" },
+  totalKpiCard: { backgroundColor: "#F1F5F9", borderRadius: 12, padding: 16, gap: 4 },
+  totalKpiLabel: { fontSize: 11, fontWeight: "600", color: "#64748B", textTransform: "uppercase" },
+  totalKpiNumber: { fontSize: 28, fontWeight: "800", color: "#0F172A" },
+  managerSection: { gap: 6, marginTop: 10 },
+  managerSectionTitle: { fontSize: 12, fontWeight: "700", color: "#475569", textTransform: "uppercase", marginBottom: 4 },
+  managerRow: { flexDirection: "row", alignItems: "center", padding: 10, borderRadius: 10, gap: 10, backgroundColor: "#F8FAFC" },
+  managerRowActive: { backgroundColor: "#E2E8F0" },
+  managerDot: { width: 8, height: 8, borderRadius: 4 },
+  managerName: { flex: 1, fontSize: 13, fontWeight: "500", color: "#334155" },
+  managerCountBadge: { backgroundColor: "#FFF", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  managerTotal: { fontSize: 11, fontWeight: "700", color: "#64748B" },
+  textBold: { fontWeight: "700", color: "#0F172A" },
+  mainContent: { flex: 1 },
+  header: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 12 },
+  headerLeft: {},
+  headerTitle: { fontSize: 24, fontWeight: "800", color: "#0F172A" },
+  headerSubtitle: { fontSize: 13, color: "#64748B", marginTop: 2 },
+  kpiStrip: { flexDirection: "row", gap: 12, paddingHorizontal: 24, marginBottom: 16 },
+  kpiCard: { flex: 1, backgroundColor: "#FFFFFF", borderRadius: 12, padding: 16, borderWidth: 1, borderColor: "#E2E8F0", elevation: 1 },
+  kpiCardActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  kpiNumber: { fontSize: 22, fontWeight: "800", color: "#1E293B" },
+  kpiLabel: { fontSize: 12, fontWeight: "500", color: "#64748B", marginTop: 2 },
+  searchRow: { flexDirection: "row", gap: 8, paddingHorizontal: 24, marginBottom: 12, alignItems: "center" },
+  searchBox: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#FFFFFF", borderRadius: 10, borderWidth: 1, borderColor: "#E2E8F0", paddingHorizontal: 12, height: 44 },
+  searchInput: { flex: 1, fontSize: 14, color: "#1E293B", ...Platform.select({ web: { outlineStyle: "none" } as any }) },
+  actionChip: { height: 44, width: 44, borderRadius: 10, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E2E8F0", alignItems: "center", justifyContent: "center" },
+  actionChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  filterChipsRow: { paddingHorizontal: 24, marginBottom: 12 },
+  filterChips: { flexDirection: "row", gap: 8 },
+  filterChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E2E8F0" },
+  filterChipActive: { backgroundColor: "#E0F2FE", borderColor: "#0284C7" },
+  filterChipText: { fontSize: 12, fontWeight: "500", color: "#475569" },
+  filterChipTextActive: { color: "#0369A1", fontWeight: "700" },
+  centerBox: { flex: 1, alignItems: "center", justifyContent: "center", padding: 40 },
+  noResultsText: { color: "#64748B", fontSize: 14, marginTop: 10, fontWeight: "500" },
+  listContent: { paddingHorizontal: 24, gap: 10, paddingBottom: 40 },
+  card: { flexDirection: "row", backgroundColor: "#FFFFFF", borderRadius: 12, borderWidth: 1, borderColor: "#E2E8F0", overflow: "hidden", elevation: 1 },
+  cardBar: { width: 5 },
+  cardBody: { flex: 1, flexDirection: "row", padding: 14, alignItems: "center", gap: 12 },
+  cardAvatar: { width: 40, height: 40, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  cardAvatarText: { fontSize: 13, fontWeight: "700" },
+  cardInfo: { flex: 1, gap: 4 },
+  cardTopRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  cardCode: { fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }), fontSize: 13, fontWeight: "700", color: "#0F172A" },
+  cardClient: { fontSize: 13, fontWeight: "500", color: "#475569" },
+  cardAddressRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  cardAddress: { fontSize: 12, color: "#64748B" },
+  cardMetaRow: { flexDirection: "row", gap: 6, marginTop: 2 },
+  cardMetaTag: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#F1F5F9", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 },
+  cardMetaText: { fontSize: 11, color: "#475569", fontWeight: "500" },
+  cardRight: { flexDirection: "row", alignItems: "center", gap: 10 },
+  badgeContainer: { alignItems: "flex-end", gap: 4 },
+  cardBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  cardBadgeText: { fontSize: 10, fontWeight: "700" },
+});

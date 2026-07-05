@@ -68,7 +68,7 @@ function DonutChart({ data, size = 140 }: { data: { label: string; value: number
                 stroke={item.color}
                 strokeWidth={strokeWidth}
                 fill="none"
-                strokeLinecap="butt"
+                strokeLinecap="round"
                 strokeDasharray={`${dashLength} ${circumference}`}
                 strokeDashoffset={offset}
               />

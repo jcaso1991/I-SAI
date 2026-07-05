@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Alert, Platform,
+  ActivityIndicator, TextInput, Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -27,6 +27,7 @@ export default function ChatIndex() {
   const s = useThemedStyles(useS);
   const [me, setMe] = useState<any>(null);
   const [chats, setChats] = useState<ChatItem[]>([]);
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [unreadTotal, setUnreadTotal] = useState(0);
 
@@ -47,7 +48,6 @@ export default function ChatIndex() {
 
   useFocusEffect(useCallback(() => { load(); }, []));
 
-  // Poll every 5s
   useEffect(() => {
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
@@ -70,62 +70,80 @@ export default function ChatIndex() {
     return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
   };
 
+  const filteredChats = chats.filter(c =>
+    chatName(c).toLowerCase().includes(search.toLowerCase()) ||
+    c.last_message?.text?.toLowerCase().includes(search.toLowerCase())
+  );
+
   return (
     <ResponsiveLayout active="chat" isAdmin={me?.role === "admin"} onLogout={logout} userName={me?.name}>
       <SafeAreaView style={s.root} edges={["top"]}>
         <View style={s.header}>
-          <Text style={s.headerTitle}>Chat</Text>
-          <TouchableOpacity
-            testID="btn-new-chat"
-            style={s.newChatBtn}
-            onPress={() => router.push("/chat/nuevo")}
-          >
-            <Ionicons name="create-outline" size={22} color={COLORS.primary} />
+          <View>
+            <Text style={s.headerTitle}>Mensajería</Text>
+            {unreadTotal > 0 && <Text style={s.headerSubtitle}>{unreadTotal} sin leer</Text>}
+          </View>
+          <TouchableOpacity testID="btn-new-chat" style={s.newChatBtn} onPress={() => router.push("/chat/nuevo")}>
+            <Ionicons name="create-outline" size={20} color="#fff" />
           </TouchableOpacity>
         </View>
 
+        <View style={s.searchContainer}>
+          <Ionicons name="search-outline" size={16} color={COLORS.textSecondary} style={{ marginRight: 6 }} />
+          <TextInput
+            style={s.searchInput}
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Buscar conversación o contenido..."
+            placeholderTextColor={COLORS.textDisabled}
+          />
+        </View>
+
         {loading ? (
-          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <View style={s.centerFlex}>
             <ActivityIndicator color={COLORS.primary} size="large" />
           </View>
-        ) : chats.length === 0 ? (
+        ) : filteredChats.length === 0 ? (
           <View style={s.empty}>
-            <Ionicons name="chatbubbles-outline" size={64} color={COLORS.textDisabled} />
+            <Ionicons name="chatbubbles-outline" size={54} color={COLORS.textDisabled} />
             <Text style={s.emptyTitle}>Sin conversaciones</Text>
-            <Text style={s.emptySub}>Pulsa + para iniciar un chat</Text>
+            <Text style={s.emptySub}>{search ? "No hay resultados para la búsqueda" : "Pulsa el botón superior para iniciar un chat"}</Text>
           </View>
         ) : (
-          <ScrollView style={{ flex: 1 }}>
-            {chats.map((c) => (
-              <TouchableOpacity
-                key={c.id}
-                style={s.chatRow}
-                onPress={() => router.push(`/chat/${c.id}`)}
-                activeOpacity={0.7}
-              >
-                <View style={[s.avatar, { backgroundColor: (c.participants?.[0]?.color || COLORS.primary) + "22" }]}>
-                  <Ionicons name={c.name ? "people" : "person"} size={22} color={c.participants?.[0]?.color || COLORS.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <View style={s.chatTop}>
-                    <Text style={s.chatName} numberOfLines={1}>{chatName(c)}</Text>
-                    {c.last_message && (
-                      <Text style={s.chatTime}>{formatTime(c.last_message.created_at)}</Text>
-                    )}
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 32 }}>
+            {filteredChats.map((c) => {
+              const activeColor = c.participants?.[0]?.color || COLORS.primary;
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  style={[s.chatRow, c.unread > 0 && s.chatRowUnread]}
+                  onPress={() => router.push(`/chat/${c.id}`)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[s.avatar, { backgroundColor: activeColor + "15" }]}>
+                    <Ionicons name={c.name ? "people-sharp" : "person-sharp"} size={20} color={activeColor} />
                   </View>
-                  <View style={s.chatBottom}>
-                    <Text style={[s.chatPreview, c.unread > 0 && { fontWeight: "700", color: COLORS.text }]} numberOfLines={1}>
-                      {c.last_message ? `${c.last_message.sender_name}: ${c.last_message.text}` : "Nueva conversación"}
-                    </Text>
-                    {c.unread > 0 && (
-                      <View style={s.badge}>
-                        <Text style={s.badgeText}>{c.unread > 99 ? "99+" : c.unread}</Text>
-                      </View>
-                    )}
+                  <View style={{ flex: 1 }}>
+                    <View style={s.chatTop}>
+                      <Text style={s.chatName} numberOfLines={1}>{chatName(c)}</Text>
+                      {c.last_message && (
+                        <Text style={[s.chatTime, c.unread > 0 && s.chatTimeUnread]}>{formatTime(c.last_message.created_at)}</Text>
+                      )}
+                    </View>
+                    <View style={s.chatBottom}>
+                      <Text style={[s.chatPreview, c.unread > 0 && s.chatPreviewUnread]} numberOfLines={1}>
+                        {c.last_message ? `${c.last_message.sender_name}: ${c.last_message.text}` : "Nueva conversación iniciada"}
+                      </Text>
+                      {c.unread > 0 && (
+                        <View style={s.badge}>
+                          <Text style={s.badgeText}>{c.unread > 99 ? "99+" : c.unread}</Text>
+                        </View>
+                      )}
+                    </View>
                   </View>
-                </View>
-              </TouchableOpacity>
-            ))}
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         )}
       </SafeAreaView>
@@ -135,37 +153,48 @@ export default function ChatIndex() {
 
 const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
+  centerFlex: { flex: 1, alignItems: "center", justifyContent: "center" },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: ios.spacing.lg, paddingVertical: ios.spacing.md,
-    backgroundColor: COLORS.surface, borderBottomWidth: ios.hairline, borderBottomColor: COLORS.border,
+    backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
-  headerTitle: { ...fontStyle("title2"), color: COLORS.text },
+  headerTitle: { fontSize: 22, fontWeight: "800", color: COLORS.text, letterSpacing: -0.5 },
+  headerSubtitle: { fontSize: 12, fontWeight: "600", color: COLORS.errorText, marginTop: 1 },
   newChatBtn: {
-    width: 40, height: 40, alignItems: "center", justifyContent: "center",
-    borderRadius: ios.radius.md, backgroundColor: COLORS.bg,
+    width: 36, height: 36, alignItems: "center", justifyContent: "center",
+    borderRadius: 18, backgroundColor: COLORS.primary,
   },
-  empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: ios.spacing.sm, padding: ios.spacing.xxl },
-  emptyTitle: { ...fontStyle("title3"), color: COLORS.text },
-  emptySub: { ...fontStyle("callout"), color: COLORS.textSecondary },
+  searchContainer: {
+    flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surface,
+    marginHorizontal: ios.spacing.md, marginVertical: ios.spacing.sm,
+    paddingHorizontal: ios.spacing.sm, height: 38, borderRadius: 8,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  searchInput: { flex: 1, fontSize: 14, color: COLORS.text, paddingVertical: 0 },
+  empty: { flex: 1, alignItems: "center", justifyContent: "center", padding: ios.spacing.xxl, marginTop: 40 },
+  emptyTitle: { fontSize: 16, fontWeight: "700", color: COLORS.text, marginTop: ios.spacing.sm },
+  emptySub: { fontSize: 13, color: COLORS.textSecondary, textAlign: "center", marginTop: 4 },
   chatRow: {
     flexDirection: "row", alignItems: "center", gap: ios.spacing.md,
-    padding: ios.spacing.lg, backgroundColor: COLORS.surface,
-    borderRadius: ios.radius.lg, marginHorizontal: ios.spacing.md, marginBottom: ios.spacing.sm,
-    ...ios.shadow.card,
+    padding: ios.spacing.md, backgroundColor: COLORS.surface,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
+  chatRowUnread: { backgroundColor: COLORS.primarySoft + "08" },
   avatar: {
-    width: 44, height: 44, borderRadius: ios.radius.icon,
+    width: 42, height: 42, borderRadius: 21,
     alignItems: "center", justifyContent: "center",
   },
   chatTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  chatName: { ...fontStyle("bodyEmphasized"), color: COLORS.text, flex: 1 },
-  chatTime: { ...fontStyle("footnote"), color: COLORS.textSecondary, marginLeft: ios.spacing.sm },
-  chatBottom: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: ios.spacing.xs },
-  chatPreview: { ...fontStyle("footnote"), color: COLORS.textSecondary, flex: 1 },
+  chatName: { fontSize: 15, fontWeight: "600", color: COLORS.text },
+  chatTime: { fontSize: 11, color: COLORS.textDisabled },
+  chatTimeUnread: { color: COLORS.primary, fontWeight: "600" },
+  chatBottom: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 2 },
+  chatPreview: { fontSize: 13, color: COLORS.textSecondary, flex: 1 },
+  chatPreviewUnread: { fontWeight: "700", color: COLORS.text },
   badge: {
-    minWidth: 22, height: 22, borderRadius: 11, backgroundColor: COLORS.primary,
-    alignItems: "center", justifyContent: "center", paddingHorizontal: 6, marginLeft: ios.spacing.sm,
+    minWidth: 18, height: 18, borderRadius: 9, backgroundColor: COLORS.primary,
+    alignItems: "center", justifyContent: "center", paddingHorizontal: 4, marginLeft: ios.spacing.sm,
   },
-  badgeText: { color: "#fff", ...fontStyle("caption"), fontWeight: "800" },
+  badgeText: { color: "#fff", fontSize: 10, fontWeight: "800" },
 });

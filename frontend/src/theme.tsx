@@ -350,31 +350,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     applyPalette(t);
     setThemeState(t);
     setThemeKey((k) => k + 1);
-
-    // On native, StyleSheet.create freezes hex values at module load time.
-    // The themeKey forces a Stack remount (updates inline styles) but does NOT
-    // re-import modules, so StyleSheet colours stay frozen. The only reliable
-    // fix is to reload the JS bundle so every module re-imports with the new
-    // COLORS. We must wait for AsyncStorage to persist first, or the reloaded
-    // app will read the old theme.
-    if (Platform.OS !== "web") {
-      AsyncStorage.setItem(KEY, t)
-        .then(() => {
-          setTimeout(() => {
-            try {
-              const RN = require("react-native");
-              if (RN?.DevSettings?.reload) { RN.DevSettings.reload(); return; }
-            } catch {}
-            try {
-              const Updates = require("expo-updates");
-              if (Updates?.reloadAsync) Updates.reloadAsync();
-            } catch {}
-          }, 150);
-        })
-        .catch(() => {});
-    } else {
-      AsyncStorage.setItem(KEY, t).catch(() => {});
-    }
+    AsyncStorage.setItem(KEY, t).catch(() => {});
   }, []);
 
   const toggle = useCallback(() => {
@@ -395,16 +371,14 @@ export function useTheme() {
 
 /**
  * Hook para crear estilos que dependen del tema.
- * Se re-ejecuta cada vez que cambia el tema (themeKey), forzando que
- * StyleSheet.create lea los valores actuales de COLORS.
+ * Recibe la paleta actual como argumento para estilos verdaderamente dinámicos.
  *
  * Uso:
- *   const s = useThemedStyles(() => StyleSheet.create({ ... }));
- *
- * Reemplaza al `const s = StyleSheet.create(...)` a nivel módulo.
+ *   const s = useThemedStyles((colors) => StyleSheet.create({ root: { backgroundColor: colors.bg } }));
  */
-export function useThemedStyles<T extends Record<string, any>>(factory: () => T): T {
-  const { themeKey } = useContext(ThemeContext);
+export function useThemedStyles<T extends Record<string, any>>(factory: (colors?: typeof LIGHT) => T): T {
+  const { theme } = useContext(ThemeContext);
+  const currentColors = THEMES[theme];
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useMemo(factory, [themeKey]);
+  return useMemo(() => factory(currentColors), [theme]);
 }

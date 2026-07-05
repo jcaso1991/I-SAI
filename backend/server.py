@@ -304,7 +304,13 @@ MIN_PASSWORD_LENGTH = 8
 
 def validate_password_strength(pw: str) -> None:
     if len(pw or "") < MIN_PASSWORD_LENGTH:
-        raise HTTPException(400, f"Contraseña demasiado corta (mín. {MIN_PASSWORD_LENGTH})")
+        raise HTTPException(400, f"Contraseña demasiado corta (mín. {MIN_PASSWORD_LENGTH} caracteres)")
+    if not any(c.isupper() for c in pw):
+        raise HTTPException(400, "La contraseña debe contener al menos una mayúscula")
+    if not any(c.islower() for c in pw):
+        raise HTTPException(400, "La contraseña debe contener al menos una minúscula")
+    if not any(c.isdigit() for c in pw):
+        raise HTTPException(400, "La contraseña debe contener al menos un número")
 
 def verify_password(pw: str, hashed: str) -> bool:
     try:
@@ -739,14 +745,22 @@ from collections import defaultdict
 
 _rate_window = 10  # seconds
 _rate_max = 60     # max requests per window per IP
+_auth_rate_max = 5  # max login attempts per window per IP
 _rate_store: dict[str, list[float]] = defaultdict(list)
+_rate_last_cleanup = _time.time()
 
 async def _rate_limit(request: Request, max_req: int = _rate_max):
+    global _rate_last_cleanup
     if not hasattr(request, "client"):
         return
     ip = request.client.host if request.client else "unknown"
     now = _time.time()
     _rate_store[ip] = [t for t in _rate_store[ip] if t > now - _rate_window]
+    # Cleanup expired IPs from dict periodically (every 60s)
+    if now - _rate_last_cleanup > 60:
+        expired = [k for k, v in _rate_store.items() if not v]
+        for k in expired: del _rate_store[k]
+        _rate_last_cleanup = now
     if len(_rate_store[ip]) >= max_req:
         raise HTTPException(429, "Demasiadas peticiones. Espera unos segundos.")
     _rate_store[ip].append(now)
@@ -909,7 +923,8 @@ async def register(payload: UserRegister):
     return TokenOut(access_token=token, user=UserOut(id=user["id"], email=user["email"], name=user["name"], role=user["role"], color=user.get("color"), homepage=user.get("homepage")))
 
 @api_router.post("/auth/login", response_model=TokenOut)
-async def login(payload: UserLogin):
+async def login(payload: UserLogin, request: Request):
+    await _rate_limit(request, _auth_rate_max)
     user = await db.users.find_one({"email": payload.email.lower()})
     if not user or not verify_password(payload.password, user["password"]):
         raise HTTPException(401, "Credenciales inválidas")
@@ -971,9 +986,13 @@ async def me(user: dict = Depends(current_user)):
         homepage=user.get("homepage"),
     )
 
+class HomepageUpdate(BaseModel):
+    homepage: str = Field(default="/home", max_length=200)
+
+
 @api_router.patch("/auth/homepage")
-async def update_homepage(payload: dict, user: dict = Depends(current_user)):
-    homepage = payload.get("homepage", "/home")
+async def update_homepage(payload: HomepageUpdate, user: dict = Depends(current_user)):
+    homepage = payload.homepage or "/home"
     await db.users.update_one({"id": user["id"]}, {"$set": {"homepage": homepage}})
     return {"homepage": homepage}
 
@@ -1003,7 +1022,7 @@ class UserPatch(BaseModel):
     color: Optional[str] = None
 
 class PasswordReset(BaseModel):
-    password: str
+    password: str = Field(..., min_length=8, max_length=128)
 
 class UserListItem(BaseModel):
     id: str
@@ -2687,7 +2706,7 @@ async def list_materiales(user: dict = Depends(require_permission("proyectos.vie
     if pending_only:
         conditions.append({"sync_status": "pending"})
     if q:
-        rx = {"$regex": q, "$options": "i"}
+        rx = {"$regex": re.escape(q), "$options": "i"}
         conditions.append({"$or": [
             {"materiales": rx}, {"cliente": rx}, {"ubicacion": rx},
             {"tecnico": rx}, {"comentarios": rx}, {"comercial": rx}, {"gestor": rx},
@@ -2711,12 +2730,12 @@ async def list_materiales(user: dict = Depends(require_permission("proyectos.vie
                 q_list.append({"project_status": {"$exists": False}})
             conditions.append({"$or": q_list})
     if year and year != "todos":
-        conditions.append({"fecha": {"$regex": year}})
+        conditions.append({"fecha": {"$regex": re.escape(year)}})
     if month and month != "todos":
         # month viene como "01" a "12", coincidir con "-MM" en fecha ISO o "/MM/" en fecha ES
         conditions.append({"$or": [
-            {"fecha": {"$regex": f"-{month}"}},
-            {"fecha": {"$regex": f"/{month}/"}},
+            {"fecha": {"$regex": re.escape(f"-{month}")}},
+            {"fecha": {"$regex": re.escape(f"/{month}/")}},
         ]})
     if not es_editor_completo:
         conditions.append({"project_status": {"$ne": "terminado"}})
@@ -3180,7 +3199,7 @@ async def stats_by_manager(
     for mgr in managers:
         query: dict = {"manager_id": mgr["id"]}
         if year and year != "todos":
-            query["fecha"] = {"$regex": year}
+            query["fecha"] = {"$regex": re.escape(year)}
         if not es_editor_completo:
             query["project_status"] = {"$ne": "terminado"}
         mats = await db.materiales.find(query, {"project_status": 1}).to_list(5000)
@@ -4481,17 +4500,43 @@ async def get_budget(bid: str, user: dict = Depends(current_budget_view)):
 
 @api_router.patch("/budgets/{bid}/status")
 async def update_budget_status(bid: str, payload: BudgetStatusUpdate, user: dict = Depends(current_budget_edit)):
-    if payload.status not in ("pendiente", "en_revision", "enviado", "aceptado", "rechazado", "facturado"):
-        raise HTTPException(422, "Estado inválido")
+    allowed_statuses = ("pendiente", "en_revision", "enviado", "aceptado", "rechazado", "facturado")
+    if payload.status not in allowed_statuses:
+        raise HTTPException(422, "Estado inválido o no reconocido por el ecosistema")
+
     b = await db.budgets.find_one({"id": bid})
     if not b:
-        raise HTTPException(404, "Presupuesto no encontrado")
-    await db.budgets.update_one({"id": bid}, {"$set": {
-        "status": payload.status,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-        "updated_by": user["email"],
-        "updated_by_name": user.get("name") or user["email"],
-    }})
+        raise HTTPException(404, "Presupuesto inexistente")
+
+    # Máquina de estados: no aceptar sin revisión previa
+    if payload.status == "aceptado" and b.get("status") not in ("enviado", "en_revision"):
+        raise HTTPException(400, "No se puede aceptar un presupuesto sin previa revisión o envío al cliente")
+    if payload.status == "enviado" and b.get("status") not in ("en_revision", "pendiente"):
+        raise HTTPException(400, "No se puede enviar un presupuesto sin revisión previa")
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    status_log = {
+        "from_status": b.get("status", "pendiente"),
+        "to_status": payload.status,
+        "changed_at": now,
+        "changed_by": user["email"],
+    }
+
+    await db.budgets.update_one(
+        {"id": bid},
+        {
+            "$set": {
+                "status": payload.status,
+                "updated_at": now,
+                "updated_by": user["email"],
+                "updated_by_name": user.get("name") or user["email"],
+            },
+            "$push": {
+                "_status_history": status_log,
+            },
+        },
+    )
     return {"ok": True, "status": payload.status}
 
 @api_router.patch("/budgets/{bid}")
@@ -5451,13 +5496,11 @@ async def sat_list(
         else:
             q["client_id"] = client_id
     if year and year != "todos":
-        q["created_at"] = {"$regex": f"^{year}"}
+        q["created_at"] = {"$regex": re.escape(f"^{year}")}
     if month:
-        # month viene como "01" a "12", coincidir con "-MM" en ISO timestamp
-        q["created_at"] = {"$regex": f"-{month}"} if not q.get("created_at") else q["created_at"]
-        # NOTA: si se pasan ambos year y month, esto pisa el year regex. Se combinan mejor así:
+        q["created_at"] = {"$regex": re.escape(f"-{month}")} if not q.get("created_at") else q["created_at"]
     if year and year != "todos" and month:
-        q["created_at"] = {"$regex": f"^{year}-{month}"}
+        q["created_at"] = {"$regex": re.escape(f"^{year}-{month}")}
     rows = await db.sat_incidents.find(q, {"_id": 0}).sort("created_at", -1).to_list(2000)
     return rows
 
@@ -5755,12 +5798,15 @@ async def sat_client_import(
     - Default behaviour = upsert by `cliente` name (case-insensitive).
     Returns {created, updated, skipped}.
     """
+    MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
     try:
         from openpyxl import load_workbook
     except Exception:
         raise HTTPException(500, "openpyxl no instalado en el servidor")
     try:
         raw = await file.read()
+        if len(raw) > MAX_UPLOAD_BYTES:
+            raise HTTPException(413, f"Archivo demasiado grande. Máximo {MAX_UPLOAD_BYTES // (1024*1024)} MB")
         import io
         wb = load_workbook(io.BytesIO(raw), data_only=True, keep_vba=False, read_only=True)
     except Exception as e:
@@ -5990,14 +6036,24 @@ async def sat_mantenimientos(user: dict = Depends(current_user)):
     return {"alertas": alertas, "agendados": agendados}
 
 
+class SATMantenimientoCreate(BaseModel):
+    cliente_id: str = ""
+    cliente: str = ""
+    fechas: list[str] = []
+    tecnicos: list[str] = []
+    tipo: str = ""
+    observaciones: str = ""
+    estado: str = "agendado"
+
+
 @api_router.post("/sat/mantenimientos")
-async def sat_mantenimiento_create(body: dict, user: dict = Depends(current_user)):
-    cliente_id = body.get("cliente_id", "")
-    cliente_name = body.get("cliente", "")
-    fechas = body.get("fechas", [])  # lista de fechas "YYYY-MM-DD"
+async def sat_mantenimiento_create(body: SATMantenimientoCreate, user: dict = Depends(current_user)):
+    cliente_id = body.cliente_id
+    cliente_name = body.cliente
+    fechas = body.fechas
     if isinstance(fechas, str):
         fechas = [fechas]
-    tecnicos = body.get("tecnicos", [])  # lista de user_ids
+    tecnicos = body.tecnicos
     if isinstance(tecnicos, str):
         tecnicos = [tecnicos]
 
@@ -6006,7 +6062,7 @@ async def sat_mantenimiento_create(body: dict, user: dict = Depends(current_user
     direccion = cl.get("direccion", "") if cl else ""
     contacto = cl.get("representante", "") if cl else ""
     telefono = cl.get("telefono", "") if cl else ""
-    tipo_mtto = body.get("tipo", "") or (cl.get("tipo_mantenimiento", "") if cl else "")
+    tipo_mtto = body.tipo or (cl.get("tipo_mantenimiento", "") if cl else "")
 
     doc = {
         "id": str(uuid.uuid4()),
@@ -6014,8 +6070,8 @@ async def sat_mantenimiento_create(body: dict, user: dict = Depends(current_user
         "cliente": cliente_name,
         "fechas": fechas,
         "tipo": tipo_mtto,
-        "observaciones": body.get("observaciones", ""),
-        "estado": body.get("estado", "agendado"),
+        "observaciones": body.observaciones,
+        "estado": body.estado,
         "created_by": user.get("email", ""),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -6212,7 +6268,13 @@ async def chat_send_message(cid: str, payload: MessageCreate, user: dict = Depen
 
 @api_router.get("/chats/unread-total")
 async def chat_unread_total(user: dict = Depends(current_user)):
+    user_chats = await db.chats.find(
+        {"participant_ids": user["id"]},
+        {"_id": 0, "id": 1},
+    ).to_list(200)
+    chat_ids = [c["id"] for c in user_chats]
     total = await db.messages.count_documents({
+        "chat_id": {"$in": chat_ids},
         "sender_id": {"$ne": user["id"]},
         "read_by": {"$ne": user["id"]},
     })
@@ -7269,6 +7331,8 @@ async def csrf_protection_middleware(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss:; media-src 'self' blob:"
     return response
 
 cors_origins = ["http://localhost:8082", FRONTEND_URL]

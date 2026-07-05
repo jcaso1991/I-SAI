@@ -114,6 +114,12 @@ export default function PlanEditor() {
   const [dirty, setDirty] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ w: 1000, h: 1000 });
   const [toolbarOpen, setToolbarOpen] = useState(false);
+  const [showColorPopup, setShowColorPopup] = useState(false);
+  const [bgOpacity, setBgOpacity] = useState(0.75);
+  const [snapEnabled, setSnapEnabled] = useState(false);
+  const [showLayers, setShowLayers] = useState(false);
+  const [hiddenLayerIds, setHiddenLayerIds] = useState<Set<string>>(new Set());
+  const DOT_GRID_SPACING = 20;
   const [zoom, setZoomState] = useState(1);
   const MIN_ZOOM = 0.15;
   const MAX_ZOOM = 5;
@@ -908,43 +914,130 @@ export default function PlanEditor() {
       )}
       {(isWide || toolbarOpen) && (
       isWide ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={s.toolbar}
-          contentContainerStyle={{ gap: 8, paddingHorizontal: 12, alignItems: "center" }}
-        >
-          <ToolBtn icon="pencil" active={tool === "pencil"} onPress={() => { setTool("pencil"); clearSelection(); }} label="Lápiz" />
-          <ToolBtn icon="remove-outline" active={tool === "straight"} onPress={() => { setTool("straight"); clearSelection(); }} label="Línea" />
-          <ToolBtn icon="square-outline" active={tool === "rect"} onPress={() => { setTool("rect"); clearSelection(); }} label="Cuadro" />
-          <ToolBtn icon="ellipse-outline" active={tool === "circle"} onPress={() => { setTool("circle"); clearSelection(); }} label="Círculo" />
-          <ToolBtn icon="text" active={tool === "text"} onPress={() => { setTool("text"); clearSelection(); }} label="Texto" />
-          <ToolBtn icon="create" active={false} onPress={() => { setShowSignatureModal(true); }} label="Firma" />
-          <ToolBtn icon="cube" active={tool === "stamp"} onPress={() => { setTool("stamp"); clearSelection(); setShowStampPicker(true); }} label={currentStamp?.name || "Pieza"} />
-          <ToolBtn icon="trash-outline" active={tool === "eraser"} onPress={() => { setTool("eraser"); clearSelection(); }} label="Borrar" />
-          <ToolBtn icon="hand-left-outline" active={tool === "select"} onPress={() => { setTool("select"); }} label="Seleccionar" />
-          <View style={{ width: 1, height: 28, backgroundColor: COLORS.border, marginHorizontal: 4 }} />
-          <TouchableOpacity style={s.toolBtn} onPress={background ? removeBackground : pickBackground} disabled={bgUploading}>
-            {bgUploading ? (
-              <ActivityIndicator color={COLORS.primary} />
-            ) : (
-              <Ionicons name={background ? "close-circle" : "image"} size={20} color={background ? COLORS.errorText : COLORS.primary} />
-            )}
-            <Text style={[s.toolBtnLabel, { color: background ? COLORS.errorText : COLORS.primary }]}>
-              {background ? "Sin fondo" : "Fondo"}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={s.toolBtn} onPress={clearAll}>
-            <Ionicons name="refresh" size={20} color={COLORS.errorText} />
-            <Text style={[s.toolBtnLabel, { color: COLORS.errorText }]}>Limpiar</Text>
-          </TouchableOpacity>
-          {isAdmin && (
-            <TouchableOpacity style={s.toolBtn} onPress={() => setShowStampManager(true)}>
-              <Ionicons name="add-circle" size={20} color={COLORS.primary} />
-              <Text style={[s.toolBtnLabel, { color: COLORS.primary }]}>Sellos</Text>
+        <View style={s.floatingToolbar}>
+          <View style={s.toolGroup}>
+            {[
+              { icon: "pencil-outline", tool: "pencil" as Tool, tip: "Lápiz" },
+              { icon: "remove-outline", tool: "straight" as Tool, tip: "Línea" },
+              { icon: "square-outline", tool: "rect" as Tool, tip: "Cuadro" },
+              { icon: "ellipse-outline", tool: "circle" as Tool, tip: "Círculo" },
+              { icon: "text-outline", tool: "text" as Tool, tip: "Texto" },
+            ].map(({ icon, tool: t, tip }) => (
+              <View key={t} style={{ position: "relative" } as any}>
+                <TouchableOpacity
+                  style={[s.glassTool, tool === t && s.glassToolActive]}
+                  onPress={() => { setTool(t); clearSelection(); setShowColorPopup(tool === t ? !showColorPopup : true); }}
+                  title={tip}
+                >
+                  <Ionicons name={icon as any} size={18} color={tool === t ? "#60A5FA" : "rgba(255,255,255,0.4)"} />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+          <View style={s.toolDivider} />
+          <View style={s.toolGroup}>
+            {[
+              { icon: "create-outline", tip: "Firma", action: () => setShowSignatureModal(true), active: false },
+              { icon: "cube-outline", tip: "Piezas", action: () => { setTool("stamp"); clearSelection(); setShowStampPicker(true); }, active: tool === "stamp" },
+              { icon: "trash-outline", tip: "Borrar", action: () => { setTool("eraser"); clearSelection(); }, active: tool === "eraser" },
+              { icon: "hand-left-outline", tip: "Seleccionar", action: () => setTool("select"), active: tool === "select" },
+            ].map(({ icon, tip, action, active }) => (
+              <TouchableOpacity
+                key={tip}
+                style={[s.glassTool, active && s.glassToolActive]}
+                onPress={action}
+                title={tip}
+              >
+                <Ionicons name={icon as any} size={18} color={active ? "#60A5FA" : "rgba(255,255,255,0.4)"} />
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={s.toolDivider} />
+          <View style={s.toolGroup}>
+            <TouchableOpacity style={[s.glassTool, snapEnabled && s.glassToolActive]} onPress={() => setSnapEnabled(!snapEnabled)} title="Imán">
+              <Ionicons name="magnet-outline" size={18} color={snapEnabled ? "#60A5FA" : "rgba(255,255,255,0.4)"} />
             </TouchableOpacity>
+            <TouchableOpacity style={[s.glassTool, showLayers && s.glassToolActive]} onPress={() => setShowLayers(!showLayers)} title="Capas">
+              <Ionicons name="layers-outline" size={18} color={showLayers ? "#60A5FA" : "rgba(255,255,255,0.4)"} />
+            </TouchableOpacity>
+            <TouchableOpacity style={s.glassTool} onPress={background ? removeBackground : pickBackground} disabled={bgUploading} title={background ? "Quitar fondo" : "Fondo"}>
+              {bgUploading ? <ActivityIndicator color="#60A5FA" size={14} /> : <Ionicons name={background ? "close-circle-outline" : "image-outline"} size={18} color={background ? "#EF4444" : "rgba(255,255,255,0.4)"} />}
+            </TouchableOpacity>
+            <TouchableOpacity style={s.glassTool} onPress={clearAll} title="Limpiar">
+              <Ionicons name="refresh-outline" size={18} color="rgba(255,255,255,0.4)" />
+            </TouchableOpacity>
+            {isAdmin && (
+              <TouchableOpacity style={s.glassTool} onPress={() => setShowStampManager(true)} title="Sellos">
+                <Ionicons name="add-circle-outline" size={18} color="rgba(255,255,255,0.4)" />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Color/thickness popup */}
+          {showColorPopup && (tool !== "select" && tool !== "eraser") && (
+            <View style={s.colorPopup}>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4, justifyContent: "center" }}>
+                {PALETTE.map((c) => (
+                  <TouchableOpacity
+                    key={c.value}
+                    onPress={() => {
+                      if (selectedIds.length > 0) recolorSelected(c.value);
+                      setStrokeColor(c.value);
+                    }}
+                    style={[s.colorDotSmall, { backgroundColor: c.value }, c.value === "#FFFFFF" && { borderWidth: 1, borderColor: "rgba(255,255,255,0.2)" }, strokeColor === c.value && s.colorDotSmallActive]}
+                  />
+                ))}
+              </View>
+              <View style={{ flexDirection: "row", gap: 4, justifyContent: "center", marginTop: 6 }}>
+                {STROKE_WIDTHS.map((w) => (
+                  <TouchableOpacity key={w.value} style={[s.widthChipSmall, strokeW === w.value && s.widthChipSmallActive]} onPress={() => setStrokeW(w.value)}>
+                    <View style={{ width: 18, height: w.value + 1, backgroundColor: strokeW === w.value ? "#60A5FA" : "rgba(255,255,255,0.4)", borderRadius: 2 }} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {tool === "stamp" && (
+                <View style={{ flexDirection: "row", gap: 4, justifyContent: "center", marginTop: 6 }}>
+                  {[40, 80, 120, 180].map((v) => (
+                    <TouchableOpacity key={v} onPress={() => setSize(v)} style={[s.widthChipSmall, size === v && s.widthChipSmallActive]}>
+                      <Text style={{ fontSize: 10, fontWeight: "600", color: size === v ? "#60A5FA" : "rgba(255,255,255,0.4)" }}>{v}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
           )}
-        </ScrollView>
+
+          {/* Layer panel */}
+          {showLayers && (
+            <View style={s.layerPanel}>
+              <Text style={{ fontSize: 10, fontWeight: "700", color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Capas</Text>
+              {[{ id: "bg", label: "Fondo" }, { id: "draw", label: "Dibujo" }, { id: "annotate", label: "Anotaciones" }].map((layer) => (
+                <TouchableOpacity key={layer.id} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 4 }} onPress={() => {
+                  setHiddenLayerIds((prev) => { const next = new Set(prev); if (next.has(layer.id)) next.delete(layer.id); else next.add(layer.id); return next; });
+                }}>
+                  <Ionicons name={hiddenLayerIds.has(layer.id) ? "eye-off-outline" : "eye-outline"} size={14} color={hiddenLayerIds.has(layer.id) ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.5)"} />
+                  <Text style={{ fontSize: 11, color: hiddenLayerIds.has(layer.id) ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.5)" }}>{layer.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* BG opacity slider */}
+          {background && (
+            <View style={s.opacitySlider}>
+              <Ionicons name="contrast-outline" size={12} color="rgba(255,255,255,0.3)" />
+              <input
+                type="range"
+                min={10}
+                max={100}
+                value={Math.round(bgOpacity * 100)}
+                onChange={(e) => setBgOpacity(Number(e.target.value) / 100)}
+                style={{ flex: 1, accentColor: "#60A5FA", height: 2, marginLeft: 6 }}
+              />
+              <Text style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", minWidth: 28, textAlign: "right" }}>{Math.round(bgOpacity * 100)}%</Text>
+            </View>
+          )}
+        </View>
       ) : (
         <View style={s.toolDropdown}>
           {[
@@ -1044,70 +1137,6 @@ export default function PlanEditor() {
         </View>
       )}
 
-      {/* Color + stroke-width row: applies to pencil/rect/circle/stamp.
-          If a shape is selected, tapping a color recolors it; otherwise it becomes the default for new drawings. */}
-      <View style={s.palette}>
-        <Text style={s.paletteLabel}>
-          {selectedIds.length > 0 ? `Color selección (${selectedIds.length})` : "Color"}
-        </Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, alignItems: "center" }}>
-          {PALETTE.map((c) => {
-            const active = (selectedShape
-              ? (selectedShape.type === "stamp" ? selectedShape.color : (selectedShape as any).stroke) === c.value
-              : strokeColor === c.value);
-            return (
-              <TouchableOpacity
-                key={c.value}
-                testID={`color-${c.value}`}
-                onPress={() => {
-                  if (selectedIds.length > 0) {
-                    // Apply to every selected shape (works for single or many).
-                    recolorSelected(c.value);
-                  }
-                  setStrokeColor(c.value);
-                }}
-                style={[
-                  s.colorDot,
-                  { backgroundColor: c.value },
-                  c.value === "#FFFFFF" && { borderWidth: 2, borderColor: COLORS.border },
-                  active && s.colorDotActive,
-                ]}
-              />
-            );
-          })}
-        </ScrollView>
-        <View style={s.widthGroup}>
-          {STROKE_WIDTHS.map((w) => (
-            <TouchableOpacity
-              key={w.value}
-              testID={`width-${w.value}`}
-              style={[s.widthChip, strokeW === w.value && s.widthChipActive]}
-              onPress={() => setStrokeW(w.value)}
-            >
-              <View style={[s.widthDot, { height: w.value + 1 }, strokeW === w.value && { backgroundColor: "#fff" }]} />
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      {/* Size control for stamp tool */}
-      {tool === "stamp" && (
-        <View style={s.sizeRow}>
-          <Text style={s.sizeLabel}>Tamaño: {size}px</Text>
-          <View style={s.sizeBtns}>
-            {[40, 80, 120, 180].map((v) => (
-              <TouchableOpacity
-                key={v}
-                onPress={() => setSize(v)}
-                style={[s.sizeChip, size === v && s.sizeChipActive]}
-              >
-                <Text style={[s.sizeChipText, size === v && { color: "#fff" }]}>{v}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-      )}
-
       {/* Canvas */}
       <View
         ref={canvasRef}
@@ -1143,13 +1172,25 @@ export default function PlanEditor() {
                   {...panResponder.panHandlers}
                 >
                   <Svg width="100%" height="100%" viewBox={`0 0 ${canvasSize.w} ${canvasSize.h}`} pointerEvents="none">
+                    {/* Dot grid background */}
+                    {Array.from({ length: Math.floor(canvasSize.h / DOT_GRID_SPACING) + 1 }).map((_, row) =>
+                      Array.from({ length: Math.floor(canvasSize.w / DOT_GRID_SPACING) + 1 }).map((_, col) => (
+                        <Circle
+                          key={`${row}-${col}`}
+                          cx={col * DOT_GRID_SPACING}
+                          cy={row * DOT_GRID_SPACING}
+                          r={1}
+                          fill="rgba(255,255,255,0.06)"
+                        />
+                      ))
+                    )}
                     {background && (
                       <SvgImage
                         x={0} y={0}
                         width={canvasSize.w} height={canvasSize.h}
                         href={background.data_uri}
                         preserveAspectRatio="xMidYMid meet"
-                        opacity={0.75}
+                        opacity={bgOpacity}
                       />
                     )}
                     {shapes.map((sh) => renderShape(sh, selectedIds.includes(sh.id)))}
@@ -1178,13 +1219,24 @@ export default function PlanEditor() {
               {...panResponder.panHandlers}
             >
               <Svg width="100%" height="100%" viewBox={`0 0 ${canvasSize.w} ${canvasSize.h}`} pointerEvents="none">
+                {Array.from({ length: Math.floor(canvasSize.h / DOT_GRID_SPACING) + 1 }).map((_, row) =>
+                  Array.from({ length: Math.floor(canvasSize.w / DOT_GRID_SPACING) + 1 }).map((_, col) => (
+                    <Circle
+                      key={`n-${row}-${col}`}
+                      cx={col * DOT_GRID_SPACING}
+                      cy={row * DOT_GRID_SPACING}
+                      r={1}
+                      fill="rgba(255,255,255,0.06)"
+                    />
+                  ))
+                )}
                 {background && (
                   <SvgImage
                     x={0} y={0}
                     width={canvasSize.w} height={canvasSize.h}
                     href={background.data_uri}
                     preserveAspectRatio="xMidYMid meet"
-                    opacity={0.75}
+                    opacity={bgOpacity}
                   />
                 )}
                 {shapes.map((sh) => renderShape(sh, selectedIds.includes(sh.id)))}
@@ -2131,5 +2183,45 @@ const s = StyleSheet.create({
   stampPreviewSm: {
     width: 50, height: 50, backgroundColor: COLORS.canvasPaper, borderRadius: ios.radius.sm,
     alignItems: "center", justifyContent: "center",
+  },
+
+  // --- Floating toolbar ---
+  floatingToolbar: {
+    position: "absolute", top: 12, left: 12, zIndex: 20,
+    borderRadius: 18, padding: 8, gap: 6, minWidth: 44,
+    backgroundColor: "rgba(15,23,42,0.75)",
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.08)",
+    ...Platform.select({ web: { backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" } as any }),
+  },
+  toolGroup: { gap: 4, alignItems: "center" },
+  toolDivider: { width: 28, height: 1, backgroundColor: "rgba(255,255,255,0.06)", alignSelf: "center", marginVertical: 4 },
+  glassTool: {
+    width: 36, height: 36, borderRadius: 10,
+    alignItems: "center", justifyContent: "center",
+  },
+  glassToolActive: { backgroundColor: "rgba(59,130,246,0.12)" },
+  colorPopup: {
+    marginTop: 4, padding: 8,
+    backgroundColor: "rgba(15,23,42,0.85)",
+    borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)",
+    ...Platform.select({ web: { backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" } as any }),
+  },
+  colorDotSmall: { width: 22, height: 22, borderRadius: 11 },
+  colorDotSmallActive: { borderWidth: 2, borderColor: "#60A5FA" },
+  widthChipSmall: {
+    width: 28, height: 20, borderRadius: 6,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+  widthChipSmallActive: { backgroundColor: "rgba(59,130,246,0.15)" },
+  layerPanel: {
+    marginTop: 4, padding: 10,
+    backgroundColor: "rgba(15,23,42,0.85)",
+    borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)",
+    ...Platform.select({ web: { backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" } as any }),
+  },
+  opacitySlider: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    marginTop: 6, paddingHorizontal: 4,
   },
 });

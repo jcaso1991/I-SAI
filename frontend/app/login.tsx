@@ -7,6 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Ionicons } from "@expo/vector-icons";
 import { api, setToken, COLORS, BACKEND_URL } from "../src/api";
 import { useThemedStyles } from "../src/theme";
 import { ios, fontStyle } from "../src/ui/iosTheme";
@@ -172,7 +173,10 @@ export default function Login() {
               {loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={s.btnPrimaryText}>ENTRAR</Text>
+                <>
+                  <Ionicons name="log-in-outline" size={20} color="#fff" />
+                  <Text style={s.btnPrimaryText}>Entrar</Text>
+                </>
               )}
             </TouchableOpacity>
 
@@ -185,7 +189,10 @@ export default function Login() {
               {msLoading ? (
                 <ActivityIndicator color={COLORS.text} />
               ) : (
-                <Text style={s.btnMicrosoftText}>{msEnabled === false ? "Microsoft no configurado" : "Iniciar sesión con Microsoft"}</Text>
+                <>
+                  <Ionicons name="logo-windows" size={20} color="#0078D4" />
+                  <Text style={s.btnMicrosoftText}>{msEnabled === false ? "Microsoft no configurado" : "Iniciar sesión con Microsoft"}</Text>
+                </>
               )}
             </TouchableOpacity>
 
@@ -243,38 +250,44 @@ const useS = () =>
   },
   input: {
     height: 56,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1.5,
+    backgroundColor: COLORS.readonly,
+    borderWidth: 1,
     borderColor: COLORS.borderInput,
-    borderRadius: ios.radius.md,
+    borderRadius: ios.radius.lg,
     paddingHorizontal: 20,
     ...fontStyle("body"),
     color: COLORS.text,
   },
   btnPrimary: {
-    height: 56,
+    height: 54,
     backgroundColor: COLORS.primary,
-    borderRadius: ios.radius.card,
+    borderRadius: ios.radius.lg,
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row", gap: 8,
     marginTop: ios.spacing.xxl,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  btnDisabled: { opacity: 0.6 },
+  btnDisabled: { opacity: 0.5 },
   btnPrimaryText: {
     color: "#fff",
     ...fontStyle("callout"),
-    fontWeight: "800",
-    letterSpacing: 0.5,
+    fontWeight: "700",
   },
   btnMicrosoft: {
-    height: 56,
+    height: 54,
     backgroundColor: COLORS.surface,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: ios.radius.card,
+    borderRadius: ios.radius.lg,
+    flexDirection: "row", gap: 10,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: ios.spacing.sm,
+    marginTop: ios.spacing.md,
   },
   btnMicrosoftText: {
     ...fontStyle("body"),

@@ -1735,36 +1735,71 @@ function DraggableEvent({
 
   const hasMaterial = !!event.material_id;
   const isRecurring = event.recurrence && event.recurrence.type !== "none";
-  // Determine color based on first assigned user's color, fallback to palette by material
   const userColor = event.assigned_users && event.assigned_users.length > 0
     ? event.assigned_users[0].color
     : null;
   const baseColor = userColor || (hasMaterial ? COLORS.primary : "#6366F1");
-  const bgTint = baseColor + "18";
-  // Horizontal overlap layout (side-by-side + expand-to-fill + right gap).
-  // Leave ~22% empty on the right of the RIGHTMOST event of each cluster so
-  // the user can easily click&drag there to create a new overlapping event.
+  const bgTint = baseColor + "14";
+
   const colInfo = layout || { col: 0, total: 1, span: 1 };
-  // Column layout → equal-width slices of the day column so multi-assignee
-  // events ALWAYS look the same size, regardless of how many columns the
-  // day has. We still reserve a bit of room on the right of the day column
-  // (for scroll/gutter area) so single events match the previous look.
-  const RIGHT_RESERVE_PCT = 22;
+  const RIGHT_RESERVE_PCT = colInfo.total > 1 ? 4 : 8;
   const availWidth = 100 - RIGHT_RESERVE_PCT;
   const perCol = availWidth / colInfo.total;
-  const gapPct = colInfo.total > 1 ? 0.6 : 0;
+  const gapPct = colInfo.total > 1 ? 0.5 : 0;
   const widthPct = perCol * colInfo.span - gapPct;
   const leftPct = colInfo.col * perCol;
 
-  // Status-driven visual treatment:
-  //   - completed           → dim the card (low opacity + grey overlay)
-  //   - pending_completion  → highlight with a thick coloured border + glow
   const st = event.status || "in_progress";
   const isCompleted = st === "completed";
   const isPending = st === "pending_completion";
 
-  const dynFontSize = height < 30 ? 9 : height < 50 ? 10 : 11;
-  const maxTitleLines = Math.max(1, Math.floor(height / 16));
+  const isVeryNarrow = boxWidth > 0 && boxWidth < 70;
+  const fontTitleSize = isVeryNarrow ? 9 : (height < 34 ? 10 : height < 52 ? 11 : 13);
+  const fontMetaSize = isVeryNarrow ? 8 : (height < 40 ? 9 : 11);
+  const maxTitleLines = Math.max(1, Math.floor((height - 14) / 16));
+
+  const renderContent = () => (
+    <View style={{ flex: 1, justifyContent: "space-between", minWidth: 0 }}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        {event.assigned_users && event.assigned_users.length > 0 && (
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 2, minWidth: 0 }}>
+            <Text
+              style={[s.eventAssignee, { color: baseColor, fontSize: fontMetaSize, fontWeight: "700", flexShrink: 1 }]}
+              numberOfLines={1}
+            >
+              👤 {event.assigned_users.map((u) => u.name || u.email.split("@")[0]).join(", ")}
+            </Text>
+          </View>
+        )}
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 2, marginVertical: 1, minWidth: 0 }}>
+          {isRecurring && !isVeryNarrow && <Ionicons name="repeat" size={10} color={COLORS.text} style={{ marginTop: 2 }} />}
+          <Text
+            style={[s.eventTitle, { color: COLORS.text, fontWeight: "700", fontSize: fontTitleSize, lineHeight: fontTitleSize + 2, flex: 1 }]}
+            numberOfLines={maxTitleLines}
+          >
+            {event.title}
+          </Text>
+        </View>
+      </View>
+      {height >= 48 && (
+        <View style={{ marginTop: 3, borderTopWidth: ios.hairline, borderTopColor: COLORS.border + "33", paddingTop: 2, gap: 1 }}>
+          <Text style={[s.eventTime, { fontSize: fontMetaSize - 0.5, color: COLORS.textSecondary, fontWeight: "600" }]} numberOfLines={1}>
+            {isVeryNarrow ? "" : "⏰ "}{fmtTime(new Date(event.start_at))}-{fmtTime(new Date(event.end_at))}
+          </Text>
+          {!compact && event.material && event.material.ubicacion && !isVeryNarrow && (
+            <TouchableOpacity
+              style={{ flexDirection: "row", alignItems: "center", gap: 2 }}
+              onPress={() => openMaps(`${event.material.ubicacion}, ${event.material.cliente || ""}`)}
+            >
+              <Text style={[s.eventMeta, { fontSize: fontMetaSize - 1, color: COLORS.textSecondary, flex: 1 }]} numberOfLines={1}>
+                📍 {event.material.ubicacion}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+    </View>
+  );
 
   return (
     <View
@@ -1774,179 +1809,105 @@ function DraggableEvent({
         left: `${leftPct}%`,
         width: `${widthPct}%`,
         transform: [{ translateX: leftOffset }],
-        zIndex: mode === "idle" ? (isPending ? 4 : 2) : 10,
-        elevation: mode === "idle" ? 2 : 10,
+        zIndex: mode === "idle" ? (isPending ? 5 : 2) : 12,
+        elevation: mode === "idle" ? 3 : 12,
       }}
     >
       <View
         onLayout={(e) => setBoxWidth(e.nativeEvent.layout.width)}
         style={{
-          flex: 1, borderRadius: ios.radius.sm, padding: 6, overflow: "hidden", minWidth: 0,
-          borderLeftWidth: 3,
+          flex: 1,
+          borderRadius: ios.radius.md,
+          paddingVertical: isVeryNarrow ? 4 : 7,
+          paddingHorizontal: isVeryNarrow ? 4 : 8,
+          overflow: "hidden",
+          borderLeftWidth: isVeryNarrow ? 3 : 4,
           backgroundColor: isCompleted ? COLORS.statusCompletedBg : bgTint,
           borderLeftColor: isPending ? COLORS.pendingText : baseColor,
-          borderWidth: ios.hairline, borderColor: COLORS.border,
-          opacity: mode === "move" ? 0.85 : (isCompleted ? 0.55 : 1),
+          borderWidth: ios.hairline,
+          borderColor: isPending ? COLORS.pendingText + "66" : COLORS.border,
+          opacity: mode === "move" ? 0.8 : (isCompleted ? 0.5 : 1),
           ...(isPending ? Platform.select<any>({
-            web: { boxShadow: `0 0 0 1px ${COLORS.pendingText}33, 0 2px 8px ${COLORS.pendingText}22` },
-            default: { shadowColor: COLORS.pendingText, shadowOpacity: 0.25, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
-          }) : {}),
-          // @ts-ignore web-only cursor hint
+            web: { boxShadow: `0 0 12px ${COLORS.pendingText}35, inset 0 0 0 1px ${COLORS.pendingText}22` },
+            default: { shadowColor: COLORS.pendingText, shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
+          }) : Platform.select<any>({
+            web: { boxShadow: `0 2px 6px rgba(0,0,0,0.04)` },
+            default: { shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } }
+          })),
+          // @ts-ignore
           cursor: isAdmin ? (mode === "idle" ? "grab" : "grabbing") : "pointer",
         } as any}
         {...(isAdmin && Platform.OS !== "web" ? panMove.panHandlers : {})}
         {...(isAdmin && Platform.OS === "web" ? { onMouseDown: onWebMouseDown } as any : {})}
       >
-        {/* Status badge overlay — small chip in the top-right corner */}
-        {(isCompleted || isPending) && (
-          <View pointerEvents="none" style={[
-            s.statusBadge,
-            { backgroundColor: isCompleted ? COLORS.statusCompletedFg : COLORS.pendingText },
-          ]}>
-            <Ionicons
-              name={isCompleted ? "checkmark-done" : "alert-circle"}
-              size={11} color="#fff"
-            />
+        {(isCompleted || isPending) && height >= 32 && !isVeryNarrow && (
+          <View pointerEvents="none" style={{
+            position: "absolute",
+            top: 4, right: 4,
+            width: 14, height: 14,
+            borderRadius: 7,
+            alignItems: "center", justifyContent: "center",
+            backgroundColor: isCompleted ? COLORS.statusCompletedFg : COLORS.pendingText,
+          }}>
+            <Ionicons name={isCompleted ? "checkmark-done" : "alert"} size={9} color="#fff" />
           </View>
         )}
         {isAdmin ? (
-          <View pointerEvents="none" style={{ padding: 2, paddingRight: (onCopy && boxWidth >= 90) ? 56 : 2, flex: 1, minWidth: 0 }}>
-          {/* Top: assigned user(s) */}
-          {event.assigned_users && event.assigned_users.length > 0 && (
-            <Text style={[s.eventAssignee, { color: COLORS.text, fontSize: dynFontSize }]} numberOfLines={1} adjustsFontSizeToFit>
-              👤 {event.assigned_users.map((u) => u.name || u.email.split("@")[0]).join(", ")}
-            </Text>
-          )}
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-            {isRecurring && <Ionicons name="repeat" size={10} color={COLORS.text} />}
-            <Text style={[s.eventTitle, { color: COLORS.text, flex: 1, fontSize: dynFontSize }]} numberOfLines={maxTitleLines} adjustsFontSizeToFit>{event.title}</Text>
+          <View pointerEvents="none" style={{ flex: 1 }}>
+            {renderContent()}
           </View>
-          <Text style={[s.eventTime, { fontSize: dynFontSize }]} numberOfLines={1} adjustsFontSizeToFit>{fmtTime(new Date(event.start_at))} - {fmtTime(new Date(event.end_at))}</Text>
-          {!compact && event.material && event.material.ubicacion ? (
-            <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 1 }} onPress={() => openMaps(`${event.material.ubicacion}, ${event.material.cliente || ""}`)}>
-              <Text style={[s.eventMeta, { fontSize: dynFontSize }]} numberOfLines={1} adjustsFontSizeToFit>📍 {event.material.ubicacion}</Text>
-              <Ionicons name="navigate-outline" size={12} color={COLORS.primary} />
-            </TouchableOpacity>
-          ) : null}
-          {/* Bottom: manager (gestor) */}
-          {event.manager && (
-            <Text style={[s.eventManager, { fontSize: dynFontSize }]} numberOfLines={1} adjustsFontSizeToFit>
-              🧑‍💼 {event.manager.name || event.manager.email.split("@")[0]}
-            </Text>
-          )}
-        </View>
-      ) : (
-        <TouchableOpacity onPress={onTap} activeOpacity={0.8} style={{ padding: 2, flex: 1, minWidth: 0 }}>
-          {event.assigned_users && event.assigned_users.length > 0 && (
-            <Text style={[s.eventAssignee, { color: COLORS.text, fontSize: dynFontSize }]} numberOfLines={1} adjustsFontSizeToFit>
-              👤 {event.assigned_users.map((u) => u.name || u.email.split("@")[0]).join(", ")}
-            </Text>
-          )}
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-            {isRecurring && <Ionicons name="repeat" size={10} color={COLORS.text} />}
-            <Text style={[s.eventTitle, { color: COLORS.text, flex: 1, fontSize: dynFontSize }]} numberOfLines={maxTitleLines} adjustsFontSizeToFit>{event.title}</Text>
-          </View>
-          <Text style={[s.eventTime, { fontSize: dynFontSize }]} numberOfLines={1} adjustsFontSizeToFit>{fmtTime(new Date(event.start_at))} - {fmtTime(new Date(event.end_at))}</Text>
-          {!compact && event.material && event.material.ubicacion ? (
-            <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 1 }} onPress={() => openMaps(`${event.material.ubicacion}, ${event.material.cliente || ""}`)}>
-              <Text style={[s.eventMeta, { fontSize: dynFontSize }]} numberOfLines={1} adjustsFontSizeToFit>📍 {event.material.ubicacion}</Text>
-              <Ionicons name="navigate-outline" size={12} color={COLORS.primary} />
-            </TouchableOpacity>
-          ) : null}
-          {event.manager && (
-            <Text style={[s.eventManager, { fontSize: dynFontSize }]} numberOfLines={1} adjustsFontSizeToFit>
-              🧑‍💼 {event.manager.name || event.manager.email.split("@")[0]}
-            </Text>
-          )}
-        </TouchableOpacity>
-      )}
-      {isAdmin && (
-        <>
-          {/* Top resize handle */}
-          <View
-            style={s.resizeHandleTop}
-            {...(Platform.OS !== "web" ? panResizeTop.panHandlers : {})}
-            {...(Platform.OS === "web" ? { onMouseDown: onWebResizeDown("top") } as any : {})}
-          >
-            <View style={s.resizeBar} />
-          </View>
-          {/* Bottom resize handle */}
-          <View
-            style={s.resizeHandle}
-            {...(Platform.OS !== "web" ? panResize.panHandlers : {})}
-            {...(Platform.OS === "web" ? { onMouseDown: onWebResizeDown("bottom") } as any : {})}
-          >
-            <View style={s.resizeBar} />
-          </View>
-        </>
-      )}
-    </View>
-      {isAdmin && onCopy && (() => {
-        const narrow = boxWidth === 0 || boxWidth < 90;
-        const btnSize = narrow ? 18 : 24;
-        const iconSize = narrow ? 11 : 14;
-        if (narrow) {
-          return (
-            <View style={{
-              position: "absolute", top: 2, right: 2,
-              gap: 2, alignItems: "flex-end", zIndex: 30,
-            }}>
-              <TouchableOpacity
-                onPress={() => shareWhatsApp(event)}
-                style={{
-                  width: btnSize, height: btnSize, borderRadius: 6,
-                  backgroundColor: "#25D366",
-                  alignItems: "center", justifyContent: "center",
-                }}
-                hitSlop={{ top: 6, right: 6, bottom: 6, left: 6 }}
-              >
-                <Ionicons name="logo-whatsapp" size={iconSize} color="#fff" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => onCopy(event)}
-                style={{
-                  width: btnSize, height: btnSize, borderRadius: 6,
-                  backgroundColor: COLORS.surface,
-                  alignItems: "center", justifyContent: "center",
-                  borderWidth: 1, borderColor: COLORS.border,
-                }}
-                hitSlop={{ top: 6, right: 6, bottom: 6, left: 6 }}
-              >
-                <Ionicons name="copy-outline" size={iconSize} color={COLORS.textSecondary} />
-              </TouchableOpacity>
-            </View>
-          );
-        }
-        return (
+        ) : (
+          <TouchableOpacity onPress={onTap} activeOpacity={0.8} style={{ flex: 1 }}>
+            {renderContent()}
+          </TouchableOpacity>
+        )}
+        {isAdmin && height >= 36 && !isVeryNarrow && (
           <>
-            <TouchableOpacity
-              onPress={() => shareWhatsApp(event)}
-              style={{
-                position: "absolute", top: 2, right: 30,
-                width: 22, height: 22, borderRadius: 6,
-                backgroundColor: "#25D366",
-                alignItems: "center", justifyContent: "center", zIndex: 30,
-              }}
-              hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
+            <View
+              style={s.resizeHandleTop}
+              {...(Platform.OS !== "web" ? panResizeTop.panHandlers : {})}
+              {...(Platform.OS === "web" ? { onMouseDown: onWebResizeDown("top") } as any : {})}
             >
-              <Ionicons name="logo-whatsapp" size={12} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => onCopy(event)}
-              style={{
-                position: "absolute", top: 2, right: 2,
-                width: 22, height: 22, borderRadius: 6,
-                backgroundColor: COLORS.surface,
-                alignItems: "center", justifyContent: "center", zIndex: 30,
-                borderWidth: 1, borderColor: COLORS.border,
-              }}
-              hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
+              <View style={[s.resizeBar, { backgroundColor: baseColor + "66", width: 12, height: 2, borderRadius: 1 }]} />
+            </View>
+            <View
+              style={s.resizeHandle}
+              {...(Platform.OS !== "web" ? panResize.panHandlers : {})}
+              {...(Platform.OS === "web" ? { onMouseDown: onWebResizeDown("bottom") } as any : {})}
             >
-              <Ionicons name="copy-outline" size={12} color={COLORS.textSecondary} />
-            </TouchableOpacity>
+              <View style={[s.resizeBar, { backgroundColor: baseColor + "66", width: 12, height: 2, borderRadius: 1 }]} />
+            </View>
           </>
-        );
-      })()}
+        )}
+      </View>
+      {isAdmin && onCopy && height >= 48 && boxWidth >= 90 && (
+        <View style={{
+          position: "absolute",
+          bottom: 4,
+          right: 4,
+          flexDirection: "row",
+          gap: 3,
+          zIndex: 30,
+          backgroundColor: COLORS.surface + "EE",
+          padding: 2,
+          borderRadius: ios.radius.sm,
+          borderWidth: ios.hairline,
+          borderColor: COLORS.border + "88",
+        }}>
+          <TouchableOpacity
+            onPress={() => shareWhatsApp(event)}
+            style={{ width: 18, height: 18, borderRadius: 4, backgroundColor: "#25D366", alignItems: "center", justifyContent: "center" }}
+          >
+            <Ionicons name="logo-whatsapp" size={10} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => onCopy(event)}
+            style={{ width: 18, height: 18, borderRadius: 4, backgroundColor: COLORS.surface, alignItems: "center", justifyContent: "center" }}
+          >
+            <Ionicons name="copy-outline" size={10} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }

@@ -5,7 +5,6 @@ import { useBreakpoint } from "../../useBreakpoint";
 import { useThemedStyles } from "../../theme";
 import { useS } from "./DashboardStyles";
 
-
 interface DashboardTileProps {
   testID: string;
   icon: string;
@@ -20,25 +19,44 @@ export default function DashboardTile({
 }: DashboardTileProps) {
   const { isWide } = useBreakpoint();
   const s = useThemedStyles(useS);
-  const glow = Platform.select({
-    web: { boxShadow: `0 0 20px ${accent}33, 0 0 40px ${accent}1A` } as any,
+
+  const webStyle = Platform.select({
+    web: {
+      transition: "transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease",
+      cursor: "pointer",
+    } as any,
     default: {},
   });
+
   return (
     <TouchableOpacity
       testID={testID}
-      style={[s.tile, isWide && s.tileWide, glow]}
+      style={[
+        s.tile,
+        isWide && s.tileWide,
+        webStyle
+      ]}
       onPress={onPress}
-      activeOpacity={0.8}
+      activeOpacity={0.7}
     >
-      <View style={[s.tileIcon, isWide && s.tileIconWide, { backgroundColor: accent + "1F" }, Platform.select({ web: { boxShadow: `0 0 12px ${accent}33` } as any, default: {} })]}>
+      <View style={[
+        s.tileIcon,
+        isWide && s.tileIconWide,
+        { backgroundColor: accent + "12" }
+      ]}>
         {iconFamily === "ion" ? (
-          <Ionicons name={icon as any} size={isWide ? 24 : 20} color={accent} />
+          <Ionicons name={icon as any} size={isWide ? 22 : 20} color={accent} />
         ) : (
-          <MaterialCommunityIcons name={icon as any} size={isWide ? 26 : 20} color={accent} />
+          <MaterialCommunityIcons name={icon as any} size={isWide ? 24 : 20} color={accent} />
         )}
       </View>
-      <Text style={[s.tileTitle, isWide && s.tileTitleWide]} numberOfLines={1}>{title}</Text>
+
+      <Text
+        style={[s.tileTitle, isWide && s.tileTitleWide]}
+        numberOfLines={2}
+      >
+        {title}
+      </Text>
     </TouchableOpacity>
   );
 }
