@@ -1,9 +1,9 @@
-import { useState, useCallback } from "react";
-import { View, Text, TouchableOpacity, ActivityIndicator, Platform } from "react-native";
+import { useState, useCallback, useEffect } from "react";
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Platform } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { Circle, G } from "react-native-svg";
-import { api, COLORS } from "../../api";
+import { api, COLORS, getToken } from "../../api";
 import { useS } from "./DashboardStyles";
 import { ios } from "../../ui/iosTheme";
 import { useBreakpoint } from "../../useBreakpoint";
@@ -132,6 +132,27 @@ export default function DashboardData() {
   const router = useRouter();
   const [dash, setDash] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  // Widget visibility (personalizable, persistido en localStorage)
+  const [widgets, setWidgets] = useState<Record<string, boolean>>({
+    proyectos: true, horas: true, overhours: true, managers: true,
+    week: true, budget: true, sat: true, availability: true,
+  });
+
+  // Cargar/guardar widgets del localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage?.getItem?.("dashboard_widgets_v1");
+      if (saved) setWidgets((prev) => ({ ...prev, ...JSON.parse(saved) }));
+    } catch {}
+  }, []);
+  const toggleWidget = (key: string) => {
+    setWidgets((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try { localStorage?.setItem?.("dashboard_widgets_v1", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+  const isVisible = (key: string) => widgets[key] !== false;
   const s = useS();
 
   useFocusEffect(useCallback(() => {
@@ -171,7 +192,7 @@ export default function DashboardData() {
   return (
     <View style={{ gap: 16, marginBottom: 8 }}>
       <TechAvailability3W dash={dash} router={router} />
-      <WeekSummary dash={dash} router={router} />
+      <TechHours />
       <TodayRow dash={dash} router={router} />
       <View style={{ flexDirection: "row", gap: 16, flexWrap: "wrap" }}>
         <View style={{ flex: 1, minWidth: 280 }}><ProjectsByStatus dash={dash} router={router} /></View>
@@ -704,76 +725,133 @@ function CriticalAlerts({ dash, router }: { dash: any; router: any }) {
   );
 }
 
-function WeekSummary({ dash, router }: { dash: any; router: any }) {
+function TechHours() {
+  const [data, setData] = useState<any>(null);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const s = useS();
-  const w = dash?.week_summary;
-  if (!w) return null;
-  const pct = w.hours_planned_week > 0 ? Math.round((w.hours_real_week / w.hours_planned_week) * 100) : 0;
+  const { isWide } = useBreakpoint();
+
+  const load = async (year: number, month: number) => {
+    try {
+      const token = await getToken();
+      const base = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/+$/, "");
+      const res = await fetch(`${base}/api/dashboard/tecnico-hours?year=${year}&month=${month}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) setData(await res.json());
+    } catch {}
+  };
+
+  useEffect(() => { load(selectedYear, selectedMonth); }, [selectedYear, selectedMonth]);
+
+  const downloadXLSX = async (isYearly: boolean) => {
+    try {
+      const token = await getToken();
+      const base = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/+$/, "");
+      const params = new URLSearchParams({ year: String(selectedYear), format: "xlsx" });
+      if (!isYearly) params.set("month", String(selectedMonth));
+      const res = await fetch(`${base}/api/dashboard/tecnico-hours?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const label = isYearly ? `${selectedYear}_anual` : `${selectedYear}_${String(selectedMonth).padStart(2,"0")}`;
+      a.download = `horas_tecnicos_${label}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {}
+  };
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const years = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
+  const months = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+
+  const tecnicos = data?.tecnicos || [];
+  const maxTotal = Math.max(...tecnicos.map((t: any) => t.total), 1);
 
   return (
     <View style={s.cardWrap}>
       <View style={s.cardHeader}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: ios.spacing.sm }}>
-          <Ionicons name="speedometer-outline" size={18} color={COLORS.primary} />
-          <Text style={s.cardTitle}>Resumen de la semana</Text>
+          <Ionicons name="time-outline" size={18} color={COLORS.primary} />
+          <Text style={s.cardTitle}>Horas imputadas</Text>
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <TouchableOpacity onPress={() => downloadXLSX(false)} style={{ padding: 4 }} title="Descargar mes (.xlsx)">
+            <Ionicons name="download-outline" size={18} color={COLORS.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => downloadXLSX(true)} style={{ padding: 4 }} title="Descargar año completo (.xlsx)">
+            <Ionicons name="cloud-download-outline" size={18} color={COLORS.accent} />
+          </TouchableOpacity>
         </View>
       </View>
-      <View style={{ flexDirection: "row", gap: ios.spacing.md, flexWrap: "wrap" }}>
-        <TouchableOpacity onPress={() => router.push("/calendario")} style={{
-          flex: 1, minWidth: 130, backgroundColor: COLORS.primarySoft, borderRadius: ios.radius.sm, padding: ios.spacing.md,
-          borderLeftWidth: 3, borderLeftColor: COLORS.primary,
-        }}>
-          <Text style={{ fontSize: ios.font.footnote.size, color: COLORS.textSecondary, fontWeight: "700" }}>HOY</Text>
-          <Text style={{ fontSize: 22, fontWeight: "900", color: COLORS.text, marginTop: ios.spacing.xs }}>{w.events_today}</Text>
-          <Text style={{ fontSize: ios.font.footnote.size, color: COLORS.textSecondary }}>eventos</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => router.push("/calendario")} style={{
-          flex: 1, minWidth: 130, backgroundColor: COLORS.syncedBg, borderRadius: ios.radius.sm, padding: ios.spacing.md,
-          borderLeftWidth: 3, borderLeftColor: COLORS.syncedText,
-        }}>
-          <Text style={{ fontSize: ios.font.footnote.size, color: COLORS.textSecondary, fontWeight: "700" }}>ESTA SEMANA</Text>
-          <Text style={{ fontSize: 22, fontWeight: "900", color: COLORS.text, marginTop: ios.spacing.xs }}>{w.events_week}</Text>
-          <Text style={{ fontSize: ios.font.footnote.size, color: COLORS.textSecondary }}>eventos</Text>
-        </TouchableOpacity>
-        <View style={{
-          flex: 1.4, minWidth: 180, backgroundColor: COLORS.pillPurpleBg, borderRadius: ios.radius.sm, padding: ios.spacing.md,
-          borderLeftWidth: 3, borderLeftColor: COLORS.pillPurpleText,
-        }}>
-          <Text style={{ fontSize: ios.font.footnote.size, color: COLORS.textSecondary, fontWeight: "700" }}>HORAS SEMANA</Text>
-          <View style={{ flexDirection: "row", alignItems: "baseline", gap: ios.spacing.xs, marginTop: ios.spacing.xs }}>
-            <Text style={{ fontSize: 22, fontWeight: "900", color: COLORS.text }}>{w.hours_real_week}h</Text>
-            <Text style={{ fontSize: ios.font.subhead.size, color: COLORS.textSecondary }}>/ {w.hours_planned_week}h</Text>
-          </View>
-          <View style={{ height: 6, backgroundColor: COLORS.pillPurpleBg, borderRadius: ios.radius.sm, marginTop: ios.spacing.sm, overflow: "hidden" }}>
-            <View style={{ height: 6, width: `${Math.min(pct, 100)}%`, backgroundColor: COLORS.pillPurpleText, borderRadius: ios.radius.sm }} />
-          </View>
-          <Text style={{ fontSize: ios.font.caption.size, color: COLORS.pillPurpleText, fontWeight: "700", marginTop: ios.spacing.xs }}>{pct}% completado</Text>
-        </View>
-        <View style={{
-          flex: 1.2, minWidth: 160, backgroundColor: COLORS.pendingBg, borderRadius: ios.radius.sm, padding: ios.spacing.md,
-          borderLeftWidth: 3, borderLeftColor: CL.orange,
-        }}>
-          <Text style={{ fontSize: ios.font.footnote.size, color: COLORS.textSecondary, fontWeight: "700" }}>TÉCNICOS · MES</Text>
-          {(() => {
-            const t3 = dash?.tech_three_weeks;
-            const totalTech = t3?.technicians?.length || 0;
-            const totalFree = (t3?.technicians || []).reduce((acc: number, x: any) => acc + (x.free_days || 0), 0);
-            const totalSlots = totalTech * (t3?.total_workdays || 0);
-            const pctFree = totalSlots > 0 ? Math.round((totalFree / totalSlots) * 100) : 0;
-            return (
-              <>
-                <View style={{ flexDirection: "row", alignItems: "baseline", gap: ios.spacing.xs, marginTop: ios.spacing.xs }}>
-                  <Text style={{ fontSize: 22, fontWeight: "900", color: CL.orange }}>{totalFree}</Text>
-                  <Text style={{ fontSize: ios.font.subhead.size, color: COLORS.textSecondary }}>días libres</Text>
+
+      {/* Filtros año/mes */}
+      <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+        <select
+          value={String(selectedYear)}
+          onChange={(e: any) => setSelectedYear(Number(e.target.value))}
+          style={{ padding: 6, borderRadius: 6, borderColor: COLORS.border, fontSize: 13, color: COLORS.text, backgroundColor: COLORS.surface } as any}
+        >
+          {years.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 4 }}>
+          {months.map((m, i) => (
+            <TouchableOpacity
+              key={m}
+              onPress={() => setSelectedMonth(i + 1)}
+              style={{
+                paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14,
+                backgroundColor: selectedMonth === i + 1 ? COLORS.primary : COLORS.surface,
+                borderWidth: 1, borderColor: selectedMonth === i + 1 ? COLORS.primary : COLORS.border,
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: "600", color: selectedMonth === i + 1 ? "#fff" : COLORS.textSecondary }}>{m}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      {tecnicos.length === 0 ? (
+        <Text style={{ color: COLORS.textSecondary, fontSize: 13, textAlign: "center", paddingVertical: 12 }}>
+          Sin horas imputadas en este periodo
+        </Text>
+      ) : (
+        tecnicos.map((tech: any) => {
+          const obraPct = maxTotal > 0 ? (tech.horas_obra / maxTotal) * 100 : 0;
+          const despPct = maxTotal > 0 ? (tech.horas_desplazamiento / maxTotal) * 100 : 0;
+          return (
+            <View key={tech.id} style={{ marginBottom: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: tech.color || COLORS.primary }} />
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: COLORS.text }}>{tech.name}</Text>
                 </View>
-                <Text style={{ fontSize: ios.font.footnote.size, color: COLORS.textSecondary, marginTop: ios.spacing.xs }}>
-                  {totalTech} técnicos · {pctFree}% libre
-                </Text>
-              </>
-            );
-          })()}
-        </View>
-      </View>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: COLORS.text }}>{tech.total}h</Text>
+              </View>
+              <View style={{ height: 8, backgroundColor: COLORS.bg, borderRadius: 4, overflow: "hidden", flexDirection: "row" }}>
+                <View style={{ width: `${obraPct}%`, height: 8, backgroundColor: tech.color || COLORS.primary }} />
+                <View style={{ width: `${despPct}%`, height: 8, backgroundColor: "#F59E0B" }} />
+              </View>
+              <View style={{ flexDirection: "row", gap: 12, marginTop: 2 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: tech.color || COLORS.primary }} />
+                  <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>M.O. {tech.horas_obra}h</Text>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#F59E0B" }} />
+                  <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>Despl. {tech.horas_desplazamiento}h</Text>
+                </View>
+              </View>
+            </View>
+          );
+        })
+      )}
     </View>
   );
 }

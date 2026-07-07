@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  View, Text, TouchableOpacity, StyleSheet, ScrollView,
+  View, Text, TouchableOpacity, StyleSheet, FlatList,
   ActivityIndicator, TextInput, Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -110,12 +110,14 @@ export default function ChatIndex() {
             <Text style={s.emptySub}>{search ? "No hay resultados para la búsqueda" : "Pulsa el botón superior para iniciar un chat"}</Text>
           </View>
         ) : (
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 32 }}>
-            {filteredChats.map((c) => {
+          <FlatList
+            data={filteredChats}
+            keyExtractor={(c) => c.id}
+            contentContainerStyle={{ paddingBottom: 32 }}
+            renderItem={({ item: c }) => {
               const activeColor = c.participants?.[0]?.color || COLORS.primary;
               return (
                 <TouchableOpacity
-                  key={c.id}
                   style={[s.chatRow, c.unread > 0 && s.chatRowUnread]}
                   onPress={() => router.push(`/chat/${c.id}`)}
                   activeOpacity={0.7}
@@ -143,8 +145,8 @@ export default function ChatIndex() {
                   </View>
                 </TouchableOpacity>
               );
-            })}
-          </ScrollView>
+            }}
+          />
         )}
       </SafeAreaView>
     </ResponsiveLayout>
