@@ -3,7 +3,7 @@
  * Rediseño Visual de Alta Fidelidad - Panel Ejecutivo Premium
  * ================================================================ */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, TextInput, Platform, Alert,
 } from "react-native";
@@ -22,20 +22,20 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const PREMIUM_COLORS = {
-  bg: "#0B0F19",
-  surface: "rgba(30, 41, 59, 0.4)",
-  surfaceCard: "rgba(255, 255, 255, 0.03)",
-  border: "rgba(255, 255, 255, 0.07)",
-  accent: "#3B82F6",
-  accentGlow: "rgba(59, 130, 246, 0.15)",
+  get bg() { return COLORS.bg },
+  get surface() { return COLORS.surface },
+  get surfaceCard() { return COLORS.surface },
+  get border() { return COLORS.border },
+  get accent() { return COLORS.primary },
+  get accentGlow() { return COLORS.primarySoft },
   success: "#10B981",
   successGlow: "rgba(16, 185, 129, 0.12)",
   warning: "#F59E0B",
   error: "#EF4444",
   errorGlow: "rgba(239, 68, 68, 0.12)",
-  textPrimary: "#F8FAFC",
-  textSecondary: "#94A3B8",
-  textMuted: "#64748B",
+  get textPrimary() { return COLORS.text },
+  get textSecondary() { return COLORS.textSecondary },
+  get textMuted() { return COLORS.textDisabled },
 };
 
 function fmtEur(v: number | null | undefined): string {
@@ -188,6 +188,10 @@ export default function VentasBeneficios() {
     }
   }, [data]);
 
+  const comparativa: any[] = data?.comparativa || [];
+  const maxMargen = useMemo(() => Math.max(...comparativa.map((c: any) => Math.abs(c.margen)), 1), [comparativa]);
+  const maxVenta = useMemo(() => Math.max(...comparativa.map((c: any) => c.venta), 1), [comparativa]);
+
   if (loading) {
     return (
       <SafeAreaView style={s.root}>
@@ -201,7 +205,6 @@ export default function VentasBeneficios() {
   const r = data?.resumen;
   const detalle: any[] = data?.detalle || [];
   const perdidas: any[] = data?.perdidas || [];
-  const comparativa: any[] = data?.comparativa || [];
   const years: string[] = data?.years_disponibles || [];
   const porGestor: any[] = data?.por_gestor || [];
 
@@ -248,9 +251,6 @@ export default function VentasBeneficios() {
   };
 
   const sortArrow = (col: string) => sortCol === col ? (sortDir === "desc" ? " ▼" : " ▲") : "";
-
-  const maxMargen = Math.max(...comparativa.map((c: any) => Math.abs(c.margen)), 1);
-  const maxVenta = Math.max(...comparativa.map((c: any) => c.venta), 1);
 
   return (
     <ResponsiveLayout active="ventas-beneficios">
@@ -685,7 +685,7 @@ function ObraEnCursoContent() {
 
       <View style={{ paddingHorizontal: 24, paddingVertical: 12, marginHorizontal: 24, backgroundColor: PREMIUM_COLORS.surfaceCard, borderRadius: 12, borderWidth: 1, borderColor: PREMIUM_COLORS.border }}>
         <Text style={{ fontSize: 12, fontWeight: "700", color: PREMIUM_COLORS.textPrimary, marginBottom: 8 }}>Distribución del Grado de Avance de la Cartera</Text>
-        <View style={{ height: 6, backgroundColor: "rgba(255,255,255,0.05)", borderRadius: 3, overflow: "hidden", flexDirection: "row" }}>
+        <View style={{ height: 6, backgroundColor: COLORS.border, borderRadius: 3, overflow: "hidden", flexDirection: "row" }}>
           {totalProy > 0 && (
             <>
               {holgado > 0 && <View style={{ flex: holgado, backgroundColor: PREMIUM_COLORS.success }} />}
@@ -790,13 +790,13 @@ const useS = () => StyleSheet.create({
     paddingHorizontal: 20, paddingVertical: 14,
     backgroundColor: PREMIUM_COLORS.bg, borderBottomWidth: 1, borderBottomColor: PREMIUM_COLORS.border,
   },
-  iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "rgba(255,255,255,0.02)" },
+  iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: COLORS.bg },
   headerTitle: { fontSize: 16, color: PREMIUM_COLORS.textPrimary, fontWeight: "850", letterSpacing: -0.3 },
 
   tabContainer: { paddingHorizontal: 20, paddingVertical: 10, backgroundColor: PREMIUM_COLORS.bg },
-  tabWrapper: { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 10, padding: 4, borderWidth: 1, borderColor: PREMIUM_COLORS.border },
+  tabWrapper: { flexDirection: "row", backgroundColor: COLORS.readonly, borderRadius: 10, padding: 4, borderWidth: 1, borderColor: PREMIUM_COLORS.border },
   tabButton: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 10, borderRadius: 7 },
-  tabButtonActive: { backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: PREMIUM_COLORS.border },
+  tabButtonActive: { backgroundColor: COLORS.border, borderWidth: 1, borderColor: PREMIUM_COLORS.border },
   tabText: { fontSize: 13, color: PREMIUM_COLORS.textSecondary, fontWeight: "600" },
   tabTextActive: { color: PREMIUM_COLORS.textPrimary, fontWeight: "750" },
 
@@ -805,7 +805,7 @@ const useS = () => StyleSheet.create({
 
   yearStrip: { flexDirection: "row", alignItems: "center", gap: 10 },
   stripLabel: { fontSize: 12, color: PREMIUM_COLORS.textMuted, fontWeight: "700", textTransform: "uppercase", width: 75 },
-  yearChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: "rgba(255,255,255,0.02)", borderWidth: 1, borderColor: PREMIUM_COLORS.border },
+  yearChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: PREMIUM_COLORS.border },
   yearChipActive: { backgroundColor: PREMIUM_COLORS.accentGlow, borderColor: PREMIUM_COLORS.accent },
   yearChipTxt: { fontSize: 12, color: PREMIUM_COLORS.textSecondary, fontWeight: "600" },
   yearChipActiveTxt: { color: PREMIUM_COLORS.textPrimary, fontWeight: "700" },
@@ -824,7 +824,7 @@ const useS = () => StyleSheet.create({
   legendText: { fontSize: 11, color: PREMIUM_COLORS.textSecondary, fontWeight: "500" },
   chartYear: { fontSize: 13, color: PREMIUM_COLORS.textPrimary, fontWeight: "700" },
   chartYearVal: { fontSize: 13 },
-  barBackground: { height: 8, backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 4, overflow: "hidden" },
+  barBackground: { height: 8, backgroundColor: COLORS.readonly, borderRadius: 4, overflow: "hidden" },
 
   sectionHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
   sectionTitle: { fontSize: 14, color: PREMIUM_COLORS.textPrimary, fontWeight: "800", letterSpacing: -0.2 },
@@ -836,13 +836,13 @@ const useS = () => StyleSheet.create({
 
   projectCardWrapper: { backgroundColor: PREMIUM_COLORS.surfaceCard, borderRadius: 10, borderWidth: 1, borderColor: PREMIUM_COLORS.border, marginBottom: 8, overflow: "hidden" },
   projectRow: { flexDirection: "row", alignItems: "center", padding: 14 },
-  projectRowExpanded: { backgroundColor: "rgba(255,255,255,0.01)", borderBottomWidth: 1, borderBottomColor: PREMIUM_COLORS.border },
+  projectRowExpanded: { backgroundColor: COLORS.bg, borderBottomWidth: 1, borderBottomColor: PREMIUM_COLORS.border },
   projectName: { fontSize: 13, color: PREMIUM_COLORS.textPrimary, fontWeight: "700" },
   projectSub: { fontSize: 11, color: PREMIUM_COLORS.textMuted, marginTop: 2 },
   projectAmount: { fontSize: 14, fontWeight: "850" },
   projectDelta: { fontSize: 11, color: PREMIUM_COLORS.textMuted, marginTop: 2 },
 
-  desvioDetail: { padding: 14, backgroundColor: "rgba(0,0,0,0.15)" },
+  desvioDetail: { padding: 14, backgroundColor: COLORS.bg, borderRadius: 8 },
   alertBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: PREMIUM_COLORS.errorGlow, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, alignSelf: "flex-start", marginBottom: 12 },
   desvioCause: { fontSize: 11, color: PREMIUM_COLORS.error, fontWeight: "700" },
   detailGrid: { flexDirection: "row", gap: 14 },
@@ -859,16 +859,16 @@ const useS = () => StyleSheet.create({
   cell: { fontSize: 13, color: PREMIUM_COLORS.textPrimary },
   cellSmall: { fontSize: 11, marginTop: 1 },
 
-  showMoreBtn: { alignItems: "center", paddingVertical: 12, backgroundColor: "rgba(255,255,255,0.01)", borderRadius: 8, borderWidth: 1, borderColor: PREMIUM_COLORS.border, marginTop: 4 },
+  showMoreBtn: { alignItems: "center", paddingVertical: 12, backgroundColor: COLORS.bg, borderRadius: 8, borderWidth: 1, borderColor: PREMIUM_COLORS.border, marginTop: 4 },
   showMoreText: { fontSize: 12, color: PREMIUM_COLORS.accent, fontWeight: "700" },
 
-  searchRow: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(255,255,255,0.02)", borderRadius: 10, borderWidth: 1, borderColor: PREMIUM_COLORS.border, paddingHorizontal: 12, height: 42 },
+  searchRow: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.bg, borderRadius: 10, borderWidth: 1, borderColor: PREMIUM_COLORS.border, paddingHorizontal: 12, height: 42 },
   searchInput: { flex: 1, fontSize: 13, color: PREMIUM_COLORS.textPrimary, height: 42 },
-  filterChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, backgroundColor: "rgba(255,255,255,0.02)", borderWidth: 1, borderColor: PREMIUM_COLORS.border },
+  filterChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: PREMIUM_COLORS.border },
   filterChipActive: { backgroundColor: PREMIUM_COLORS.errorGlow, borderColor: PREMIUM_COLORS.error },
   filterChipTxt: { fontSize: 11, color: PREMIUM_COLORS.textSecondary, fontWeight: "600" },
 
-  dropdown: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: 6, borderWidth: 1, borderColor: PREMIUM_COLORS.border, paddingHorizontal: 10, height: 32, minWidth: 150 },
+  dropdown: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: COLORS.bg, borderRadius: 6, borderWidth: 1, borderColor: PREMIUM_COLORS.border, paddingHorizontal: 10, height: 32, minWidth: 150 },
   dropdownText: { fontSize: 11, color: PREMIUM_COLORS.textSecondary, fontWeight: "600" },
   dropdownList: { backgroundColor: PREMIUM_COLORS.bg, borderRadius: 8, borderWidth: 1, borderColor: PREMIUM_COLORS.border, marginTop: 4, overflow: "hidden" },
   dropdownItem: { paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: PREMIUM_COLORS.border },
@@ -878,7 +878,7 @@ const useS = () => StyleSheet.create({
   exportBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: PREMIUM_COLORS.accentGlow, borderWidth: 1, borderColor: PREMIUM_COLORS.accent, marginLeft: "auto" },
   exportBtnText: { fontSize: 12, color: PREMIUM_COLORS.textPrimary, fontWeight: "700" },
 
-  managerRow: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "rgba(255,255,255,0.01)", borderRadius: 8, padding: 12, borderWidth: 1, borderColor: PREMIUM_COLORS.border },
+  managerRow: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: COLORS.bg, borderRadius: 8, padding: 12, borderWidth: 1, borderColor: PREMIUM_COLORS.border },
   managerName: { fontSize: 13, color: PREMIUM_COLORS.textPrimary, fontWeight: "700" },
   managerMeta: { fontSize: 11, color: PREMIUM_COLORS.textMuted, marginTop: 2 },
   managerValue: { fontSize: 13, fontWeight: "750" },
@@ -894,12 +894,12 @@ const useS = () => StyleSheet.create({
   distributionItem: { flexDirection: "row", alignItems: "center", gap: 4 },
   distDot: { width: 6, height: 6, borderRadius: 3 },
   distText: { fontSize: 11, color: PREMIUM_COLORS.textSecondary, fontWeight: "500" },
-  filterBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, borderWidth: 1, marginRight: 6, borderColor: PREMIUM_COLORS.border, backgroundColor: "rgba(255,255,255,0.01)" },
+  filterBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, borderWidth: 1, marginRight: 6, borderColor: PREMIUM_COLORS.border, backgroundColor: COLORS.bg },
   filterBadgeActive: { borderColor: PREMIUM_COLORS.accent, backgroundColor: PREMIUM_COLORS.accentGlow },
   filterBadgeText: { fontSize: 12, fontWeight: "600", color: PREMIUM_COLORS.textSecondary },
   tableHeaderOEC: { flexDirection: "row", paddingVertical: 10, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: PREMIUM_COLORS.textSecondary, marginBottom: 4, opacity: 0.8 },
   thOEC: { fontSize: 10, fontWeight: "700", color: PREMIUM_COLORS.textSecondary, letterSpacing: 0.5 },
   tableRowOEC: { flexDirection: "row", alignItems: "center", paddingVertical: 12, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: PREMIUM_COLORS.border },
-  miniProgressBarBg: { height: 4, width: "100%", backgroundColor: "rgba(255,255,255,0.04)", borderRadius: 2, overflow: "hidden" },
+  miniProgressBarBg: { height: 4, width: "100%", backgroundColor: COLORS.readonly, borderRadius: 2, overflow: "hidden" },
   cellOECText: { flex: 0.8, fontSize: 12, fontWeight: "500", color: PREMIUM_COLORS.textPrimary, textAlign: "right" },
 });

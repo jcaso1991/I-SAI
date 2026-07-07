@@ -67,6 +67,30 @@ const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 const TOOLBAR_H = 64;
 const BOTTOM_H = 84;
 
+function TooltipBtn({ s, tip, active, onPress, onHover, children, disabled }: { s: any; tip: string; active: boolean; onPress: () => void; onHover: (t: string | null) => void; children: React.ReactNode; disabled?: boolean }) {
+  const [localHover, setLocalHover] = useState(false);
+  return (
+    <View style={{ position: "relative" } as any}>
+      <TouchableOpacity
+        style={[s.glassTool, active && s.glassToolActive]}
+        onPress={onPress}
+        disabled={disabled}
+        {...(Platform.OS === "web" ? {
+          onMouseEnter: () => { setLocalHover(true); onHover(tip); },
+          onMouseLeave: () => { setLocalHover(false); onHover(null); },
+        } as any : {})}
+      >
+        {children}
+      </TouchableOpacity>
+      {localHover && (
+        <View style={s.tooltip}>
+          <Text style={s.tooltipText}>{tip}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function PlanEditor() {
   const { id, export: exportParam } = useLocalSearchParams<{ id: string; export?: string }>();
   const router = useRouter();
@@ -76,6 +100,51 @@ export default function PlanEditor() {
   const [loading, setLoading] = useState(true);
   const [title, setTitle] = useState("");
   const [shapes, setShapes] = useState<Shape[]>([]);
+  // Undo/Redo
+  const [undoStack, setUndoStack] = useState<Shape[][]>([]);
+  const [redoStack, setRedoStack] = useState<Shape[][]>([]);
+  const undoingRef = useRef(false);
+
+  useEffect(() => {
+    if (undoingRef.current) { undoingRef.current = false; return; }
+    if (shapes.length > 0 || undoStack.length > 0) {
+      setUndoStack((s) => [...s.slice(-49), shapes]);
+      setRedoStack([]);
+    }
+  }, [shapes]);
+
+  const undo = () => {
+    if (undoStack.length === 0) return;
+    undoingRef.current = true;
+    const prev = undoStack[undoStack.length - 1];
+    setUndoStack((s) => s.slice(0, -1));
+    setRedoStack((s) => [...s, shapes]);
+    setShapes(prev);
+    clearSelection();
+    markDirty();
+  };
+
+  const redo = () => {
+    if (redoStack.length === 0) return;
+    undoingRef.current = true;
+    const next = redoStack[redoStack.length - 1];
+    setRedoStack((s) => s.slice(0, -1));
+    setUndoStack((s) => [...s, shapes]);
+    setShapes(next);
+    clearSelection();
+    markDirty();
+  };
+
+  // Ctrl+Z / Ctrl+Y
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); redo(); }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [undoStack, redoStack, shapes]);
   const [background, setBackground] = useState<{ data_uri: string; width: number; height: number } | null>(null);
   const [bgUploading, setBgUploading] = useState(false);
   const [tool, setTool] = useState<Tool>("pencil");
@@ -114,7 +183,10 @@ export default function PlanEditor() {
   const [dirty, setDirty] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ w: 1000, h: 1000 });
   const [toolbarOpen, setToolbarOpen] = useState(false);
+  const [hoveredTool, setHoveredTool] = useState<string | null>(null);
   const [showColorPopup, setShowColorPopup] = useState(false);
+
+  {/* ... (keep all existing code) ... */}
   const [bgOpacity, setBgOpacity] = useState(0.75);
   const [snapEnabled, setSnapEnabled] = useState(false);
   const [showLayers, setShowLayers] = useState(false);
@@ -918,8 +990,8 @@ export default function PlanEditor() {
           <View style={s.toolGroup}>
             {[
               { icon: "pencil-outline", tool: "pencil" as Tool, tip: "Lápiz" },
-              { icon: "remove-outline", tool: "straight" as Tool, tip: "Línea" },
-              { icon: "square-outline", tool: "rect" as Tool, tip: "Cuadro" },
+              { icon: "remove-outline", tool: "straight" as Tool, tip: "Línea recta" },
+              { icon: "square-outline", tool: "rect" as Tool, tip: "Rectángulo" },
               { icon: "ellipse-outline", tool: "circle" as Tool, tip: "Círculo" },
               { icon: "text-outline", tool: "text" as Tool, tip: "Texto" },
             ].map(({ icon, tool: t, tip }) => (
@@ -927,49 +999,74 @@ export default function PlanEditor() {
                 <TouchableOpacity
                   style={[s.glassTool, tool === t && s.glassToolActive]}
                   onPress={() => { setTool(t); clearSelection(); setShowColorPopup(tool === t ? !showColorPopup : true); }}
-                  title={tip}
+                  {...(Platform.OS === "web" ? {
+                    onMouseEnter: () => setHoveredTool(tip),
+                    onMouseLeave: () => setHoveredTool(null),
+                  } as any : {})}
                 >
                   <Ionicons name={icon as any} size={18} color={tool === t ? "#60A5FA" : "rgba(255,255,255,0.4)"} />
                 </TouchableOpacity>
+                {hoveredTool === tip && (
+                  <View style={s.tooltip}>
+                    <Text style={s.tooltipText}>{tip}</Text>
+                  </View>
+                )}
               </View>
             ))}
           </View>
           <View style={s.toolDivider} />
           <View style={s.toolGroup}>
             {[
-              { icon: "create-outline", tip: "Firma", action: () => setShowSignatureModal(true), active: false },
-              { icon: "cube-outline", tip: "Piezas", action: () => { setTool("stamp"); clearSelection(); setShowStampPicker(true); }, active: tool === "stamp" },
-              { icon: "trash-outline", tip: "Borrar", action: () => { setTool("eraser"); clearSelection(); }, active: tool === "eraser" },
+              { icon: "create-outline", tip: "Firma manuscrita", action: () => setShowSignatureModal(true), active: false },
+              { icon: "cube-outline", tip: "Insertar pieza", action: () => { setTool("stamp"); clearSelection(); setShowStampPicker(true); }, active: tool === "stamp" },
+              { icon: "trash-outline", tip: "Borrar trazados", action: () => { setTool("eraser"); clearSelection(); }, active: tool === "eraser" },
               { icon: "hand-left-outline", tip: "Seleccionar", action: () => setTool("select"), active: tool === "select" },
             ].map(({ icon, tip, action, active }) => (
-              <TouchableOpacity
-                key={tip}
-                style={[s.glassTool, active && s.glassToolActive]}
-                onPress={action}
-                title={tip}
-              >
-                <Ionicons name={icon as any} size={18} color={active ? "#60A5FA" : "rgba(255,255,255,0.4)"} />
-              </TouchableOpacity>
+              <View key={tip} style={{ position: "relative" } as any}>
+                <TouchableOpacity
+                  key={tip}
+                  style={[s.glassTool, active && s.glassToolActive]}
+                  onPress={action}
+                  {...(Platform.OS === "web" ? {
+                    onMouseEnter: () => setHoveredTool(tip),
+                    onMouseLeave: () => setHoveredTool(null),
+                  } as any : {})}
+                >
+                  <Ionicons name={icon as any} size={18} color={active ? "#60A5FA" : "rgba(255,255,255,0.4)"} />
+                </TouchableOpacity>
+                {hoveredTool === tip && (
+                  <View style={s.tooltip}>
+                    <Text style={s.tooltipText}>{tip}</Text>
+                  </View>
+                )}
+              </View>
             ))}
           </View>
           <View style={s.toolDivider} />
           <View style={s.toolGroup}>
-            <TouchableOpacity style={[s.glassTool, snapEnabled && s.glassToolActive]} onPress={() => setSnapEnabled(!snapEnabled)} title="Imán">
+            <TooltipBtn s={s} tip="Deshacer (Ctrl+Z)" active={false} onPress={undo} onHover={setHoveredTool}>
+              <Ionicons name="arrow-undo-outline" size={18} color={undoStack.length > 0 ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.2)"} />
+            </TooltipBtn>
+            <TooltipBtn s={s} tip="Rehacer (Ctrl+Y)" active={false} onPress={redo} onHover={setHoveredTool}>
+              <Ionicons name="arrow-redo-outline" size={18} color={redoStack.length > 0 ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.2)"} />
+            </TooltipBtn>
+            <View style={s.toolDivider} />
+            <TooltipBtn s={s} tip="Ajuste magnético" active={snapEnabled} onPress={() => setSnapEnabled(!snapEnabled)} onHover={setHoveredTool}>
               <Ionicons name="magnet-outline" size={18} color={snapEnabled ? "#60A5FA" : "rgba(255,255,255,0.4)"} />
-            </TouchableOpacity>
-            <TouchableOpacity style={[s.glassTool, showLayers && s.glassToolActive]} onPress={() => setShowLayers(!showLayers)} title="Capas">
+            </TooltipBtn>
+            <TooltipBtn s={s} tip="Capas" active={showLayers} onPress={() => setShowLayers(!showLayers)} onHover={setHoveredTool}>
               <Ionicons name="layers-outline" size={18} color={showLayers ? "#60A5FA" : "rgba(255,255,255,0.4)"} />
-            </TouchableOpacity>
-            <TouchableOpacity style={s.glassTool} onPress={background ? removeBackground : pickBackground} disabled={bgUploading} title={background ? "Quitar fondo" : "Fondo"}>
+            </TooltipBtn>
+            <TooltipBtn s={s} tip={background ? "Quitar fondo" : "Cargar fondo"} active={false} onPress={background ? removeBackground : pickBackground} onHover={setHoveredTool} disabled={bgUploading}>
               {bgUploading ? <ActivityIndicator color="#60A5FA" size={14} /> : <Ionicons name={background ? "close-circle-outline" : "image-outline"} size={18} color={background ? "#EF4444" : "rgba(255,255,255,0.4)"} />}
-            </TouchableOpacity>
-            <TouchableOpacity style={s.glassTool} onPress={clearAll} title="Limpiar">
+            </TooltipBtn>
+            <TooltipBtn s={s} tip="Limpiar todo" active={false} onPress={clearAll} onHover={setHoveredTool}>
               <Ionicons name="refresh-outline" size={18} color="rgba(255,255,255,0.4)" />
-            </TouchableOpacity>
+            </TooltipBtn>
             {isAdmin && (
-              <TouchableOpacity style={s.glassTool} onPress={() => setShowStampManager(true)} title="Sellos">
+              <TooltipBtn s={s} tip="Gestionar sellos" active={false} onPress={() => setShowStampManager(true)} onHover={setHoveredTool}>
                 <Ionicons name="add-circle-outline" size={18} color="rgba(255,255,255,0.4)" />
-              </TouchableOpacity>
+              </TooltipBtn>
             )}
           </View>
 
@@ -1355,6 +1452,10 @@ export default function PlanEditor() {
         currentId={currentStampId}
         onSelect={(s) => { setCurrentStampId(s.id); setShowStampPicker(false); }}
         onClose={() => setShowStampPicker(false)}
+        isAdmin={isAdmin}
+        onManageStamps={() => { setShowStampPicker(false); setShowStampManager(true); }}
+        stampColor={strokeColor}
+        onColorChange={(c) => setStrokeColor(c)}
       />
 
       {/* Stamp manager (admin) */}
@@ -1565,7 +1666,7 @@ function StampView({ shape, highlight }: { shape: StampShape; highlight?: string
   //  - If fill equals STAMP_STROKE (solid accent fills), replace it too, so "solid" parts follow the chosen color.
   //  - White / transparent / explicit fills are preserved to keep contrast readable.
   const override = shape.color && shape.color !== STAMP_STROKE ? shape.color : undefined;
-  const resolveStroke = (orig?: string) => highlight || (override && (!orig || orig === STAMP_STROKE) ? override : undefined) || orig || COLORS.navy;
+  const resolveStroke = (orig?: string) => highlight || (override && (!orig || orig === STAMP_STROKE) ? override : undefined) || orig || STAMP_STROKE;
   const resolveFill = (orig?: string) => {
     if (!orig || orig === "none") return orig || "none";
     if (override && orig === STAMP_STROKE) return override;
@@ -1745,9 +1846,14 @@ function ToolBtn({ icon, active, onPress, label }: { icon: any; active: boolean;
 }
 
 function StampPicker({
-  visible, stamps, currentId, onSelect, onClose,
-}: { visible: boolean; stamps: StampItem[]; currentId: string | null; onSelect: (s: StampItem) => void; onClose: () => void }) {
-  // Group stamps by category. Built-in stamps use the category defined in stamps.ts; user-uploaded stamps go to "Personalizadas".
+  visible, stamps, currentId, onSelect, onClose, isAdmin, onManageStamps,
+  stampColor, onColorChange,
+}: {
+  visible: boolean; stamps: StampItem[]; currentId: string | null;
+  onSelect: (s: StampItem) => void; onClose: () => void;
+  isAdmin?: boolean; onManageStamps?: () => void;
+  stampColor: string; onColorChange: (c: string) => void;
+}) {
   const groups: Record<string, StampItem[]> = {};
   for (const st of stamps) {
     let cat = "Personalizadas";
@@ -1769,10 +1875,33 @@ function StampPicker({
         <View style={s.modalCard}>
           <View style={s.modalHeader}>
             <Text style={s.modalTitle}>Piezas</Text>
-            <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={26} color={COLORS.text} />
-            </TouchableOpacity>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              {(isAdmin || onManageStamps) && (
+                <TouchableOpacity onPress={onManageStamps} style={{ padding: 4 }}>
+                  <Ionicons name="add-circle-outline" size={24} color={COLORS.primary} />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity onPress={onClose}>
+                <Ionicons name="close" size={26} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
           </View>
+
+          {/* Color palette */}
+          <View style={{ flexDirection: "row", gap: 6, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 8, flexWrap: "wrap", justifyContent: "center" }}>
+            {PALETTE.map((c) => (
+              <TouchableOpacity
+                key={c.value}
+                onPress={() => onColorChange(c.value)}
+                style={[
+                  { width: 28, height: 28, borderRadius: 14, backgroundColor: c.value },
+                  c.value === "#FFFFFF" && { borderWidth: 1.5, borderColor: COLORS.border },
+                  stampColor === c.value && { borderWidth: 3, borderColor: COLORS.primary, transform: [{ scale: 1.1 }] },
+                ]}
+              />
+            ))}
+          </View>
+
           <ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
             {orderedCats.map((cat) => (
               <View key={cat} style={{ marginBottom: 12 }}>
@@ -1788,7 +1917,7 @@ function StampPicker({
                         onPress={() => onSelect(st)}
                       >
                         <View style={s.stampPreview}>
-                          <StampPreview stamp={st} size={60} />
+                          <StampPreview stamp={st} size={60} color={stampColor} />
                         </View>
                         <Text style={s.stampName} numberOfLines={1}>{st.name}</Text>
                       </TouchableOpacity>
@@ -1804,25 +1933,34 @@ function StampPicker({
   );
 }
 
-function StampPreview({ stamp, size }: { stamp: StampItem; size: number }) {
+function StampPreview({ stamp, size, color }: { stamp: StampItem; size: number; color?: string }) {
   if (stamp.icon_key) {
     const b = BUILTIN_STAMPS[stamp.icon_key];
     if (!b) return null;
     const info = b.render(size);
+    const override = color && color !== STAMP_STROKE ? color : undefined;
+    const getStroke = (orig?: string) => {
+      if (override && (!orig || orig === STAMP_STROKE)) return override;
+      return orig || STAMP_STROKE;
+    };
+    const getFill = (orig?: string) => {
+      if (override && orig === STAMP_STROKE) return override;
+      return orig || "none";
+    };
     return (
       <Svg width={size} height={size} viewBox={info.viewBox}>
         {info.paths.map((p, i) => (
           <Path key={i} d={p.d}
-            stroke={p.stroke || COLORS.navy}
+            stroke={getStroke(p.stroke)}
             strokeWidth={p.strokeWidth || 2}
-            fill={p.fill || "none"}
+            fill={getFill(p.fill)}
           />
         ))}
         {(info.circles || []).map((c, i) => (
           <Circle key={`c${i}`} cx={c.cx} cy={c.cy} r={c.r}
-            stroke={c.stroke || COLORS.navy}
+            stroke={getStroke(c.stroke)}
             strokeWidth={c.strokeWidth || 2}
-            fill={c.fill || "none"}
+            fill={getFill(c.fill)}
           />
         ))}
       </Svg>
@@ -2150,12 +2288,13 @@ const s = StyleSheet.create({
   modalBtnText: { fontSize: 14, fontWeight: "800" },
   stampCell: {
     width: "30%", minWidth: 90, alignItems: "center", padding: 10, gap: 4,
-    backgroundColor: COLORS.bg, borderRadius: ios.radius.md, borderWidth: 2, borderColor: "transparent",
+    backgroundColor: COLORS.surface, borderRadius: ios.radius.md, borderWidth: 2, borderColor: "transparent",
   },
   stampCellActive: { borderColor: COLORS.primary },
   stampPreview: {
-    width: 70, height: 70, backgroundColor: COLORS.canvasPaper,
+    width: 70, height: 70, backgroundColor: "#FFFFFF",
     alignItems: "center", justifyContent: "center", borderRadius: ios.radius.sm,
+    borderWidth: 1, borderColor: COLORS.border,
   },
   stampName: { fontSize: 12, fontWeight: "700", color: COLORS.text, textAlign: "center" },
   mLabel: {
@@ -2181,7 +2320,7 @@ const s = StyleSheet.create({
     padding: 12, backgroundColor: COLORS.bg, borderRadius: ios.radius.md, marginBottom: 6,
   },
   stampPreviewSm: {
-    width: 50, height: 50, backgroundColor: COLORS.canvasPaper, borderRadius: ios.radius.sm,
+    width: 50, height: 50, backgroundColor: "#FFFFFF", borderRadius: ios.radius.sm,
     alignItems: "center", justifyContent: "center",
   },
 
@@ -2223,5 +2362,23 @@ const s = StyleSheet.create({
   opacitySlider: {
     flexDirection: "row", alignItems: "center", gap: 4,
     marginTop: 6, paddingHorizontal: 4,
+  },
+  tooltip: {
+    position: "absolute" as any,
+    left: 44,
+    top: 6,
+    backgroundColor: "rgba(15,23,42,0.95)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    zIndex: 100,
+    whiteSpace: "nowrap" as any,
+    ...Platform.select({ web: { backdropFilter: "blur(8px)", pointerEvents: "none" as any } }),
+  },
+  tooltipText: {
+    color: "#F1F5F9",
+    fontSize: 11,
+    fontWeight: "600",
+    whiteSpace: "nowrap" as any,
   },
 });

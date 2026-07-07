@@ -5,6 +5,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { Linking } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
@@ -125,16 +126,13 @@ export default function Login() {
         <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
           <View style={s.logoContainer}>
             <Image
-              source={require("../assets/images/logo.png")}
-              style={s.logoImage}
+              source={require("../assets/images/logo_inicio.png")}
+              style={[s.logoImage, { backgroundColor: "transparent" } as any]}
               resizeMode="contain"
             />
           </View>
 
           <Text style={s.title}>Iniciar sesión</Text>
-          <Text style={s.subtitle}>
-            Gestiona entregas y recogidas sincronizadas con OneDrive
-          </Text>
 
           <View style={s.card}>
           <View style={s.form}>
@@ -197,8 +195,17 @@ export default function Login() {
             </TouchableOpacity>
 
             <Text style={s.helperText}>
-              ¿No tienes cuenta? Pídele al administrador que te cree una.
+              Herramienta interna de gestión. Acceso restringido a personal autorizado.
             </Text>
+
+            <TouchableOpacity
+              style={s.btnIncidencia}
+              onPress={() => router.push("/aviso-sat" as any)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="warning-outline" size={16} color={COLORS.primary} />
+              <Text style={s.btnIncidenciaText}>Tengo una incidencia</Text>
+            </TouchableOpacity>
           </View>
           </View>
         </ScrollView>
@@ -217,8 +224,9 @@ const useS = () =>
     paddingVertical: ios.spacing.lg,
   },
   logoImage: {
-    width: 260,
-    height: 130,
+    width: 180,
+    height: 180,
+    borderRadius: 24,
   },
   title: {
     ...fontStyle("largeTitle"),
@@ -299,5 +307,15 @@ const useS = () =>
     color: COLORS.textSecondary,
     ...fontStyle("footnote"),
     marginTop: ios.spacing.xl,
+  },
+  btnIncidencia: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 6, marginTop: ios.spacing.md,
+    paddingVertical: 10,
+  },
+  btnIncidenciaText: {
+    color: COLORS.primary,
+    ...fontStyle("callout"),
+    fontWeight: "600",
   },
 });

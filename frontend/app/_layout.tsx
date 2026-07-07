@@ -1,8 +1,19 @@
-import React from "react";
+import React, { lazy, Suspense } from "react";
+import { View, ActivityIndicator } from "react-native";
 import { Stack } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { ThemeProvider, useTheme } from "../src/theme";
+import { ToastProvider } from "../src/ToastProvider";
+import GlobalSearch from "../src/GlobalSearch";
+
+function LoadingFallback() {
+  return (
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#0B0F19" }}>
+      <ActivityIndicator size="large" color="#3B82F6" />
+    </View>
+  );
+}
 
 function ThemedStatusBar() {
   const { theme } = useTheme();
@@ -11,13 +22,13 @@ function ThemedStatusBar() {
 
 function ThemedStack() {
   const { themeKey } = useTheme();
-  // Remount the whole navigation tree when the theme changes so that every
-  // StyleSheet.create() is re-executed with the new COLORS values.
   return (
-    <Stack
-      key={themeKey}
-      screenOptions={{ headerShown: false, animation: "slide_from_right" }}
-    />
+    <Suspense fallback={<LoadingFallback />}>
+      <Stack
+        key={themeKey}
+        screenOptions={{ headerShown: false, animation: "slide_from_right" }}
+      />
+    </Suspense>
   );
 }
 
@@ -25,8 +36,11 @@ export default function RootLayout() {
   return (
     <ThemeProvider>
       <SafeAreaProvider>
-        <ThemedStatusBar />
-        <ThemedStack />
+        <ToastProvider>
+          <ThemedStatusBar />
+          <ThemedStack />
+          <GlobalSearch />
+        </ToastProvider>
       </SafeAreaProvider>
     </ThemeProvider>
   );

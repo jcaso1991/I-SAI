@@ -244,6 +244,9 @@ class ClienteCreate(BaseModel):
     numero_revisiones: int = 0
     alta_mantenimiento: Optional[str] = None
     fecha_primera_revision: Optional[str] = None
+    salto_ks_activo: bool = False
+    salto_ks_tipo_renovacion: str = ""
+    salto_ks_fecha_renovacion: Optional[str] = None
 
 class ClienteUpdate(BaseModel):
     nombre: Optional[str] = None
@@ -262,6 +265,9 @@ class ClienteUpdate(BaseModel):
     numero_revisiones: Optional[int] = None
     alta_mantenimiento: Optional[str] = None
     fecha_primera_revision: Optional[str] = None
+    salto_ks_activo: Optional[bool] = None
+    salto_ks_tipo_renovacion: Optional[str] = None
+    salto_ks_fecha_renovacion: Optional[str] = None
 
 class ClienteOut(BaseModel):
     id: str
@@ -281,6 +287,9 @@ class ClienteOut(BaseModel):
     numero_revisiones: int = 0
     alta_mantenimiento: Optional[str] = None
     fecha_primera_revision: Optional[str] = None
+    salto_ks_activo: bool = False
+    salto_ks_tipo_renovacion: str = ""
+    salto_ks_fecha_renovacion: Optional[str] = None
     created_at: Optional[str] = None
     proyectos: Optional[List[dict]] = None
     documentos: Optional[List[dict]] = None
@@ -391,7 +400,7 @@ NOTIFICATION_CATALOG = [
 ALL_NOTIFS = [n["key"] for n in NOTIFICATION_CATALOG]
 
 NON_ADMIN_PERMS = [p for p in ALL_PERMS if p not in ("users.manage", "roles.manage")]
-TECNICO_PERMS = ["proyectos.view", "proyectos.edit", "calendario.view", "calendario.edit", "planos.view", "planos.edit", "chat.view", "chat.edit", "planos.download", "events.edit"]
+TECNICO_PERMS = ["proyectos.view", "calendario.view", "calendario.edit", "planos.view", "planos.edit", "chat.view", "chat.edit", "planos.download", "events.edit", "dashboard.view", "notas.view", "documentos.manage"]
 COMERCIAL_PERMS = ["presupuestos.view", "presupuestos.edit", "presupuestos.export", "proyectos.view", "chat.view", "chat.edit"]
 SAT_PERMS = ["sat.view", "sat.edit", "sat.export", "chat.view", "chat.edit"]
 
@@ -930,6 +939,16 @@ async def login(payload: UserLogin, request: Request):
         raise HTTPException(401, "Credenciales inválidas")
     token = create_jwt(user)
     info = await get_user_role_info(user)
+
+    # Registro de acceso (RGPD art.30)
+    await db.access_log.insert_one({
+        "user_id": user["id"],
+        "user_name": user.get("name", user.get("email", "").split("@")[0]),
+        "action": "login",
+        "ip": request.client.host if request.client else "unknown",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+
     return TokenOut(
         access_token=token,
         user=UserOut(
@@ -1776,6 +1795,36 @@ async def recalc_horas(mid: str):
         {"hours": 1, "status": 1}
     ).to_list(1000)
     return round(sum(_safe_float(ev.get("hours")) for ev in events if ev.get("status") in ("completed", "pending_completion")), 1)
+
+
+@api_router.get("/events/export-excel")
+async def events_export_excel(
+    user: dict = Depends(require_permission("calendario.view")),
+    from_: Optional[str] = Query(None, alias="from"),
+    to: Optional[str] = None,
+):
+    query: dict = {}
+    if from_: query["start_at"] = {"$gte": from_}
+    if to: query.setdefault("start_at", {})["$lte"] = to
+    events = await db.events.find(query, {"_id": 0}).sort("start_at", 1).to_list(5000)
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    except: raise HTTPException(500, "openpyxl no instalado")
+    wb = Workbook(); ws = wb.active; ws.title = "Calendario"
+    hf = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    hfill = PatternFill(start_color="1E88E5", end_color="1E88E5", fill_type="solid")
+    df = Font(name="Calibri", size=10)
+    tb = Border(left=Side(style="thin",color="D0D0D0"),right=Side(style="thin",color="D0D0D0"),top=Side(style="thin",color="D0D0D0"),bottom=Side(style="thin",color="D0D0D0"))
+    for col, h in enumerate(["Título","Inicio","Fin","Horas","Estado","Técnicos","Proyecto","Tipo M.O."],1):
+        c=ws.cell(row=1,column=col,value=h); c.font=hf; c.fill=hfill; c.alignment=Alignment(horizontal="center"); c.border=tb
+    for i, ev in enumerate(events,2):
+        tecs = ", ".join([u.get("name","") for u in (ev.get("assigned_users") or [])])
+        for col, v in enumerate([ev.get("title",""),ev.get("start_at","")[:16],ev.get("end_at","")[:16],ev.get("hours",0),ev.get("status",""),tecs,ev.get("material",""),ev.get("tipo_mano_obra","")],1):
+            c=ws.cell(row=i,column=col,value=v); c.font=df; c.border=tb
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    return Response(buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition":"attachment; filename=calendario.xlsx"})
+
 
 @api_router.post("/events", response_model=EventOut)
 async def create_event(payload: EventCreate, admin: dict = Depends(require_permission("calendario.edit"))):
@@ -2655,7 +2704,7 @@ class MicrosoftExchangeResponse(BaseModel):
 
 
 @api_router.post("/auth/microsoft/exchange", response_model=MicrosoftExchangeResponse)
-async def microsoft_exchange(payload: MicrosoftExchangeRequest):
+async def microsoft_exchange(payload: MicrosoftExchangeRequest, request: Request):
     """Exchange a one-time code for a JWT access token. Code is single-use."""
     _cleanup_expired_codes()
     record = _auth_codes.get(payload.code)
@@ -2669,6 +2718,15 @@ async def microsoft_exchange(payload: MicrosoftExchangeRequest):
     jwt_token = record["jwt"]
     del _auth_codes[payload.code]
     info = await get_user_role_info(record.get("user", {})) if record.get("user") else {}
+
+    await db.access_log.insert_one({
+        "user_id": record["user"]["id"],
+        "user_name": record["user"].get("name", record["user"]["email"]),
+        "action": "login_microsoft",
+        "ip": request.client.host if request.client else "unknown",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+
     return MicrosoftExchangeResponse(
         access_token=jwt_token,
         token_type="bearer",
@@ -2703,6 +2761,16 @@ async def list_materiales(user: dict = Depends(require_permission("proyectos.vie
     user_perms = await get_user_permissions(user)
     es_editor_completo = "proyectos.edit" in user_perms
     conditions = []
+    # Usuarios sin rol admin/gestor solo ven sus proyectos asignados como técnico
+    user_role = user.get("role", "")
+    if user_role not in ("admin", "gestor"):
+        tech_name = user.get("name", "") or user.get("email", "").split("@")[0]
+        conditions.append({"$or": [
+            {"tecnico": {"$regex": re.escape(tech_name), "$options": "i"}},
+            {"tecnicos": {"$regex": re.escape(tech_name), "$options": "i"}},
+        ]})
+        # Técnicos no ven proyectos terminados
+        conditions.append({"project_status": {"$ne": "terminado"}})
     if pending_only:
         conditions.append({"sync_status": "pending"})
     if q:
@@ -2995,6 +3063,11 @@ async def update_material(mid: str, payload: MaterialUpdate, user: dict = Depend
     upd = {k: v for k, v in payload.dict().items() if v is not None}
     if not upd:
         raise HTTPException(400, "Nada que actualizar")
+    # Validar project_status
+    if "project_status" in upd:
+        valid_statuses = ["pendiente", "planificado", "a_facturar", "facturado", "terminado", "bloqueado", "anulado"]
+        if upd["project_status"] not in valid_statuses:
+            raise HTTPException(400, f"Estado inválido. Válidos: {', '.join(valid_statuses)}")
     # Editor limitado solo puede tocar entrega_recogida, total_parcial, comentarios
     CAMPOS_LIMITADOS = {"entrega_recogida", "total_parcial", "comentarios"}
     if not es_editor_completo:
@@ -3042,6 +3115,64 @@ async def list_clientes(user: dict = Depends(current_user)):
     for c in clientes:
         c["proyectos"] = None
     return clientes
+
+
+@api_router.get("/clientes/export-excel")
+async def clientes_export_excel(user: dict = Depends(current_user)):
+    clientes = await db.clientes.find({}, {"_id": 0}).sort("nombre", 1).to_list(2000)
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    except Exception:
+        raise HTTPException(500, "openpyxl no instalado")
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Clientes"
+
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1E88E5", end_color="1E88E5", fill_type="solid")
+    header_align = Alignment(horizontal="center", vertical="center")
+    data_font = Font(name="Calibri", size=10)
+    thin_border = Border(
+        left=Side(style="thin", color="D0D0D0"), right=Side(style="thin", color="D0D0D0"),
+        top=Side(style="thin", color="D0D0D0"), bottom=Side(style="thin", color="D0D0D0"),
+    )
+
+    headers = ["Nombre", "Razón Social", "NIF/CIF", "Nº Doc", "Dirección", "Población", "Provincia", "Teléfono", "Email", "Representante", "Mantenimiento", "Tipo Mtto", "Revisiones", "Salto KS"]
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        cell.border = thin_border
+    ws.row_dimensions[1].height = 22
+
+    for i, c in enumerate(clientes, 2):
+        values = [
+            c.get("nombre", ""), c.get("razon_social", ""), c.get("tipo_documento_id", ""),
+            c.get("numero_documento", ""), c.get("direccion", ""), c.get("poblacion", ""),
+            c.get("provincia", ""), c.get("telefono", ""), c.get("email", ""),
+            c.get("representante", ""), "Sí" if c.get("mantenimiento_contratado") else "No",
+            c.get("tipo_mantenimiento", ""), c.get("numero_revisiones", 0),
+            "Sí" if c.get("salto_ks_activo") else "No",
+        ]
+        for col, v in enumerate(values, 1):
+            cell = ws.cell(row=i, column=col, value=v)
+            cell.font = data_font
+            cell.border = thin_border
+
+    widths = [25, 25, 8, 12, 30, 18, 14, 14, 28, 20, 12, 18, 10, 10]
+    from openpyxl.utils import get_column_letter
+    for i, w in enumerate(widths, 1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return Response(buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": "attachment; filename=clientes.xlsx"})
+
 
 @api_router.post("/clientes", response_model=ClienteOut)
 async def create_cliente(payload: ClienteCreate, user: dict = Depends(require_any_permission("users.manage", "roles.manage"))):
@@ -3111,6 +3242,43 @@ async def update_cliente(cid: str, payload: ClienteUpdate, user: dict = Depends(
         raise HTTPException(400, "Nada que actualizar")
     await db.clientes.update_one({"id": cid}, {"$set": upd})
     doc = await db.clientes.find_one({"id": cid}, {"_id": 0})
+
+    # Salto KS: generar alerta de renovación y solicitud de presupuesto
+    if upd.get("salto_ks_activo") and doc.get("salto_ks_fecha_renovacion"):
+        try:
+            fecha_renovacion = datetime.strptime(doc["salto_ks_fecha_renovacion"][:10], "%Y-%m-%d")
+            aviso = fecha_renovacion - timedelta(days=30)
+            ahora = datetime.now()
+            if ahora >= aviso:
+                await db.notifications.insert_one({
+                    "id": str(uuid.uuid4()),
+                    "user_id": user["id"],
+                    "title": f"Renovar voucher — {doc.get('nombre', 'Cliente')}",
+                    "message": f"El cliente {doc.get('nombre', '')} tiene el voucher Salto KS próximo a caducar ({doc['salto_ks_fecha_renovacion'][:10]}).",
+                    "type": "salto_ks_renovacion",
+                    "link": f"/clientes/{cid}",
+                    "read": False,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                })
+                budget_request = {
+                    "id": str(uuid.uuid4()),
+                    "cliente_id": cid,
+                    "cliente_nombre": doc.get("nombre", ""),
+                    "client_name": doc.get("nombre", ""),
+                    "client_email": "",
+                    "client_phone": doc.get("telefono", ""),
+                    "client_address": doc.get("direccion", ""),
+                    "titulo": f"Renovar Voucher Salto KS — {doc.get('nombre', '')}",
+                    "descripcion": f"Cliente Salto KS con voucher próximo a caducar. Tipo: {doc.get('salto_ks_tipo_renovacion', 'N/A')}. Fecha límite: {doc['salto_ks_fecha_renovacion'][:10]}.",
+                    "observaciones": f"Renovación automática por sistema. Vence: {doc['salto_ks_fecha_renovacion'][:10]}.",
+                    "estado": "pendiente",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "origen": "salto_ks_auto",
+                    "items": [],
+                }
+                await db.budget_requests.insert_one(budget_request)
+        except Exception:
+            pass
     proyectos = await db.materiales.find(
         {"cliente_id": cid},
         {"_id": 0, "id": 1, "materiales": 1, "project_status": 1, "updated_at": 1, "fecha": 1, "cliente": 1},
@@ -3816,6 +3984,231 @@ async def dashboard(user: dict = Depends(current_user)):
         "geo_distribution": geo_distribution,
     }
 
+
+@api_router.get("/dashboard/tecnico-hours")
+async def dashboard_tecnico_hours(
+    user: dict = Depends(current_user),
+    year: Optional[int] = Query(None),
+    month: Optional[int] = Query(None, ge=1, le=12),
+    format: Optional[str] = Query(None, description="'xlsx' para exportar informe completo"),
+):
+    perms = await get_user_permissions(user)
+    if "dashboard.view" not in perms:
+        raise HTTPException(403, "No tienes permiso para ver el panel de datos")
+
+    # Determinar rango
+    if year and month:
+        start = datetime(year, month, 1, tzinfo=timezone.utc)
+        if month == 12:
+            end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+        else:
+            end = datetime(year, month + 1, 1, tzinfo=timezone.utc)
+        periodo_label = f"{year}-{str(month).zfill(2)}"
+    elif year:
+        start = datetime(year, 1, 1, tzinfo=timezone.utc)
+        end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+        periodo_label = str(year)
+    else:
+        now = datetime.now(timezone.utc)
+        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if now.month == 12:
+            end = datetime(now.year + 1, 1, 1, tzinfo=timezone.utc)
+        else:
+            end = datetime(now.year, now.month + 1, 1, tzinfo=timezone.utc)
+        periodo_label = f"{start.year}-{str(start.month).zfill(2)}"
+
+    tecnicos = await db.users.find(
+        {"role": {"$in": ["tecnico", "admin"]}},
+        {"_id": 0, "id": 1, "name": 1, "email": 1, "color": 1},
+    ).to_list(100)
+
+    events = await db.events.find(
+        {"start_at": {"$gte": start.isoformat(), "$lt": end.isoformat()}, "hours": {"$gt": 0}},
+        {"assigned_user_ids": 1, "hours": 1, "tipo_mano_obra": 1, "start_at": 1, "title": 1, "material_id": 1},
+    ).to_list(50000)
+
+    result = []
+    for tech in tecnicos:
+        tid = tech["id"]
+        horas_obra = 0.0
+        horas_desplazamiento = 0.0
+        for ev in events:
+            if tid not in (ev.get("assigned_user_ids") or []):
+                continue
+            h = _safe_float(ev.get("hours"))
+            tipo = (ev.get("tipo_mano_obra") or "").lower()
+            if "desplazamiento" in tipo:
+                horas_desplazamiento += h
+            else:
+                horas_obra += h
+        total = horas_obra + horas_desplazamiento
+        if total > 0:
+            result.append({
+                "id": tid,
+                "name": tech.get("name") or tech.get("email", "").split("@")[0],
+                "color": tech.get("color", "#6366F1"),
+                "horas_obra": round(horas_obra, 1),
+                "horas_desplazamiento": round(horas_desplazamiento, 1),
+                "total": round(total, 1),
+            })
+    result.sort(key=lambda x: x["total"], reverse=True)
+
+    if format == "xlsx":
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+            from openpyxl.chart import BarChart, Reference
+            from openpyxl.utils import get_column_letter
+        except Exception:
+            raise HTTPException(500, "openpyxl no instalado")
+
+        wb = Workbook()
+
+        # ── Hoja 1: Resumen ──
+        ws = wb.active
+        ws.title = "Resumen"
+
+        # Estilos
+        header_font = Font(name="Calibri", size=12, bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="1E88E5", end_color="1E88E5", fill_type="solid")
+        header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        data_font = Font(name="Calibri", size=11)
+        total_font = Font(name="Calibri", size=11, bold=True)
+        thin_border = Border(
+            left=Side(style="thin", color="D0D0D0"),
+            right=Side(style="thin", color="D0D0D0"),
+            top=Side(style="thin", color="D0D0D0"),
+            bottom=Side(style="thin", color="D0D0D0"),
+        )
+
+        # Título
+        ws.merge_cells("A1:F1")
+        ws["A1"] = f"Informe de Horas Imputadas — {periodo_label}"
+        ws["A1"].font = Font(name="Calibri", size=16, bold=True, color="0F172A")
+        ws["A1"].alignment = Alignment(horizontal="center")
+        ws.row_dimensions[1].height = 30
+
+        # Subtítulo
+        ws.merge_cells("A2:F2")
+        ws["A2"] = f"Generado el {datetime.now().strftime('%d/%m/%Y a las %H:%M')}"
+        ws["A2"].font = Font(name="Calibri", size=10, color="64748B")
+        ws["A2"].alignment = Alignment(horizontal="center")
+        ws.row_dimensions[2].height = 20
+
+        # Headers
+        headers = ["Técnico", "Horas M.O.", "Horas Despl.", "Total Horas", "% M.O.", "% Despl."]
+        for col, h in enumerate(headers, 1):
+            cell = ws.cell(row=4, column=col, value=h)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_align
+            cell.border = thin_border
+        ws.row_dimensions[4].height = 25
+
+        # Datos
+        total_obra = sum(t["horas_obra"] for t in result)
+        total_desp = sum(t["horas_desplazamiento"] for t in result)
+        total_general = total_obra + total_desp
+
+        for i, tech in enumerate(result, 5):
+            pct_obra = (tech["horas_obra"] / tech["total"] * 100) if tech["total"] > 0 else 0
+            pct_desp = (tech["horas_desplazamiento"] / tech["total"] * 100) if tech["total"] > 0 else 0
+            values = [tech["name"], tech["horas_obra"], tech["horas_desplazamiento"], tech["total"], round(pct_obra, 1), round(pct_desp, 1)]
+            for col, v in enumerate(values, 1):
+                cell = ws.cell(row=i, column=col, value=v)
+                cell.font = data_font
+                cell.border = thin_border
+                if col in (2, 3, 4):
+                    cell.alignment = Alignment(horizontal="right")
+                    cell.number_format = "#,##0.0"
+                if col in (5, 6):
+                    cell.alignment = Alignment(horizontal="right")
+                    cell.number_format = "0.0%"
+                    cell.value = v / 100  # Store as decimal for percentage format
+
+        # Fila totales
+        total_row = 5 + len(result)
+        total_data = ["TOTAL", round(total_obra,1), round(total_desp,1), round(total_general,1),
+                       round((total_obra/total_general*100) if total_general else 0, 1),
+                       round((total_desp/total_general*100) if total_general else 0, 1)]
+        for col, v in enumerate(total_data, 1):
+            cell = ws.cell(row=total_row, column=col, value=v)
+            cell.font = Font(name="Calibri", size=12, bold=True, color="FFFFFF")
+            cell.fill = PatternFill(start_color="334155", end_color="334155", fill_type="solid")
+            cell.border = thin_border
+            if col in (2,3,4): cell.alignment = Alignment(horizontal="right"); cell.number_format = "#,##0.0"
+            if col in (5,6): cell.alignment = Alignment(horizontal="right"); cell.number_format = "0.0%"; cell.value = v/100
+
+        # Ancho columnas
+        widths = [30, 14, 14, 14, 12, 12]
+        for i, w in enumerate(widths, 1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+
+        # Gráfico de barras
+        chart = BarChart()
+        chart.type = "col"
+        chart.style = 10
+        chart.title = "Horas por Técnico"
+        chart.y_axis.title = "Horas"
+        chart.x_axis.title = "Técnico"
+
+        data_ref = Reference(ws, min_col=2, max_col=4, min_row=4, max_row=total_row - 1)
+        cats_ref = Reference(ws, min_col=1, max_row=total_row - 1, min_row=5)
+        chart.add_data(data_ref, titles_from_data=True)
+        chart.set_categories(cats_ref)
+        chart.width = 20
+        chart.height = 12
+        ws.add_chart(chart, f"A{total_row + 3}")
+
+        # ── Hoja 2: Desglose Mensual ──
+        ws2 = wb.create_sheet("Desglose Mensual")
+        months_labels = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
+
+        # Headers
+        ws2.merge_cells("A1:N1")
+        ws2["A1"] = f"Desglose Mensual — {periodo_label}"
+        ws2["A1"].font = Font(name="Calibri", size=14, bold=True, color="0F172A")
+        ws2["A1"].alignment = Alignment(horizontal="center")
+
+        month_headers = ["Técnico"] + months_labels + ["Total"]
+        for col, h in enumerate(month_headers, 1):
+            cell = ws2.cell(row=3, column=col, value=h)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_align
+            cell.border = thin_border
+            if col > 1:
+                ws2.column_dimensions[get_column_letter(col)].width = 9
+        ws2.column_dimensions["A"].width = 30
+
+        for i, tech in enumerate(tecnicos, 4):
+            ws2.cell(row=i, column=1, value=tech.get("name") or tech.get("email","").split("@")[0]).font = data_font
+            tech_total = 0.0
+            for m in range(1, 13):
+                month_hours = 0.0
+                for ev in events:
+                    if tech["id"] in (ev.get("assigned_user_ids") or []):
+                        ev_date = datetime.fromisoformat(ev["start_at"].replace("Z","+00:00"))
+                        if ev_date.month == m:
+                            month_hours += _safe_float(ev.get("hours"))
+                if month_hours > 0:
+                    ws2.cell(row=i, column=m+1, value=round(month_hours, 1)).font = data_font
+                    ws2.cell(row=i, column=m+1).number_format = "#,##0.0"
+                    ws2.cell(row=i, column=m+1).border = thin_border
+                tech_total += month_hours
+            ws2.cell(row=i, column=14, value=round(tech_total, 1)).font = total_font
+            ws2.cell(row=i, column=14).number_format = "#,##0.0"
+            ws2.cell(row=i, column=14).border = thin_border
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return Response(buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": f"attachment; filename=horas_tecnicos_{periodo_label}.xlsx"})
+
+    return {"tecnicos": result, "periodo": {"year": year, "month": month}}
+
+
 @api_router.get("/dashboard/financiero")
 async def dashboard_financiero(
     user: dict = Depends(current_user),
@@ -4488,6 +4881,41 @@ async def list_accepted_budgets(user: dict = Depends(current_budget_view)):
     ).sort("updated_at", -1).to_list(200)
     return items
 
+
+@api_router.get("/budgets/stats")
+async def budgets_stats(user: dict = Depends(current_budget_view)):
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+    all_budgets = await db.budgets.find({}, {"status": 1, "created_by": 1, "created_by_name": 1, "updated_at": 1}).to_list(2000)
+
+    by_status = {"pendiente": 0, "en_revision": 0, "enviado": 0, "aceptado": 0, "rechazado": 0, "facturado": 0}
+    by_commercial: dict = {}
+    accepted_this_month = 0
+
+    for b in all_budgets:
+        st = b.get("status", "pendiente")
+        if st in by_status:
+            by_status[st] += 1
+
+        email = b.get("created_by", "desconocido")
+        name = b.get("created_by_name", email)
+        if email not in by_commercial:
+            by_commercial[email] = {"name": name, "pendiente": 0, "en_revision": 0, "enviado": 0, "aceptado": 0, "rechazado": 0, "facturado": 0, "total": 0}
+        by_commercial[email][st] = by_commercial[email].get(st, 0) + 1
+        by_commercial[email]["total"] += 1
+
+        if st == "aceptado" and b.get("updated_at", "") >= month_start:
+            accepted_this_month += 1
+
+    return {
+        "by_status": by_status,
+        "by_commercial": list(by_commercial.values()),
+        "accepted_this_month": accepted_this_month,
+        "total": len(all_budgets),
+    }
+
+
 @api_router.get("/budgets/{bid}")
 async def get_budget(bid: str, user: dict = Depends(current_budget_view)):
     b = await db.budgets.find_one({"id": bid}, {"_id": 0})
@@ -4636,39 +5064,6 @@ async def delete_budget_template(tid: str, user: dict = Depends(current_budget_v
     if res.deleted_count == 0:
         raise HTTPException(404, "Plantilla no encontrada")
     return {"ok": True}
-
-@api_router.get("/budgets/stats")
-async def budgets_stats(user: dict = Depends(current_budget_view)):
-    now = datetime.now(timezone.utc)
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
-
-    all_budgets = await db.budgets.find({}, {"status": 1, "created_by": 1, "created_by_name": 1, "updated_at": 1}).to_list(2000)
-
-    by_status = {"pendiente": 0, "en_revision": 0, "enviado": 0, "aceptado": 0, "rechazado": 0, "facturado": 0}
-    by_commercial: dict = {}
-    accepted_this_month = 0
-
-    for b in all_budgets:
-        st = b.get("status", "pendiente")
-        if st in by_status:
-            by_status[st] += 1
-
-        email = b.get("created_by", "desconocido")
-        name = b.get("created_by_name", email)
-        if email not in by_commercial:
-            by_commercial[email] = {"name": name, "pendiente": 0, "en_revision": 0, "enviado": 0, "aceptado": 0, "rechazado": 0, "facturado": 0, "total": 0}
-        by_commercial[email][st] = by_commercial[email].get(st, 0) + 1
-        by_commercial[email]["total"] += 1
-
-        if st == "aceptado" and b.get("updated_at", "") >= month_start:
-            accepted_this_month += 1
-
-    return {
-        "by_status": by_status,
-        "by_commercial": list(by_commercial.values()),
-        "accepted_this_month": accepted_this_month,
-        "total": len(all_budgets),
-    }
 
 class BudgetAttachmentUpload(BaseModel):
     name: str
@@ -6204,6 +6599,7 @@ async def chat_list(user: dict = Depends(current_user)):
 
 @api_router.get("/chats/{cid}/messages")
 async def chat_messages(cid: str, user: dict = Depends(current_user), limit: int = 50, before: Optional[str] = None):
+    limit = min(max(1, limit), 200)
     chat = await db.chats.find_one({"id": cid})
     if not chat or user["id"] not in chat.get("participant_ids", []):
         raise HTTPException(404, "Chat no encontrado")
@@ -6237,6 +6633,10 @@ async def chat_send_message(cid: str, payload: MessageCreate, user: dict = Depen
         "read_by": [user["id"]],
     }
     if payload.file_base64 and payload.file_name:
+        # Limitar tamaño de archivo a 10MB
+        max_size = 10 * 1024 * 1024
+        if len(payload.file_base64) > max_size * 1.4:  # base64 overhead ~33%
+            raise HTTPException(413, f"El archivo supera los 10 MB")
         msg["file_base64"] = payload.file_base64
         msg["file_name"] = payload.file_name
         msg["file_mime"] = payload.file_mime or "application/octet-stream"
@@ -6471,6 +6871,32 @@ async def list_notas(
                 n["material_name"] = mat_map[n["material_id"]]
     return items
 
+
+@api_router.get("/notas/export-excel")
+async def notas_export_excel(user: dict = Depends(require_permission("notas.view"))):
+    notas = await db.notas.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    except: raise HTTPException(500, "openpyxl no instalado")
+    wb = Workbook(); ws = wb.active; ws.title = "Notas"
+    hf = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    hfill = PatternFill(start_color="1E88E5", end_color="1E88E5", fill_type="solid")
+    df = Font(name="Calibri", size=10)
+    tb = Border(left=Side(style="thin",color="D0D0D0"),right=Side(style="thin",color="D0D0D0"),top=Side(style="thin",color="D0D0D0"),bottom=Side(style="thin",color="D0D0D0"))
+    headers = ["Título","Contenido","Prioridad","Color","Marcada","Tags","Proyecto","Creada","Actualizada"]
+    for col, h in enumerate(headers,1):
+        c=ws.cell(row=1,column=col,value=h); c.font=hf; c.fill=hfill; c.alignment=Alignment(horizontal="center"); c.border=tb
+    for i, n in enumerate(notas,2):
+        values = [n.get("titulo",""), n.get("contenido",""), n.get("prioridad",""), n.get("color",""),
+                  "Sí" if n.get("marcada") else "No", ", ".join(n.get("tags") or []),
+                  n.get("material_name",""), n.get("created_at","")[:16], n.get("updated_at","")[:16]]
+        for col, v in enumerate(values,1):
+            c=ws.cell(row=i,column=col,value=v); c.font=df; c.border=tb
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    return Response(buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition":"attachment; filename=notas.xlsx"})
+
+
 @api_router.post("/notas")
 async def create_nota(
     body: NotaCreate,
@@ -6622,6 +7048,119 @@ async def _sync_project_folder(material: dict):
                     pass
     except Exception as e:
         logging.warning(f"sync_project_folder error for {material.get('id','')}: {e}")
+
+
+@api_router.post("/archivos/generate")
+async def generate_archivos(user: dict = Depends(current_user)):
+    """Genera la estructura de carpetas: año / proyecto / PDF resumen + adjuntos."""
+    perms = await get_user_permissions(user)
+    if "proyectos.view" not in perms:
+        raise HTTPException(403, "No tienes permiso")
+
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib import colors
+        from reportlab.lib.units import mm
+    except Exception:
+        raise HTTPException(500, "reportlab no instalado")
+
+    proyectos = await db.materiales.find({}, {"_id": 0}).sort("fecha", -1).to_list(5000)
+    generados = 0
+    errores = 0
+
+    for p in proyectos:
+        try:
+            # Determinar año
+            fecha = p.get("fecha") or p.get("updated_at") or ""
+            year = fecha[:4] if len(fecha) >= 4 else "sin_año"
+            nombre = (p.get("materiales") or p.get("cliente") or p["id"])[:60]
+            nombre = re.sub(r'[<>:"/\\|?*\r\n\t]', '_', nombre)
+
+            carpeta = ARCHIVOS_DIR / year / nombre
+            carpeta.mkdir(parents=True, exist_ok=True)
+
+            # ── Generar PDF resumen ──
+            pdf_path = carpeta / f"{nombre}_resumen.pdf"
+            doc = SimpleDocTemplate(str(pdf_path), pagesize=A4, rightMargin=20*mm, leftMargin=20*mm, topMargin=20*mm, bottomMargin=20*mm)
+            styles = getSampleStyleSheet()
+            elements = []
+
+            elements.append(Paragraph(f"Proyecto: {nombre}", styles['Title']))
+            elements.append(Spacer(1, 6*mm))
+            elements.append(Paragraph(f"<b>Cliente:</b> {p.get('cliente', 'N/A')}", styles['Normal']))
+            elements.append(Paragraph(f"<b>Ubicación:</b> {p.get('ubicacion', 'N/A')}", styles['Normal']))
+            elements.append(Paragraph(f"<b>Gestor:</b> {p.get('gestor', 'N/A')}", styles['Normal']))
+            elements.append(Paragraph(f"<b>Estado:</b> {p.get('project_status', 'pendiente')}", styles['Normal']))
+            elements.append(Paragraph(f"<b>Fecha:</b> {fecha}", styles['Normal']))
+            elements.append(Spacer(1, 4*mm))
+
+            # Tabla de horas
+            horas_prev = p.get('horas_prev') or '0'
+            horas_imp = p.get('horas_imputadas') or 0
+            data = [
+                ["Horas Previstas", "Horas Imputadas"],
+                [str(horas_prev), str(horas_imp)],
+            ]
+            t = Table(data, colWidths=[100*mm, 100*mm])
+            t.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1E88E5")),
+                ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0,0), (-1,-1), 10),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ]))
+            elements.append(t)
+            elements.append(Spacer(1, 4*mm))
+
+            # Datos financieros
+            fin_data = [
+                ["Concepto", "Previsto", "Real"],
+                ["Venta Materiales", p.get("importe_venta_prev_materiales") or 0, ""],
+                ["Venta M.O.", p.get("importe_venta_prev_mano_de_obra") or 0, ""],
+                ["Coste Materiales", p.get("coste_prev_materiales") or 0, p.get("coste_real_materiales") or 0],
+                ["Coste M.O.", p.get("coste_prev_mano_de_obra") or 0, p.get("coste_real_mano_de_obra") or 0],
+                ["Ingreso Facturado", p.get("ingreso_facturado") or 0, ""],
+            ]
+            t2 = Table(fin_data, colWidths=[60*mm, 70*mm, 70*mm])
+            t2.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1E88E5")),
+                ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+                ('FONTSIZE', (0,0), (-1,-1), 9),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('ALIGN', (1,0), (-1,-1), 'CENTER'),
+            ]))
+            elements.append(t2)
+            elements.append(Spacer(1, 4*mm))
+            elements.append(Paragraph(f"<i>Generado automáticamente por I-SAI el {datetime.now().strftime('%d/%m/%Y')}</i>", styles['Normal']))
+
+            doc.build(elements)
+
+            # ── Guardar adjuntos ──
+            attachments = p.get("attachments") or []
+            for att in attachments:
+                att_data = att.get("data") or att.get("file_base64")
+                att_name = att.get("name") or att.get("file_name") or f"adjunto_{att.get('id','')}"
+                att_name = re.sub(r'[<>:"/\\|?*\r\n\t]', '_', att_name)
+                if att_data:
+                    try:
+                        import base64
+                        raw = base64.b64decode(att_data)
+                        att_path = carpeta / att_name
+                        if not att_path.exists():
+                            att_path.write_bytes(raw)
+                    except Exception:
+                        pass
+
+            generados += 1
+        except Exception:
+            errores += 1
+
+    return {"generados": generados, "errores": errores, "total": len(proyectos)}
 
 
 @api_router.get("/archivos")
@@ -6858,6 +7397,8 @@ class BudgetRequestCreate(BaseModel):
     client_city: str = ""
     client_postal: str = ""
     client_province: str = ""
+    service_type: str = "suministro"
+    observaciones: str = ""
     items: list = []  # [{family, variant, image, quantity}]
 
 @api_router.post("/budget-requests")
@@ -7355,15 +7896,42 @@ logger = logging.getLogger(__name__)
 
 @app.on_event("startup")
 async def on_startup():
-    try:
-        await db.preciario_descuentos.create_index("ref", unique=True)
-    except Exception:
-        pass  # el índice ya existe o hay duplicados; la app sigue funcionando
+    # Crear índices críticos (MongoDB ignora si ya existen)
+    indexes = [
+        (db.users, [("id", 1)], True),
+        (db.users, [("email", 1)], True),
+        (db.users, [("role", 1)], False),
+        (db.materiales, [("id", 1)], True),
+        (db.materiales, [("manager_id", 1), ("project_status", 1)], False),
+        (db.materiales, [("project_status", 1)], False),
+        (db.materiales, [("row_index", 1)], False),
+        (db.events, [("id", 1)], True),
+        (db.events, [("material_id", 1), ("hours", 1)], False),
+        (db.events, [("start_at", 1), ("end_at", 1)], False),
+        (db.events, [("assigned_user_ids", 1)], False),
+        (db.chats, [("participant_ids", 1)], False),
+        (db.messages, [("chat_id", 1), ("created_at", -1)], False),
+        (db.messages, [("read_by", 1)], False),
+        (db.notifications, [("user_id", 1), ("read", 1)], False),
+        (db.budgets, [("material_id", 1)], False),
+        (db.sat_incidents, [("client_id", 1), ("status", 1)], False),
+        (db.clientes, [("nombre", 1)], False),
+        (db.budget_requests, [("id", 1)], True),
+        (db.access_log, [("user_id", 1), ("timestamp", -1)], False),
+        (db.preciario_descuentos, [("ref", 1)], True),
+    ]
+    for coll, fields, unique in indexes:
+        try:
+            await coll.create_index(fields, unique=unique, background=True)
+        except Exception:
+            pass
+
     await ensure_default_roles_and_migrate()
     await seed_admin_user()
     await seed_initial_data()
     await backfill_user_colors()
-    await seed_demo_data()
+    # Ejecutar seed demo en background para no bloquear el arranque
+    asyncio.create_task(seed_demo_data())
 
 async def backfill_user_colors():
     """Assign a color to any user that doesn't have one."""
