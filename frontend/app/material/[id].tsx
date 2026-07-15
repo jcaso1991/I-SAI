@@ -86,6 +86,13 @@ export default function MaterialDetail() {
   const [impVentaMO, setImpVentaMO] = useState("");
   const [costePrevMat, setCostePrevMat] = useState("");
   const [costePrevMO, setCostePrevMO] = useState("");
+  const [costePrevActMat, setCostePrevActMat] = useState("");
+  const [costePrevActMO, setCostePrevActMO] = useState("");
+  const [pedidoRealizado, setPedidoRealizado] = useState("");
+  const [fechaEntregaMat, setFechaEntregaMat] = useState("");
+  const [numPedido, setNumPedido] = useState("");
+  const [fechaPrevPlanif, setFechaPrevPlanif] = useState("");
+  const [fechaPrevFact, setFechaPrevFact] = useState("");
   const [costeRealMat, setCosteRealMat] = useState("");
   const [costeRealMO, setCosteRealMO] = useState("");
   const [beneficioInicial, setBeneficioInicial] = useState("");
@@ -156,6 +163,13 @@ export default function MaterialDetail() {
         setImpVentaMO(data.importe_venta_prev_mano_de_obra != null ? String(data.importe_venta_prev_mano_de_obra) : "");
         setCostePrevMat(data.coste_prev_materiales != null ? String(data.coste_prev_materiales) : "");
         setCostePrevMO(data.coste_prev_mano_de_obra != null ? String(data.coste_prev_mano_de_obra) : "");
+        setCostePrevActMat(data.coste_prev_actualizado_materiales != null ? String(data.coste_prev_actualizado_materiales) : "");
+        setCostePrevActMO(data.coste_prev_actualizado_mano_de_obra != null ? String(data.coste_prev_actualizado_mano_de_obra) : "");
+        setPedidoRealizado(data.pedido_realizado === true ? "si" : data.pedido_realizado === false ? "no" : "");
+        setFechaEntregaMat(data.fecha_entrega_material || "");
+        setNumPedido(data.numero_pedido || "");
+        setFechaPrevPlanif(data.fecha_prevista_planificacion || "");
+        setFechaPrevFact(data.fecha_prevista_facturacion || "");
         setCosteRealMat(data.coste_real_materiales != null ? String(data.coste_real_materiales) : "");
         setCosteRealMO(data.coste_real_mano_de_obra != null ? String(data.coste_real_mano_de_obra) : "");
         setBeneficioInicial(data.beneficio_inicial != null ? String(data.beneficio_inicial) : "");
@@ -234,6 +248,13 @@ export default function MaterialDetail() {
         importe_venta_prev_mano_de_obra: impVentaMO ? parseFloat(impVentaMO) : null,
         coste_prev_materiales: costePrevMat ? parseFloat(costePrevMat) : null,
         coste_prev_mano_de_obra: costePrevMO ? parseFloat(costePrevMO) : null,
+        coste_prev_actualizado_materiales: costePrevActMat ? parseFloat(costePrevActMat) : null,
+        coste_prev_actualizado_mano_de_obra: costePrevActMO ? parseFloat(costePrevActMO) : null,
+        pedido_realizado: pedidoRealizado === "si" ? true : pedidoRealizado === "no" ? false : null,
+        fecha_entrega_material: fechaEntregaMat || null,
+        numero_pedido: numPedido || null,
+        fecha_prevista_planificacion: fechaPrevPlanif || null,
+        fecha_prevista_facturacion: fechaPrevFact || null,
         coste_real_materiales: costeRealMat ? parseFloat(costeRealMat) : null,
         coste_real_mano_de_obra: costeRealMO ? parseFloat(costeRealMO) : null,
         beneficio_inicial: beneficioInicial ? parseFloat(beneficioInicial) : null,
@@ -400,6 +421,71 @@ export default function MaterialDetail() {
                   keyboardType="numeric"
                 />
               </View>
+            </View>
+
+            <Text style={s.fieldLabel}>Costes previstos actualizados</Text>
+            <View style={s.finRow}>
+              <View style={s.finCol}>
+                <Text style={s.finSubLabel}>Materiales</Text>
+                <TextInput style={s.finInput} value={costePrevActMat} onChangeText={(v) => { if (puedeEditar) { setCostePrevActMat(v); setDirty(true); } }} placeholder="0" placeholderTextColor={COLORS.textDisabled} keyboardType="numeric" />
+              </View>
+              <View style={s.finCol}>
+                <Text style={s.finSubLabel}>Mano de obra</Text>
+                <TextInput style={s.finInput} value={costePrevActMO} onChangeText={(v) => { if (puedeEditar) { setCostePrevActMO(v); setDirty(true); } }} placeholder="0" placeholderTextColor={COLORS.textDisabled} keyboardType="numeric" />
+              </View>
+            </View>
+
+            <Text style={s.fieldLabel}>Logística y planificación</Text>
+            <View style={s.finRow}>
+              <View style={s.finCol}>
+                <Text style={s.finSubLabel}>Pedido realizado</Text>
+                <View style={{ flexDirection: "row", gap: 6 }}>
+                  {["no", "si"].map((opt) => (
+                    <TouchableOpacity key={opt} onPress={() => { if (puedeEditar) { setPedidoRealizado(opt); setDirty(true); } }} style={{ flex: 1, height: 44, borderRadius: 8, borderWidth: 1.5, alignItems: "center", justifyContent: "center", backgroundColor: pedidoRealizado === opt ? COLORS.primary : COLORS.bg, borderColor: pedidoRealizado === opt ? COLORS.primary : COLORS.border }}>
+                      <Text style={{ fontSize: 13, fontWeight: "600", color: pedidoRealizado === opt ? "#fff" : COLORS.textSecondary }}>{opt === "si" ? "Sí" : "No"}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+              <View style={s.finCol}>
+                <Text style={s.finSubLabel}>Nº de pedido</Text>
+                <TextInput style={s.finInput} value={numPedido} onChangeText={(v) => { if (puedeEditar) { setNumPedido(v); setDirty(true); } }} placeholder="Pedido-001" placeholderTextColor={COLORS.textDisabled} />
+              </View>
+            </View>
+            <View style={s.finRow}>
+              <View style={s.finCol}>
+                <Text style={s.finSubLabel}>Fecha entrega material</Text>
+                {Platform.OS === "web" ? (
+                  <View style={{ height: 44, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.bg }}>
+                    <input type="date" value={fechaEntregaMat} onChange={(e: any) => { if (puedeEditar) { setFechaEntregaMat(e.target.value); setDirty(true); } }} style={{ width: "100%", height: "100%", border: "none", padding: "0 12px", fontSize: 14, backgroundColor: "transparent", color: COLORS.text, outline: "none" }} />
+                  </View>
+                ) : (
+                  <TextInput style={s.finInput} value={fechaEntregaMat} onChangeText={(v) => { if (puedeEditar) { setFechaEntregaMat(v); setDirty(true); } }} placeholder="DD/MM/AAAA" placeholderTextColor={COLORS.textDisabled} />
+                )}
+              </View>
+              <View style={s.finCol}>
+                <Text style={s.finSubLabel}>Fecha prevista planificación</Text>
+                {Platform.OS === "web" ? (
+                  <View style={{ height: 44, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.bg }}>
+                    <input type="date" value={fechaPrevPlanif} onChange={(e: any) => { if (puedeEditar) { setFechaPrevPlanif(e.target.value); setDirty(true); } }} style={{ width: "100%", height: "100%", border: "none", padding: "0 12px", fontSize: 14, backgroundColor: "transparent", color: COLORS.text, outline: "none" }} />
+                  </View>
+                ) : (
+                  <TextInput style={s.finInput} value={fechaPrevPlanif} onChangeText={(v) => { if (puedeEditar) { setFechaPrevPlanif(v); setDirty(true); } }} placeholder="DD/MM/AAAA" placeholderTextColor={COLORS.textDisabled} />
+                )}
+              </View>
+            </View>
+            <View style={s.finRow}>
+              <View style={[s.finCol, { maxWidth: "48%" }]}>
+                <Text style={s.finSubLabel}>Fecha prevista facturación</Text>
+                {Platform.OS === "web" ? (
+                  <View style={{ height: 44, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.bg }}>
+                    <input type="date" value={fechaPrevFact} onChange={(e: any) => { if (puedeEditar) { setFechaPrevFact(e.target.value); setDirty(true); } }} style={{ width: "100%", height: "100%", border: "none", padding: "0 12px", fontSize: 14, backgroundColor: "transparent", color: COLORS.text, outline: "none" }} />
+                  </View>
+                ) : (
+                  <TextInput style={s.finInput} value={fechaPrevFact} onChangeText={(v) => { if (puedeEditar) { setFechaPrevFact(v); setDirty(true); } }} placeholder="DD/MM/AAAA" placeholderTextColor={COLORS.textDisabled} />
+                )}
+              </View>
+              <View style={s.finCol} />
             </View>
 
             <Text style={s.fieldLabel}>Coste real</Text>

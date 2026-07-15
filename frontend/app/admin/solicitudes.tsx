@@ -80,6 +80,18 @@ export default function SolicitudesScreen() {
               <Text style={s.detailLabel}>Dirección de envío</Text>
               <Text style={s.cardInfo}>📍 {r.client_address}</Text>
               <Text style={s.cardInfo}>🏙️ {[r.client_city, r.client_postal, r.client_province].filter(Boolean).join(", ")}</Text>
+              {r.descripcion ? (
+                <>
+                  <Text style={s.detailLabel}>Descripción</Text>
+                  <Text style={s.cardInfo}>{r.descripcion}</Text>
+                </>
+              ) : null}
+              {r.observaciones ? (
+                <>
+                  <Text style={s.detailLabel}>Observaciones</Text>
+                  <Text style={s.cardInfoSub}>{r.observaciones}</Text>
+                </>
+              ) : null}
               <Text style={s.detailLabel}>Fecha</Text>
               <Text style={s.cardInfo}>{new Date(r.created_at).toLocaleString("es-ES")}</Text>
             </View>

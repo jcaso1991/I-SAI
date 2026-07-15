@@ -22,12 +22,13 @@ const MODULOS = [
     badge: "Panel de control",
     title: "Dashboard",
     roles: "Admin · Gestor",
-    description: "Panel de control con KPIs en tiempo real: eventos del día, tickets SAT pendientes, presupuestos en curso y tasa de resolución. Widgets interactivos como anillo de proyectos por estado, barras de horas por gestor, top técnicos del mes, embudo de presupuestos y mapa de proyectos activos. Alertas críticas con notificación inmediata.",
+    description: "Panel de control con KPIs en tiempo real: eventos del día, tickets SAT pendientes, presupuestos en curso. Widgets: anillo de proyectos por estado, barras de horas por gestor, top técnicos del mes, horas imputadas por técnico (M.O. vs desplazamiento) con filtro por año/mes y export Excel. Embudo de presupuestos, mapa de proyectos activos. Alertas críticas con notificación inmediata.",
     features: [
       "KPIs en tiempo real: eventos, SAT, presupuestos, horas",
-      "Widgets visuales: anillos, barras, rankings",
-      "Embudo de presupuestos y salud SAT",
-      "Alertas críticas con notificación inmediata",
+      "Horas imputadas por técnico con gráfico M.O. vs desplazamiento",
+      "Widgets personalizables (toggle visibilidad por sección)",
+      "Export Excel de horas con gráficos y desglose mensual",
+      "Buscador global Cmd+K integrado",
     ],
     techData: { endpoint: "GET /api/dashboard", perm: "Admin y Gestores" },
     renderMockup: () => (
@@ -61,12 +62,13 @@ const MODULOS = [
     badge: "Obras y materiales",
     title: "Proyectos",
     roles: "Admin · Gestor · Técnico",
-    description: "Gestión completa de obras y materiales. Cada proyecto tiene código, cliente, ubicación, fechas, estado y horas previstas. Los estados fluyen de planificado → pendiente → terminado → facturado → bloqueado. Se vinculan al calendario y los técnicos reportan horas. Sincronización bidireccional automática con Excel en OneDrive.",
+    description: "Gestión completa de obras y materiales. Cada proyecto tiene código, cliente, ubicación, fechas, estado, horas, datos financieros (venta prevista, costes reales, ingreso facturado), logística (pedido realizado, fecha entrega, nº pedido, planificación) y costes actualizados. Técnicos solo ven sus proyectos asignados. Filtros combinados por gestor, estado, año y mes. Creación manual con formulario completo.",
     features: [
-      "Creación manual o desde Excel sincronizado",
-      "Flujo de 5 estados con tracking visual",
-      "Vinculación a eventos del calendario",
-      "Reporte de horas por técnico",
+      "Ficha financiera completa con 12 campos económicos",
+      "Logística: pedido, entrega, planificación y facturación",
+      "Filtros combinados por gestor y estado simultáneamente",
+      "Técnicos solo ven sus proyectos asignados",
+      "Export Excel con 20+ columnas",
     ],
     techData: { endpoint: "GET/POST/PUT /api/materials", sync: "OneDrive cada 5 min", perm: "Admin crea, Gestor edita, Técnico consulta" },
     renderMockup: () => (
@@ -204,12 +206,12 @@ const MODULOS = [
     badge: "Presupuestos",
     title: "Presupuestos",
     roles: "Admin · Comercial",
-    description: "Presupuestos profesionales con datos del proyecto, listado de equipos autocompletado desde el preciario, cantidades y observaciones. Sección de entregas (tarjeta mantenimiento, llave Salto, EPS100) y firmas. Exportación a PDF con plantilla HTML (logo, tabla, entregas, firmas). Exportación a Excel desde el listado. Copia de presupuestos anteriores como plantilla.",
+    description: "Pipeline comercial completo con estados Kanban (Pendiente → En Revisión → Enviado → Aceptado). Formulario de presupuesto con datos del cliente, equipos desde preciario, firma digital, checkboxes de entregas, drag-drop de documentos, botón de voz IA (Gemini) para rellenar campos dictando. Exportación a PDF. Tabs segmentadas con contadores. Máquina de estados validada en backend. Estados de presupuesto con chips de colores.",
     features: [
-      "Autocompletado desde el preciario",
-      "Exportación a PDF profesional",
-      "Exportación a Excel",
-      "Copia de presupuestos como plantilla",
+      "Pipeline Kanban con 4 estados y validación backend",
+      "Voz IA para rellenar campos dictando (Gemini)",
+      "Firma digital del cliente en el presupuesto",
+      "Vinculación a proyectos y exportación PDF",
     ],
     techData: { endpoint: "GET/POST/PUT /api/budgets", extra: "GET /api/budgets/{id}/pdf", perm: "Admin y Comercial" },
     renderMockup: () => (
@@ -418,6 +420,63 @@ const MODULOS = [
         ))}
         <Text style={{ color: "#64748B", fontSize: 9, marginTop: 3 }}>Escribí tu nota...</Text>
       </>
+    ),
+  },
+  {
+    accent: "#6366F1",
+    accentBg: "rgba(99,102,241,0.15)",
+    badge: "Documentacion tecnica",
+    title: "Relaciones y Formulas",
+    roles: "Admin · Gestor",
+    description: "Todas las relaciones entre modulos del sistema y las formulas utilizadas en calculos automaticos:\n\n"
+      + "RELACIONES:\n"
+      + "• Clientes → Proyectos: cliente_id vincula proyectos. Proyectos asociados visibles en ficha cliente.\n"
+      + "• Proyectos → Eventos: material_id vincula eventos. Horas completadas = horas_imputadas del proyecto.\n"
+      + "• Proyectos → Certificaciones: material_id. N certificaciones por proyecto con alcance y ejecutado.\n"
+      + "• Proyectos → Presupuestos: material_id. Pipeline estados con maquina estados validada.\n"
+      + "• Clientes → SAT: client_id asocia incidencias SAT. Visibles en ficha cliente.\n"
+      + "• Clientes → Mantenimiento: 30d antes del aniversario de alta_mantenimiento se genera incidencia SAT.\n"
+      + "• Clientes → Salto KS: 30d antes de fecha_renovacion se genera notif + solicitud presupuesto.\n\n"
+      + "FORMULAS:\n"
+      + "1. % Avance OEC = (MOD Real / MOD Previsto) x 100. MOD Real = Suma(hours x precio_mo). Tope 100%.\n"
+      + "2. Beneficio Avance = Beneficio Previsto x (% Avance / 100). B.Previsto = Venta Total - Coste Previsto.\n"
+      + "3. Obra en Curso = Coste Incurrido + Beneficio Avance - Ingreso Facturado. Negativo = facturado mas que gastado.\n"
+      + "4. Renovacion Mantto SAT: Si hoy >= (fecha_alta + 1 ano) - 30d → crear SAT 'Renovar mantenimiento'.\n"
+      + "5. Renovacion Salto KS: Si hoy >= fecha_renovacion - 30d → notif 'Renovar voucher' + solicitud presupuesto.\n"
+      + "6. Horas Tecnicos: Suma hours x assigned_user_ids. Desplazamiento = tipo contiene 'desplazamiento'. M.O. = resto.\n"
+      + "7. Pipeline Presupuestos: pendiente→revision→enviado→aceptado. Backend bloquea saltos invalidos.\n"
+      + "8. Total Alcance Certif = Suma(cantidad_alcance x precio_alcance). Total Certif = Total Ejecutado - Anteriores.",
+    features: [
+      "Clientes ↔ Proyectos (cliente_id)",
+      "Proyectos ↔ Eventos (material_id, suma horas)",
+      "Clientes ↔ SAT (client_id, incidencias)",
+      "Clientes → Mantenimiento SAT (auto-alerta 30d)",
+      "Clientes → Salto KS (auto-notif + solicitud)",
+      "Proyectos → OEC (formula: Coste+B.Av-I.Fact)",
+      "Eventos → Horas Tecnicos (M.O. vs Desplaz.)",
+      "Presupuestos → Pipeline (maquina de estados)",
+    ],
+    techData: { endpoint: "15 endpoints involucrados", perm: "Ver documentacion PDF completa" },
+    renderMockup: () => (
+      <View style={{ gap: 2 }}>
+        <Text style={{ color: "#A5B4FC", fontSize: 9, fontWeight: "800", marginBottom: 4 }}>Relaciones (8 principales)</Text>
+        {[
+          ["Clientes → Proyectos", "cliente_id", "Ficha cliente"],
+          ["Proyectos → Eventos", "material_id", "horas_imputadas"],
+          ["Proyectos → Certificaciones", "material_id", "Alcance+Ejec"],
+          ["Clientes → SAT", "client_id", "Incidencias SAT"],
+          ["Clientes → Mantenimiento", "alta_mtto", "Auto-alerta 30d"],
+          ["Clientes → Salto KS", "fecha_renov", "Notif+Presup auto"],
+          ["Proyectos → OEC", "financieros", "C.Inc+B.Av-IFact"],
+          ["Eventos → Horas Tec", "assigned_ids", "M.O. vs Despl"],
+        ].map((r, i) => (
+          <View key={i} style={{ flexDirection: "row", paddingVertical: 1, borderBottomWidth: 0.5, borderBottomColor: "#1E293B" }}>
+            <Text style={{ color: "#94A3B8", fontSize: 7, width: "42%" }}>{r[0]}</Text>
+            <Text style={{ color: "#6366F1", fontSize: 7, width: "28%" }}>{r[1]}</Text>
+            <Text style={{ color: "#64748B", fontSize: 7, width: "30%" }}>{r[2]}</Text>
+          </View>
+        ))}
+      </View>
     ),
   },
 ];

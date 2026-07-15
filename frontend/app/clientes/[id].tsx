@@ -38,6 +38,11 @@ export default function ClienteDetail() {
   const [altaMantenimiento, setAltaMantenimiento] = useState("");
   const [fechaPrimeraRevision, setFechaPrimeraRevision] = useState("");
 
+  // Salto KS
+  const [saltoKsActivo, setSaltoKsActivo] = useState(false);
+  const [saltoKsTipoRenovacion, setSaltoKsTipoRenovacion] = useState("");
+  const [saltoKsFechaRenovacion, setSaltoKsFechaRenovacion] = useState("");
+
   const [proyectos, setProyectos] = useState<any[]>([]);
   const [incidencias, setIncidencias] = useState<any[]>([]);
   const [mantenimientosList, setMantenimientosList] = useState<any[]>([]);
@@ -78,6 +83,9 @@ export default function ClienteDetail() {
         setRevisiones(String(data.numero_revisiones ?? 0));
         setAltaMantenimiento(data.alta_mantenimiento || "");
         setFechaPrimeraRevision(data.fecha_primera_revision || "");
+        setSaltoKsActivo(!!data.salto_ks_activo);
+        setSaltoKsTipoRenovacion(data.salto_ks_tipo_renovacion || "");
+        setSaltoKsFechaRenovacion(data.salto_ks_fecha_renovacion || "");
         setProyectos(data.proyectos || []);
         setIncidencias(data.incidencias || []);
         setMantenimientosList(data.mantenimientos || []);
@@ -107,6 +115,9 @@ export default function ClienteDetail() {
         mantenimiento_contratado: mantenimiento, tipo_mantenimiento: mantenimiento ? tipoMantenimiento.trim() : "",
         numero_revisiones: mantenimiento ? parseInt(revisiones) || 0 : 0, alta_mantenimiento: altaMantenimiento || null,
         fecha_primera_revision: fechaPrimeraRevision || null,
+        salto_ks_activo: saltoKsActivo,
+        salto_ks_tipo_renovacion: saltoKsActivo ? saltoKsTipoRenovacion.trim() : "",
+        salto_ks_fecha_renovacion: saltoKsActivo ? (saltoKsFechaRenovacion || null) : null,
       };
       const updated = await api.updateCliente(id, body);
       setCliente(updated);
@@ -279,13 +290,31 @@ export default function ClienteDetail() {
 
           {mantenimiento ? (
             editando ? (
-              <View style={{ gap: ios.spacing.sm, marginTop: ios.spacing.xs }}>
+               <View style={{ gap: ios.spacing.sm, marginTop: ios.spacing.xs }}>
+                <Text style={s.fieldLabel}>Fecha de Alta</Text>
+                {Platform.OS === "web" ? (
+                  <View style={{ height: 44, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.bg }}>
+                    <input type="date" value={altaMantenimiento} onChange={(e: any) => setAltaMantenimiento(e.target.value)} style={{ width: "100%", height: "100%", border: "none", padding: "0 12px", fontSize: 14, backgroundColor: "transparent", color: COLORS.text, outline: "none" }} />
+                  </View>
+                ) : (
+                  <TextInput style={s.input} value={altaMantenimiento} onChangeText={setAltaMantenimiento} placeholder="YYYY-MM-DD" />
+                )}
                 <Text style={s.fieldLabel}>Tipo de Servicio</Text>
-                <TextInput style={s.input} value={tipoMantenimiento} onChangeText={setTipoMantenimiento} placeholder="Ej: Full-Time 24/7" />
+                <View style={s.chipRow}>
+                  {["Anual", "Trimestral", "Semestral"].map((t) => (
+                    <TouchableOpacity key={t} style={[s.chip, tipoMantenimiento === t && s.chipActive]} onPress={() => { setTipoMantenimiento(t); setRevisiones(t === "Anual" ? "1" : t === "Semestral" ? "2" : "3"); }}>
+                      <Text style={[s.chipText, tipoMantenimiento === t && s.chipTextActive]}>{t}</Text>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity style={[s.chip, tipoMantenimiento && !["Anual","Trimestral","Semestral"].includes(tipoMantenimiento) && s.chipActive]} onPress={() => { setTipoMantenimiento("A medida"); setRevisiones(""); }}>
+                    <Text style={[s.chipText, tipoMantenimiento && !["Anual","Trimestral","Semestral"].includes(tipoMantenimiento) && s.chipTextActive]}>A medida</Text>
+                  </TouchableOpacity>
+                </View>
+                {tipoMantenimiento && !["Anual","Trimestral","Semestral"].includes(tipoMantenimiento) && (
+                  <TextInput style={s.input} value={tipoMantenimiento === "A medida" ? "" : tipoMantenimiento} onChangeText={setTipoMantenimiento} placeholder="Describe el tipo de mantenimiento..." placeholderTextColor={COLORS.textDisabled} />
+                )}
                 <Text style={s.fieldLabel}>Revisiones Anuales</Text>
                 <TextInput style={s.input} value={revisiones} onChangeText={setRevisiones} keyboardType="numeric" />
-                <Text style={s.fieldLabel}>Fecha de Alta</Text>
-                <TextInput style={s.input} value={altaMantenimiento} onChangeText={setAltaMantenimiento} placeholder="YYYY-MM-DD" />
               </View>
             ) : (
               <View style={{ marginTop: 4 }}>
@@ -297,6 +326,44 @@ export default function ClienteDetail() {
             )
           ) : (
             !editando && <Text style={s.emptySectionText}>Este cliente no dispone de un contrato de mantenimiento.</Text>
+          )}
+
+        </View>
+
+        {/* Salto KS */}
+        <View style={s.section}>
+          <View style={s.sectionHeader}>
+            <Text style={s.sectionTitle}>Cliente Salto KS</Text>
+            {editando && (
+              <TouchableOpacity style={[s.toggle, saltoKsActivo && s.toggleOn]} onPress={() => setSaltoKsActivo(!saltoKsActivo)}>
+                <View style={[s.toggleKnob, saltoKsActivo && s.toggleKnobOn]} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {saltoKsActivo ? (
+            editando ? (
+              <View style={{ gap: ios.spacing.sm, marginTop: ios.spacing.xs }}>
+                <Text style={s.fieldLabel}>Tipo de Renovación</Text>
+                <View style={s.chipRow}>
+                  {["Mensual", "Trimestral", "Semestral", "Anual"].map((t) => (
+                    <TouchableOpacity key={t} style={[s.chip, saltoKsTipoRenovacion === t && s.chipActive]} onPress={() => setSaltoKsTipoRenovacion(t)}>
+                      <Text style={[s.chipText, saltoKsTipoRenovacion === t && s.chipTextActive]}>{t}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Text style={s.fieldLabel}>Fecha de Renovación del Voucher</Text>
+                <TextInput style={s.input} value={saltoKsFechaRenovacion} onChangeText={setSaltoKsFechaRenovacion} placeholder="YYYY-MM-DD" />
+              </View>
+            ) : (
+              <View style={{ marginTop: 4 }}>
+                <RowInfo label="Estado" value="Activo" />
+                <RowInfo label="Tipo de Renovación" value={saltoKsTipoRenovacion} />
+                <RowInfo label="Fecha Renovación Voucher" value={saltoKsFechaRenovacion} />
+              </View>
+            )
+          ) : (
+            !editando && <Text style={s.emptySectionText}>Cliente no registrado como Cliente Salto KS.</Text>
           )}
 
         </View>

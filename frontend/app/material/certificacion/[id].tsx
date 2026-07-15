@@ -164,16 +164,18 @@ export default function CertificacionEditor() {
 
   const set = (k: string, v: any) => setF((p: any) => ({ ...p, [k]: v }));
   const setLn = (idx: number, k: keyof Linea, v: string) => {
+    // Normalizar coma decimal a punto
+    const val = (k.includes("cantidad") || k.includes("precio")) ? v.replace(",", ".") : v;
     setF((p: any) => ({
       ...p,
-      lineas: p.lineas.map((l: Linea, i: number) => i === idx ? { ...l, [k]: v } : l),
+      lineas: p.lineas.map((l: Linea, i: number) => i === idx ? { ...l, [k]: val } : l),
     }));
   };
   const addLn = () => setF((p: any) => ({ ...p, lineas: [...p.lineas, emptyLinea()] }));
   const delLn = (idx: number) => setF((p: any) => ({ ...p, lineas: p.lineas.filter((_: any, i: number) => i !== idx) }));
 
   const toNum = (v: string) => {
-    const n = parseFloat(v);
+    const n = parseFloat(String(v || "").replace(",", "."));
     return isNaN(n) ? 0 : n;
   };
 
@@ -331,13 +333,13 @@ export default function CertificacionEditor() {
             return (
               <View key={i} style={s.eqRow}>
                 <TextInput value={l.concepto} onChangeText={(v) => setLn(i, "concepto", v)} style={[s.eqInp, { flex: 2 }]} placeholder="Concepto" placeholderTextColor={COLORS.textDisabled} />
-                <TextInput value={l.cantidad_alcance} onChangeText={(v) => setLn(i, "cantidad_alcance", v)} style={[s.eqInp, { flex: 0.7, textAlign: "center" }]} placeholder="0" placeholderTextColor={COLORS.textDisabled} keyboardType="numeric" />
-                <TextInput value={l.precio_alcance} onChangeText={(v) => setLn(i, "precio_alcance", v)} style={[s.eqInp, { flex: 0.8, textAlign: "center" }]} placeholder="0" placeholderTextColor={COLORS.textDisabled} keyboardType="numeric" />
+                <TextInput value={l.cantidad_alcance} onChangeText={(v) => setLn(i, "cantidad_alcance", v)} style={[s.eqInp, { flex: 0.7, textAlign: "center" }]} placeholder="0" placeholderTextColor={COLORS.textDisabled} keyboardType="decimal-pad" inputMode="decimal" />
+                <TextInput value={l.precio_alcance} onChangeText={(v) => setLn(i, "precio_alcance", v)} style={[s.eqInp, { flex: 0.8, textAlign: "center" }]} placeholder="0.00" placeholderTextColor={COLORS.textDisabled} keyboardType="decimal-pad" inputMode="decimal" />
                 <View style={[s.eqInpR, { flex: 0.8 }]}>
                   <Text style={s.eqInpRTxt}>{totA.toFixed(2)}</Text>
                 </View>
-                <TextInput value={l.cantidad_ejecutado} onChangeText={(v) => setLn(i, "cantidad_ejecutado", v)} style={[s.eqInp, { flex: 0.7, textAlign: "center" }]} placeholder="0" placeholderTextColor={COLORS.textDisabled} keyboardType="numeric" />
-                <TextInput value={l.precio_ejecutado} onChangeText={(v) => setLn(i, "precio_ejecutado", v)} style={[s.eqInp, { flex: 0.8, textAlign: "center" }]} placeholder="0" placeholderTextColor={COLORS.textDisabled} keyboardType="numeric" />
+                <TextInput value={l.cantidad_ejecutado} onChangeText={(v) => setLn(i, "cantidad_ejecutado", v)} style={[s.eqInp, { flex: 0.7, textAlign: "center" }]} placeholder="0" placeholderTextColor={COLORS.textDisabled} keyboardType="decimal-pad" inputMode="decimal" />
+                <TextInput value={l.precio_ejecutado} onChangeText={(v) => setLn(i, "precio_ejecutado", v)} style={[s.eqInp, { flex: 0.8, textAlign: "center" }]} placeholder="0.00" placeholderTextColor={COLORS.textDisabled} keyboardType="decimal-pad" inputMode="decimal" />
                 <View style={[s.eqInpR, { flex: 0.8 }]}>
                   <Text style={s.eqInpRTxt}>{totE.toFixed(2)}</Text>
                 </View>

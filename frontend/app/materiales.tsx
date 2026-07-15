@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  View, Text, TextInput, TouchableOpacity, FlatList,
+  View, Text, TextInput, TouchableOpacity, FlatList, Modal,
   StyleSheet, ActivityIndicator, RefreshControl, Alert, Platform,
   LayoutAnimation, ScrollView,
 } from "react-native";
@@ -66,6 +66,18 @@ export default function Materiales() {
   const [showManagerPanel, setShowManagerPanel] = useState(false);
   const [yearFilter, setYearFilter] = useState(params.year || "todos");
   const [monthFilter, setMonthFilter] = useState(params.month || "");
+  // Modal nuevo proyecto
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [newMat, setNewMat] = useState("");
+  const [newCli, setNewCli] = useState("");
+  const [newUbi, setNewUbi] = useState("");
+  const [newHoras, setNewHoras] = useState("");
+  const [newGestor, setNewGestor] = useState("");
+  const [newFecha, setNewFecha] = useState("");
+  const [newStatus, setNewStatus] = useState("pendiente");
+  const [newTecnico, setNewTecnico] = useState("");
+  const [newComent, setNewComent] = useState("");
+  const [newSaving, setNewSaving] = useState(false);
 
   const s = useThemedStyles(useS);
   const { theme } = useTheme();
@@ -206,6 +218,30 @@ export default function Materiales() {
               {item.tecnicos?.length ? (
                 <View style={s.cardMetaTag}>
                   <Text style={s.cardMetaText}>{item.tecnicos.join(", ")}</Text>
+                </View>
+              ) : null}
+              {item.pedido_realizado === true && (
+                <View style={[s.cardMetaTag, { backgroundColor: "#D1FAE5" }]}>
+                  <Ionicons name="checkmark-circle" size={10} color="#059669" style={{ marginRight: 2 }} />
+                  <Text style={[s.cardMetaText, { color: "#059669", fontWeight: "700" }]}>Pedido</Text>
+                </View>
+              )}
+              {item.fecha_entrega_material ? (
+                <View style={s.cardMetaTag}>
+                  <Ionicons name="cube-outline" size={9} color={COLORS.textSecondary} />
+                  <Text style={s.cardMetaText}>Entr: {item.fecha_entrega_material}</Text>
+                </View>
+              ) : null}
+              {item.fecha_prevista_planificacion ? (
+                <View style={s.cardMetaTag}>
+                  <Ionicons name="calendar-outline" size={9} color={COLORS.textSecondary} />
+                  <Text style={s.cardMetaText}>Plan: {item.fecha_prevista_planificacion}</Text>
+                </View>
+              ) : null}
+              {item.fecha_prevista_facturacion ? (
+                <View style={[s.cardMetaTag, { backgroundColor: COLORS.pillPurpleBg }]}>
+                  <Ionicons name="cash-outline" size={9} color={COLORS.pillPurpleText} />
+                  <Text style={[s.cardMetaText, { color: COLORS.pillPurpleText }]}>Fact: {item.fecha_prevista_facturacion}</Text>
                 </View>
               ) : null}
             </View>
@@ -462,7 +498,7 @@ export default function Materiales() {
           </ScrollView>
         </View>
 
-        <TouchableOpacity style={s.newProjectBtnMobile} activeOpacity={0.8}>
+        <TouchableOpacity style={s.newProjectBtnMobile} activeOpacity={0.8} onPress={() => setShowNewProject(true)}>
           <Text style={s.newProjectBtnText}>+ Nuevo proyecto</Text>
         </TouchableOpacity>
       </View>
@@ -486,8 +522,8 @@ export default function Materiales() {
                 <Text style={s.headerSubtitle}>Todos tus proyectos en un solo lugar</Text>
               </View>
               <View style={s.headerRight}>
-                <TouchableOpacity style={s.headerIcon}>
-                  <Ionicons name="search-outline" size={18} color={COLORS.textSecondary} />
+                <TouchableOpacity style={[s.headerIcon, { backgroundColor: COLORS.primary }]} onPress={() => setShowNewProject(true)}>
+                  <Ionicons name="add" size={18} color="#fff" />
                 </TouchableOpacity>
                 <TouchableOpacity style={s.headerIcon}>
                   <Ionicons name="notifications-outline" size={18} color={COLORS.textSecondary} />
@@ -684,6 +720,64 @@ export default function Materiales() {
           </View>
         </View>
       </SafeAreaView>
+
+      {/* Modal nuevo proyecto */}
+      <Modal visible={showNewProject} transparent animationType="slide" onRequestClose={() => setShowNewProject(false)}>
+        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <View style={{ backgroundColor: "#FFF", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, maxHeight: "90%" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <Text style={{ fontSize: 20, fontWeight: "800", color: "#0F172A" }}>Nuevo proyecto</Text>
+              <TouchableOpacity onPress={() => setShowNewProject(false)}>
+                <Ionicons name="close" size={24} color="#0F172A" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 500 }} showsVerticalScrollIndicator={false}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: "#475569", marginTop: 10, marginBottom: 4 }}>Código / Nombre del proyecto *</Text>
+              <TextInput style={{ height: 42, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, fontSize: 14, color: "#1E293B" }} value={newMat} onChangeText={setNewMat} placeholder="Ej: 2026-001 Hotel Sevilla" placeholderTextColor="#94A3B8" />
+              <Text style={{ fontSize: 12, fontWeight: "600", color: "#475569", marginTop: 10, marginBottom: 4 }}>Cliente</Text>
+              <TextInput style={{ height: 42, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, fontSize: 14, color: "#1E293B" }} value={newCli} onChangeText={setNewCli} placeholder="Nombre del cliente" placeholderTextColor="#94A3B8" />
+              <Text style={{ fontSize: 12, fontWeight: "600", color: "#475569", marginTop: 10, marginBottom: 4 }}>Ubicación</Text>
+              <TextInput style={{ height: 42, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, fontSize: 14, color: "#1E293B" }} value={newUbi} onChangeText={setNewUbi} placeholder="Dirección de la obra" placeholderTextColor="#94A3B8" />
+              <Text style={{ fontSize: 12, fontWeight: "600", color: "#475569", marginTop: 10, marginBottom: 4 }}>Horas previstas</Text>
+              <TextInput style={{ height: 42, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, fontSize: 14, color: "#1E293B" }} value={newHoras} onChangeText={setNewHoras} placeholder="Ej: 40" placeholderTextColor="#94A3B8" keyboardType="numeric" />
+              <Text style={{ fontSize: 12, fontWeight: "600", color: "#475569", marginTop: 10, marginBottom: 4 }}>Técnico asignado</Text>
+              <TextInput style={{ height: 42, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, fontSize: 14, color: "#1E293B" }} value={newTecnico} onChangeText={setNewTecnico} placeholder="Nombre del técnico" placeholderTextColor="#94A3B8" />
+              <Text style={{ fontSize: 12, fontWeight: "600", color: "#475569", marginTop: 10, marginBottom: 4 }}>Gestor</Text>
+              <TextInput style={{ height: 42, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, fontSize: 14, color: "#1E293B" }} value={newGestor} onChangeText={setNewGestor} placeholder="Nombre del gestor" placeholderTextColor="#94A3B8" />
+              <Text style={{ fontSize: 12, fontWeight: "600", color: "#475569", marginTop: 10, marginBottom: 4 }}>Fecha</Text>
+              <TextInput style={{ height: 42, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, fontSize: 14, color: "#1E293B" }} value={newFecha} onChangeText={setNewFecha} placeholder="YYYY-MM-DD o DD/MM/AAAA" placeholderTextColor="#94A3B8" />
+              <Text style={{ fontSize: 12, fontWeight: "600", color: "#475569", marginTop: 10, marginBottom: 4 }}>Estado</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+                {["pendiente","planificado","a_facturar","facturado","terminado","bloqueado"].map(st => (
+                  <TouchableOpacity key={st} onPress={() => setNewStatus(st)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, backgroundColor: newStatus === st ? COLORS.primary : "#F1F5F9", borderWidth: 1, borderColor: newStatus === st ? COLORS.primary : "#E2E8F0" }}>
+                    <Text style={{ fontSize: 12, fontWeight: "600", color: newStatus === st ? "#fff" : "#475569" }}>{st}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: "#475569", marginTop: 10, marginBottom: 4 }}>Comentarios</Text>
+              <TextInput style={{ height: 70, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, fontSize: 14, color: "#1E293B", textAlignVertical: "top" }} value={newComent} onChangeText={setNewComent} placeholder="Observaciones..." placeholderTextColor="#94A3B8" multiline />
+              <TouchableOpacity
+                style={{ height: 48, backgroundColor: COLORS.primary, borderRadius: 12, alignItems: "center", justifyContent: "center", marginTop: 16, marginBottom: 20, opacity: newSaving ? 0.6 : 1 }}
+                onPress={async () => {
+                  if (!newMat.trim()) { Alert.alert("Error", "El nombre del proyecto es obligatorio"); return; }
+                  setNewSaving(true);
+                  try {
+                    await api.createMaterial({ materiales: newMat, cliente: newCli, ubicacion: newUbi, horas_prev: newHoras, gestor: newGestor, fecha: newFecha, project_status: newStatus, tecnico: newTecnico, comentarios: newComent });
+                    setShowNewProject(false);
+                    setNewMat(""); setNewCli(""); setNewUbi(""); setNewHoras(""); setNewGestor(""); setNewFecha(""); setNewStatus("pendiente"); setNewTecnico(""); setNewComent("");
+                    load();
+                    Alert.alert("Éxito", "Proyecto creado correctamente");
+                  } catch (e: any) { Alert.alert("Error", e.message); }
+                  finally { setNewSaving(false); }
+                }}
+                disabled={newSaving}
+              >
+                {newSaving ? <ActivityIndicator color="#fff" /> : <Text style={{ color: "#fff", fontSize: 14, fontWeight: "700" }}>Crear proyecto</Text>}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </ResponsiveLayout>
   );
 }

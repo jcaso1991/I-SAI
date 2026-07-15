@@ -188,6 +188,13 @@ class Material(BaseModel):
     importe_venta_prev_mano_de_obra: Optional[float] = None
     coste_prev_materiales: Optional[float] = None
     coste_prev_mano_de_obra: Optional[float] = None
+    coste_prev_actualizado_materiales: Optional[float] = None
+    coste_prev_actualizado_mano_de_obra: Optional[float] = None
+    pedido_realizado: Optional[bool] = None
+    fecha_entrega_material: Optional[str] = None
+    numero_pedido: Optional[str] = None
+    fecha_prevista_planificacion: Optional[str] = None
+    fecha_prevista_facturacion: Optional[str] = None
     coste_real_materiales: Optional[float] = None
     coste_real_mano_de_obra: Optional[float] = None
     beneficio_inicial: Optional[float] = None
@@ -215,6 +222,13 @@ class MaterialUpdate(BaseModel):
     importe_venta_prev_mano_de_obra: Optional[float] = None
     coste_prev_materiales: Optional[float] = None
     coste_prev_mano_de_obra: Optional[float] = None
+    coste_prev_actualizado_materiales: Optional[float] = None
+    coste_prev_actualizado_mano_de_obra: Optional[float] = None
+    pedido_realizado: Optional[bool] = None
+    fecha_entrega_material: Optional[str] = None
+    numero_pedido: Optional[str] = None
+    fecha_prevista_planificacion: Optional[str] = None
+    fecha_prevista_facturacion: Optional[str] = None
     coste_real_materiales: Optional[float] = None
     coste_real_mano_de_obra: Optional[float] = None
     beneficio_inicial: Optional[float] = None
@@ -226,6 +240,18 @@ class DireccionCliente(BaseModel):
     representante: str = ""
     telefono: str = ""
     email: str = ""
+
+class MaterialManualCreate(BaseModel):
+    materiales: str = ""
+    cliente: str = ""
+    ubicacion: str = ""
+    horas_prev: str = ""
+    gestor: str = ""
+    fecha: str = ""
+    project_status: str = "pendiente"
+    tecnico: str = ""
+    comentarios: str = ""
+
 
 class ClienteCreate(BaseModel):
     nombre: str
@@ -508,6 +534,14 @@ async def get_user_role_info(user: dict) -> dict:
         "notification_prefs": role.get("notification_prefs", []) if role else [],
         "tipos_mano_obra": role.get("tipos_mano_obra", []) if role else [],
     }
+
+
+async def _decode_query_token(token: str):
+    if not token: return None
+    try:
+        payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return await db.users.find_one({"email": payload.get("email")}, {"_id": 0, "password": 0})
+    except: return None
 
 
 async def should_notify_user(user_id: str, notif_type: str) -> bool:
@@ -2834,6 +2868,28 @@ async def list_materiales(user: dict = Depends(require_permission("proyectos.vie
         item["horas_imputadas"] = round(hours_by_material.get(item["id"], 0), 1)
     return items
 
+
+@api_router.post("/materiales", response_model=Material)
+async def create_material(payload: MaterialManualCreate, user: dict = Depends(require_permission("proyectos.edit"))):
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": str(uuid.uuid4()), "row_index": 0,
+        "materiales": payload.materiales.strip(), "cliente": payload.cliente.strip(),
+        "ubicacion": payload.ubicacion.strip(), "horas_prev": payload.horas_prev.strip(),
+        "gestor": payload.gestor.strip() or (user.get("name") or user.get("email","").split("@")[0]),
+        "fecha": payload.fecha.strip(), "project_status": payload.project_status,
+        "tecnico": payload.tecnico.strip(), "comentarios": payload.comentarios.strip(),
+        "importe_venta_prev_materiales": None, "importe_venta_prev_mano_de_obra": None,
+        "coste_prev_materiales": None, "coste_prev_mano_de_obra": None,
+        "coste_real_materiales": None, "coste_real_mano_de_obra": None,
+        "beneficio_inicial": None, "beneficio_real": None, "ingreso_facturado": None,
+        "horas_imputadas": 0, "sync_status": "synced",
+        "created_at": now, "updated_at": now, "created_by": user["email"],
+    }
+    await db.materiales.insert_one(doc)
+    return doc
+
+
 @api_router.get("/materiales/export-excel")
 async def materiales_export_excel(user: dict = Depends(current_user)):
     """Export all projects as an Excel file."""
@@ -3279,6 +3335,33 @@ async def update_cliente(cid: str, payload: ClienteUpdate, user: dict = Depends(
                 await db.budget_requests.insert_one(budget_request)
         except Exception:
             pass
+
+    # Mantenimiento: 1 mes antes del aniversario de alta, generar incidencia SAT
+    if doc.get("mantenimiento_contratado") and doc.get("alta_mantenimiento"):
+        try:
+            alta = doc["alta_mantenimiento"][:10]
+            fecha_alta = datetime.strptime(alta, "%Y-%m-%d")
+            ahora = datetime.now()
+            aniversario = fecha_alta.replace(year=ahora.year)
+            if aniversario < ahora:
+                aniversario = fecha_alta.replace(year=ahora.year + 1)
+            aviso = aniversario - timedelta(days=30)
+            if ahora >= aviso:
+                await db.sat_mantenimientos.insert_one({
+                    "id": str(uuid.uuid4()),
+                    "cliente_id": cid,
+                    "cliente": doc.get("nombre", ""),
+                    "fechas": [aniversario.strftime("%Y-%m-%d")],
+                    "tipo": doc.get("tipo_mantenimiento", "Anual"),
+                    "observaciones": f"Renovar mantenimiento — Alta: {alta}. Vencimiento: {aniversario.strftime('%Y-%m-%d')}.",
+                    "estado": "pendiente",
+                    "created_by": user.get("email", ""),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "origen": "mto_auto",
+                })
+        except Exception:
+            pass
+
     proyectos = await db.materiales.find(
         {"cliente_id": cid},
         {"_id": 0, "id": 1, "materiales": 1, "project_status": 1, "updated_at": 1, "fecha": 1, "cliente": 1},

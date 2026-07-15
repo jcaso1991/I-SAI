@@ -155,9 +155,6 @@ export default function ResponsiveLayout({
         {has("preciario.view") && (
           <SideLink active={active === "documentos"} label="Documentos Internos" icon="folder-open" to="/documentos" />
         )}
-        {has("preciario.view") && (
-          <SideLink active={active === "preciario"} label="Preciario" icon="pricetags" to="/preciario" />
-        )}
 
         {(canOnedrive || canManageUsers || canManageRoles) && (
           <>

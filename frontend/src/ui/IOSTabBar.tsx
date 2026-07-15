@@ -10,7 +10,7 @@ import { useThemedStyles } from "../theme";
 export type BottomTab =
   | "home" | "dashboard" | "proyectos" | "calendario" | "planos"
   | "presupuestos" | "chat" | "ajustes" | "sat" | "documentos"
-  | "preciario" | "documentaciones" | "notas" | "clientes";
+  | "documentaciones" | "notas" | "clientes";
 
 const TAB_PERM_MAP: Record<BottomTab, string | null> = {
   home: null,
@@ -22,7 +22,6 @@ const TAB_PERM_MAP: Record<BottomTab, string | null> = {
   chat: "chat.view",
   sat: "sat.view",
   documentos: "preciario.view",
-  preciario: "preciario.view",
   documentaciones: "preciario.view",
   notas: "notas.view",
   clientes: null,
@@ -40,7 +39,6 @@ const TAB_ROUTES: Record<BottomTab, string> = {
   chat: "/chat",
   sat: "/sat",
   documentos: "/documentos",
-  preciario: "/preciario",
   documentaciones: "/documentaciones",
   notas: "/notas",
   clientes: "/clientes",
@@ -59,7 +57,6 @@ const LABELS: Record<BottomTab, string> = {
   ajustes: "Ajustes",
   sat: "CRM SAT",
   documentos: "Docs. Internos",
-  preciario: "Preciario",
   documentaciones: "Docs. y Software",
   notas: "Notas",
   clientes: "Clientes",

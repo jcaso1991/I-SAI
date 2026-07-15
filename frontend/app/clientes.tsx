@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, useMemo } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Alert, Modal, KeyboardAvoidingView, Platform
@@ -21,6 +21,8 @@ export default function ClientesIndex() {
   const [clientes, setClientes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [filterSaltoKs, setFilterSaltoKs] = useState(false);
+  const [filterTipoMtto, setFilterTipoMtto] = useState("");
   const [showCreate, setShowCreate] = useState(false);
 
   const [formNombre, setFormNombre] = useState("");
@@ -91,11 +93,15 @@ export default function ClientesIndex() {
     finally { setSaving(false); }
   };
 
-  const filtered = search
-    ? clientes.filter((c) =>
-        `${c.nombre} ${c.razon_social} ${c.poblacion} ${c.telefono}`.toLowerCase().includes(search.toLowerCase())
-      )
-    : clientes;
+  const filtered = (search || filterSaltoKs || filterTipoMtto
+    ? clientes.filter((c) => {
+        if (filterSaltoKs && !c.salto_ks_activo) return false;
+        if (filterTipoMtto && c.tipo_mantenimiento !== filterTipoMtto) return false;
+        if (search && !`${c.nombre} ${c.razon_social} ${c.poblacion} ${c.telefono}`.toLowerCase().includes(search.toLowerCase())) return false;
+        return true;
+      })
+    : clientes
+  );
 
   const content = (
     <SafeAreaView style={s.root} edges={["top"]}>
@@ -124,6 +130,17 @@ export default function ClientesIndex() {
             <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
           </TouchableOpacity>
         )}
+      </View>
+
+      <View style={{ flexDirection: "row", gap: 6, marginHorizontal: ios.spacing.lg, marginBottom: 8, flexWrap: "wrap" }}>
+        <TouchableOpacity onPress={() => setFilterSaltoKs(!filterSaltoKs)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: filterSaltoKs ? COLORS.pillPurpleText : COLORS.border, backgroundColor: filterSaltoKs ? "#EDE9FE" : "transparent" }}>
+          <Text style={{ fontSize: 11, fontWeight: "600", color: filterSaltoKs ? COLORS.pillPurpleText : COLORS.textSecondary }}>🔑 Salto KS</Text>
+        </TouchableOpacity>
+        {["Anual", "Trimestral", "Semestral"].map((t) => (
+          <TouchableOpacity key={t} onPress={() => setFilterTipoMtto(filterTipoMtto === t ? "" : t)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: filterTipoMtto === t ? COLORS.syncedText : COLORS.border, backgroundColor: filterTipoMtto === t ? "#D1FAE5" : "transparent" }}>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: filterTipoMtto === t ? COLORS.syncedText : COLORS.textSecondary }}>🛡️ {t}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       {loading ? (
@@ -175,7 +192,13 @@ export default function ClientesIndex() {
                   {c.mantenimiento_contratado && (
                     <View style={s.mantBadge}>
                       <Ionicons name="shield-checkmark" size={10} color={COLORS.syncedText} />
-                      <Text style={s.mantBadgeText}>Mantenimiento</Text>
+                      <Text style={s.mantBadgeText}>{c.tipo_mantenimiento || "Mantenimiento"}</Text>
+                    </View>
+                  )}
+                  {c.salto_ks_activo && (
+                    <View style={[s.mantBadge, { backgroundColor: "#EDE9FE" }]}>
+                      <Ionicons name="key-outline" size={10} color={COLORS.pillPurpleText} />
+                      <Text style={[s.mantBadgeText, { color: COLORS.pillPurpleText }]}>Salto KS</Text>
                     </View>
                   )}
                   <Ionicons name="chevron-forward" size={18} color={COLORS.textDisabled} style={{ alignSelf: 'flex-end', marginTop: 'auto', marginBottom: 'auto' }} />
@@ -251,7 +274,19 @@ export default function ClientesIndex() {
               {formMantenimiento && (
                 <View style={s.nestedFields}>
                   <Text style={s.fieldLabel}>Tipo de mantenimiento</Text>
-                  <TextInput style={s.input} value={formTipoMantenimiento} onChangeText={setFormTipoMantenimiento} placeholder="Ej: Preventivo semestral" placeholderTextColor={COLORS.textDisabled} />
+                  <View style={s.chipRow}>
+                    {["Anual", "Trimestral", "Semestral"].map((t) => (
+                      <TouchableOpacity key={t} style={[s.chip, formTipoMantenimiento === t && s.chipActive]} onPress={() => { setFormTipoMantenimiento(t); setFormRevisiones(t === "Anual" ? "1" : t === "Semestral" ? "2" : "3"); }}>
+                        <Text style={[s.chipText, formTipoMantenimiento === t && s.chipTextActive]}>{t}</Text>
+                      </TouchableOpacity>
+                    ))}
+                    <TouchableOpacity style={[s.chip, formTipoMantenimiento && !["Anual","Trimestral","Semestral"].includes(formTipoMantenimiento) && s.chipActive]} onPress={() => { setFormTipoMantenimiento("A medida"); setFormRevisiones(""); }}>
+                      <Text style={[s.chipText, formTipoMantenimiento && !["Anual","Trimestral","Semestral"].includes(formTipoMantenimiento) && s.chipTextActive]}>A medida</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {formTipoMantenimiento && !["Anual","Trimestral","Semestral"].includes(formTipoMantenimiento) && (
+                    <TextInput style={s.input} value={formTipoMantenimiento === "A medida" ? "" : formTipoMantenimiento} onChangeText={setFormTipoMantenimiento} placeholder="Describe el tipo de mantenimiento..." placeholderTextColor={COLORS.textDisabled} />
+                  )}
                   <Text style={s.fieldLabel}>Nº revisiones estimadas / año</Text>
                   <TextInput style={s.input} value={formRevisiones} onChangeText={setFormRevisiones} placeholder="2" placeholderTextColor={COLORS.textDisabled} keyboardType="numeric" />
                 </View>

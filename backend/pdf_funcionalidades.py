@@ -179,7 +179,7 @@ def _portada(logo_path):
         "ERP integral para empresas de instalacion y mantenimiento<br/>"
         "de sistemas de seguridad electronica", S["cover_subtitle"]))
     elems.append(Spacer(1, 2 * cm))
-    elems.append(Paragraph("Version 1.0  |  Documento confidencial", S["cover_date"]))
+    elems.append(Paragraph("Version 2.0  |  Documento confidencial", S["cover_date"]))
     return elems
 
 # ---------------------------------------------------------------------------
@@ -202,6 +202,7 @@ def _indice():
         ("10.", "Infraestructura tecnica"),
         ("11.", "Indice de endpoints API"),
         ("12.", "Resumen ejecutivo"),
+        ("13.", "Relaciones entre modulos y formulas"),
     ]
     for num, titulo in secciones:
         elems.append(Paragraph(f"{num}  {titulo}", S["toc_entry"]))
@@ -348,7 +349,7 @@ def _s2_roles():
 
     E.append(Paragraph("Permisos detallados por modulo", S["h2"]))
     E.append(Paragraph(
-        "A continuacion se listan los 28 permisos del sistema, agrupados por el modulo "
+        "A continuacion se listan los 30 permisos del sistema, agrupados por el modulo "
         "al que pertenecen. La columna indica si el rol tiene el permiso por defecto. "
         "Los permisos marcados pueden ser revocados o concedidos individualmente por un "
         "administrador para adaptarse a las necesidades especificas de cada empresa.",
@@ -1483,14 +1484,160 @@ def _s12_resumen():
 
     E.append(Spacer(1, 0.5 * cm))
     E.append(Paragraph(
-        f"Documento generado el {date.today().strftime('%d/%m/%Y')}. Version 1.0.",
+        f"Documento generado el {date.today().strftime('%d/%m/%Y')}. Version 2.0.",
         S["body_small"]
     ))
     E.append(Paragraph(
-        "I-SAI (c) 2025-2026. Todos los derechos reservados.",
+        "I-SAI (c) 2025-2026 | v2.0 Julio 2026. Todos los derechos reservados.",
         S["body_small"]
     ))
     return E
+
+
+# SECCION 13: Relaciones entre modulos y formulas
+def _s13_relaciones():
+    E = []
+    E.append(Paragraph("13. Relaciones entre modulos y formulas", S["h1"]))
+    E.append(Paragraph(
+        "Esta seccion documenta todas las relaciones entre modulos y las formulas "
+        "utilizadas en calculos automaticos, alertas y flujos de trabajo.",
+        S["body"]
+    ))
+
+    E.append(Spacer(1, 0.4 * cm))
+    E.append(Paragraph("13.1 Relaciones entre modulos", S["h2"]))
+
+    for titulo, detalle in [
+        ("Clientes → Proyectos", "Campo cliente_id en materiales vincula cada proyecto a un cliente. Al abrir un proyecto se muestran los datos del cliente. En la ficha del cliente aparecen todos sus proyectos asociados."),
+        ("Proyectos → Eventos (Calendario)", "Campo material_id en events vincula eventos al proyecto. Las horas de eventos completados se suman como horas_imputadas del proyecto. El calendario muestra el nombre del proyecto en cada evento."),
+        ("Proyectos → Certificaciones", "Campo material_id en certificaciones. Un proyecto puede tener multiples certificaciones, cada una con lineas de alcance (previsto) y ejecutado (real)."),
+        ("Proyectos → Presupuestos", "Campo material_id en budgets. Presupuesto aceptado se vincula al proyecto. Estados: pendiente, en_revision, enviado, aceptado. Backend valida transiciones."),
+        ("Clientes → SAT (Incidencias)", "Campo client_id en sat_incidents. Incidencias SAT asociadas al cliente, visibles en su ficha con estado y fecha."),
+        ("Clientes → Mantenimiento SAT", "Campos mantenimiento_contratado + alta_mantenimiento. Un mes antes del aniversario de la fecha de alta se genera automaticamente una incidencia SAT con tipo 'Renovar mantenimiento'."),
+        ("Clientes → Salto KS", "Campos salto_ks_activo + salto_ks_fecha_renovacion. 30 dias antes del vencimiento se genera notificacion y solicitud de presupuesto automatica."),
+        ("Clientes → Solicitudes Presupuesto", "Solicitudes de presupuesto desde formulario publico o generadas automaticamente por Salto KS. Visibles en Admin > Solicitudes."),
+        ("Proyectos → Dashboard OEC", "Proyectos con costes reales y horas imputadas. El calculo de Obra en Curso usa la formula de la seccion 13.2."),
+        ("Proyectos → Dashboard Financiero", "Proyectos con datos financieros y horas_imputadas. Panel financiero muestra venta prevista, costes y margenes por ano y gestor."),
+        ("Eventos → Dashboard Horas Tecnicos", "Horas de eventos sumadas por assigned_user_ids. Clasificadas como M.O. o Desplazamiento segun tipo_mano_obra. Filtrable por ano/mes."),
+        ("Presupuestos → Pipeline Estados", "Maquina de estados: pendiente → en_revision → enviado → aceptado. Backend bloquea saltos invalidos. Cada cambio guarda _status_history."),
+    ]:
+        E.append(Paragraph(f"<b>{titulo}:</b> {detalle}", S["body"]))
+
+    E.append(Spacer(1, 0.6 * cm))
+    E.append(Paragraph("13.2 Formulas del sistema", S["h2"]))
+    E.append(Paragraph(
+        "Formulas utilizadas en calculos automaticos, indicadores y generacion de alertas. "
+        "Cada entrada describe la formula completa, sus componentes y donde se aplica.",
+        S["body"]
+    ))
+
+    # Formula 1: OEC
+    E.append(Paragraph("Formula 1: % de Avance (Obra en Curso)", S["h3"]))
+    E.append(Paragraph(
+        "<b>% Avance = (MOD Real / MOD Previsto) x 100</b><br/>"
+        "<b>MOD Real</b> = Suma de (hours x precio_mano_obra) de todos los eventos del "
+        "proyecto con status 'completed' o 'pending_completion'.<br/>"
+        "<b>MOD Previsto</b> = coste_prev_mano_de_obra del proyecto (si es 0, se usa 1).<br/>"
+        "<b>Tope:</b> Maximo 100%.<br/>"
+        "<b>Donde:</b> Dashboard > Obra en Curso. Mide el grado de avance real basado en "
+        "horas trabajadas vs horas presupuestadas.",
+        S["body"]
+    ))
+
+    E.append(Paragraph("Formula 2: Beneficio segun Avance", S["h3"]))
+    E.append(Paragraph(
+        "<b>Beneficio Avance = Beneficio Previsto x (% Avance / 100)</b><br/>"
+        "<b>Beneficio Previsto</b> = Venta Total - Coste Previsto Total<br/>"
+        "<b>Venta Total</b> = importe_venta_prev_materiales + importe_venta_prev_mano_de_obra<br/>"
+        "<b>Coste Previsto Total</b> = coste_prev_materiales + coste_prev_mano_de_obra<br/>"
+        "<b>Donde:</b> Dashboard > Obra en Curso. Estima el beneficio proporcional al avance real.",
+        S["body"]
+    ))
+
+    E.append(Paragraph("Formula 3: Obra en Curso (OEC) — Cierre Contable", S["h3"]))
+    E.append(Paragraph(
+        "<b>Obra en Curso = Coste Incurrido + Beneficio Avance - Ingreso Facturado</b><br/>"
+        "<b>Coste Incurrido</b> = coste_real_materiales + MOD Real<br/>"
+        "<b>Ingreso Facturado</b> = campo manual 'ingreso_facturado' del proyecto<br/>"
+        "<b>Interpretacion:</b> Valor positivo = se gasto mas de lo facturado. Valor negativo = "
+        "se facturo mas de lo gastado (saludable).<br/>"
+        "<b>Donde:</b> Dashboard > Obra en Curso. Refleja el valor neto de la obra para cierre contable.",
+        S["body"]
+    ))
+
+    E.append(Paragraph("Formula 4: Renovacion Automatica de Mantenimiento SAT", S["h3"]))
+    E.append(Paragraph(
+        "<b>Condicion:</b> mantenimiento_contratado = True Y alta_mantenimiento existe.<br/>"
+        "<b>Calculo:</b><br/>"
+        "1. <b>Aniversario</b> = fecha_alta + 1 ano (ajustado al ano actual si ya paso).<br/>"
+        "2. <b>Si fecha_actual >= Aniversario - 30 dias:</b><br/>"
+        "   - Crear incidencia en db.sat_mantenimientos con:<br/>"
+        "     tipo = tipo_mantenimiento del cliente<br/>"
+        "     observaciones = 'Renovar mantenimiento - Alta: [fecha]. Vencimiento: [aniversario]'<br/>"
+        "     estado = 'pendiente', origen = 'mto_auto'<br/>"
+        "<b>Donde:</b> PATCH /clientes/{id}. Se ejecuta al guardar cualquier cambio en el cliente.",
+        S["body"]
+    ))
+
+    E.append(Paragraph("Formula 5: Renovacion Automatica Salto KS", S["h3"]))
+    E.append(Paragraph(
+        "<b>Condicion:</b> salto_ks_activo = True Y salto_ks_fecha_renovacion existe.<br/>"
+        "<b>Calculo:</b><br/>"
+        "1. <b>Si fecha_actual >= salto_ks_fecha_renovacion - 30 dias:</b><br/>"
+        "   a) Crear notificacion: 'Renovar voucher - [nombre cliente]'<br/>"
+        "   b) Crear solicitud de presupuesto automatica con:<br/>"
+        "      titulo = 'Renovar Voucher Salto KS - [nombre]'<br/>"
+        "      descripcion = tipo de renovacion, fecha limite<br/>"
+        "      observaciones = 'Renovacion automatica por sistema'<br/>"
+        "      estado = 'pendiente', origen = 'salto_ks_auto'<br/>"
+        "<b>Donde:</b> PATCH /clientes/{id}. Se ejecuta al guardar cambios en el cliente.",
+        S["body"]
+    ))
+
+    E.append(Paragraph("Formula 6: Horas Imputadas por Tecnico", S["h3"]))
+    E.append(Paragraph(
+        "<b>Para cada tecnico en el mes seleccionado:</b><br/>"
+        "1. <b>horas_obra</b> = Suma de hours de eventos donde assigned_user_ids contiene al tecnico "
+        "y tipo_mano_obra NO contiene 'desplazamiento'.<br/>"
+        "2. <b>horas_desplazamiento</b> = Suma de hours de eventos donde assigned_user_ids contiene "
+        "al tecnico y tipo_mano_obra contiene 'desplazamiento'.<br/>"
+        "3. <b>total</b> = horas_obra + horas_desplazamiento<br/>"
+        "<b>Filtros:</b> Por ano y mes. Exportable a Excel con grafico de barras y desglose mensual.<br/>"
+        "<b>Donde:</b> Dashboard > Horas imputadas. GET /api/dashboard/tecnico-hours?year=X&month=Y",
+        S["body"]
+    ))
+
+    E.append(Paragraph("Formula 7: Maquina de Estados de Presupuestos", S["h3"]))
+    E.append(Paragraph(
+        "<b>Estados:</b> pendiente -> en_revision -> enviado -> aceptado (tambien: rechazado, facturado).<br/>"
+        "<b>Validaciones:</b><br/>"
+        "- No se puede aceptar sin haber enviado (el estado anterior debe ser 'enviado' o 'en_revision').<br/>"
+        "- No se puede enviar sin revision previa.<br/>"
+        "<b>Auditoria:</b> Cada cambio guarda en _status_history: from_status, to_status, changed_at, changed_by.<br/>"
+        "<b>Donde:</b> PATCH /budgets/{id}/status. Frontend: boton 'Avanzar etapa' en lista de presupuestos.",
+        S["body"]
+    ))
+
+    E.append(Paragraph("Formula 8: Totales de Certificaciones", S["h3"]))
+    E.append(Paragraph(
+        "<b>Total Alcance</b> = Suma de (cantidad_alcance x precio_alcance) para todas las lineas.<br/>"
+        "<b>Total Ejecutado</b> = Suma de (cantidad_ejecutado x precio_ejecutado) para todas las lineas.<br/>"
+        "<b>Total Certificacion</b> = Total Ejecutado - Certificaciones Anteriores.<br/>"
+        "<b>IVA</b> = Total Certificacion x (iva / 100).<br/>"
+        "<b>Liquido</b> = Total Certificacion + IVA.<br/>"
+        "<b>Donde:</b> Formulario de certificaciones. Calculos en tiempo real al editar cantidades/precios.",
+        S["body"]
+    ))
+
+    E.append(Spacer(1, 0.5 * cm))
+    E.append(Paragraph(
+        "Todas las formulas se ejecutan en tiempo real. Los calculos de OEC, horas y financiero "
+        "se cachean durante 60 segundos para optimizar el rendimiento en consultas repetidas. "
+        "Las alertas de Mantenimiento y Salto KS se generan en el momento de guardar el cliente.",
+        S["body_small"]
+    ))
+    return E
+
 
 # ===================================================================
 # Funcion principal: generar_pdf
@@ -1530,6 +1677,7 @@ def generar_pdf(output_path):
     story.extend(_s10_infraestructura())
     story.extend(_s11_endpoints())
     story.extend(_s12_resumen())
+    story.extend(_s13_relaciones())
 
     doc.build(story)
     return output_path

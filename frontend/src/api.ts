@@ -69,6 +69,7 @@ export const api = {
     return request(`/materiales${qs ? "?" + qs : ""}`);
   },
   getMaterial: (id: string) => request(`/materiales/${id}`),
+  createMaterial: (body: any) => request("/materiales", { method: "POST", body: JSON.stringify(body) }),
   updateMaterial: (id: string, body: any) =>
     request(`/materiales/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   uploadMaterialAttachment: (mid: string, body: { filename: string; mime_type: string; base64: string }) =>

@@ -32,6 +32,8 @@ export default function PresupuestoClienteScreen() {
   const [clientCity, setClientCity] = useState("");
   const [clientPostal, setClientPostal] = useState("");
   const [clientProvince, setClientProvince] = useState("");
+  const [serviceType, setServiceType] = useState("suministro");
+  const [observaciones, setObservaciones] = useState("");
   const [sending, setSending] = useState(false);
   const [detailVariant, setDetailVariant] = useState<any | null>(null);
 
@@ -86,6 +88,8 @@ export default function PresupuestoClienteScreen() {
         client_city: clientCity,
         client_postal: clientPostal,
         client_province: clientProvince,
+        service_type: serviceType,
+        observaciones: observaciones,
         items: cart.map((c) => ({ family: c.family, variant: c.variant, image: c.image, quantity: c.quantity })),
       });
       setSubmitted(true);
@@ -148,6 +152,19 @@ export default function PresupuestoClienteScreen() {
           
           <Text style={s.formLabel}>Provincia</Text>
           <TextInput style={s.formInput} value={clientProvince} onChangeText={setClientProvince} placeholder="Madrid" placeholderTextColor={COLORS.textDisabled} />
+          
+          <Text style={s.formLabel}>Tipo de servicio</Text>
+          <View style={s.chipRow}>
+            <TouchableOpacity style={[s.chip, serviceType === "suministro" && s.chipActive]} onPress={() => setServiceType("suministro")}>
+              <Text style={[s.chipText, serviceType === "suministro" && s.chipTextActive]}>Sólo Suministro</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[s.chip, serviceType === "instalacion" && s.chipActive]} onPress={() => setServiceType("instalacion")}>
+              <Text style={[s.chipText, serviceType === "instalacion" && s.chipTextActive]}>Suministro + Instalación</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={s.formLabel}>Observaciones</Text>
+          <TextInput style={[s.formInput, { height: 80, textAlignVertical: "top" } as any]} value={observaciones} onChangeText={setObservaciones} placeholder="Añade cualquier detalle adicional..." placeholderTextColor={COLORS.textDisabled} multiline />
           
           <TouchableOpacity
             style={[s.submitBtn, sending && { opacity: 0.6 }]}
@@ -401,4 +418,9 @@ const useS = () => StyleSheet.create({
   detailImg: { width: "100%", height: 180, borderRadius: ios.radius.md, marginBottom: 10, backgroundColor: COLORS.bg },
   detailLabel: { fontSize: 12, fontWeight: "800", color: COLORS.primary, textTransform: "uppercase", marginTop: 10, marginBottom: 4 },
   detailText: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 19 },
+  chipRow: { flexDirection: "row", gap: 10 },
+  chip: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1.5, borderColor: COLORS.border, backgroundColor: COLORS.bg, alignItems: "center" },
+  chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  chipText: { fontSize: 13, fontWeight: "600", color: COLORS.textSecondary },
+  chipTextActive: { color: "#fff", fontWeight: "700" },
 });
