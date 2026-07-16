@@ -19,6 +19,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 function openMaps(address: string) {
+  if (typeof window === "undefined") return;
   const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
   window.open(url, "_blank");
 }
@@ -43,7 +44,9 @@ async function shareWhatsApp(event: any) {
     }
     if (links.length) lines.push(links.join("\n"));
   }
-  window.open(`https://wa.me/?text=${encodeURIComponent(lines.join("\n"))}`, "_blank");
+  if (typeof window !== "undefined") {
+    window.open(`https://wa.me/?text=${encodeURIComponent(lines.join("\n"))}`, "_blank");
+  }
 }
 
 const HOUR_START = 7;
@@ -2356,6 +2359,8 @@ function EventDetailsModal({
   const [attDragOver, setAttDragOver] = useState(false);
   const attRef = useRef<any>(null);
   const [linkedPlans, setLinkedPlans] = useState<any[]>([]);
+  const [materialesProyecto, setMaterialesProyecto] = useState<any[]>([]);
+  const [matInstalados, setMatInstalados] = useState<any[]>(event.materiales_instalados || []);
 
   const processFileUpload = async (file: File) => {
     setUploading(true);
@@ -2462,6 +2467,26 @@ function EventDetailsModal({
     }
   }, [(event as any).budget_id]);
 
+  // Cargar materiales del proyecto para el checklist de instalación
+  useEffect(() => {
+    const mid = event.material_id || event.material?.id;
+    if (mid) {
+      api.getMaterialesProyecto(mid).then((mats) => {
+        setMaterialesProyecto(mats || []);
+        // Inicializar matInstalados desde el evento si ya tiene
+        const existing = (event as any).materiales_instalados || [];
+        const merged = (mats || []).map((pm: any) => {
+          const found = existing.find((e: any) => e.material_proyecto_id === pm.id);
+          return found || { material_proyecto_id: pm.id, cantidad: 0, instalado: false };
+        });
+        setMatInstalados(merged);
+      }).catch(() => {});
+    } else {
+      setMaterialesProyecto([]);
+      setMatInstalados([]);
+    }
+  }, [event.material_id, event.material?.id]);
+
   const loadBudgets = async () => {
     if (budgets.length > 0) return;
     try { setBudgets(await api.listAcceptedBudgets()); } catch {}
@@ -2516,6 +2541,7 @@ function EventDetailsModal({
         hours: eventHours ? parseFloat(eventHours) : null,
         budget_id: budgetObj?.id || null,
         tipo_mano_obra: eventTipoMO || null,
+        materiales_instalados: matInstalados.filter((m: any) => m.instalado).length > 0 ? matInstalados : undefined,
       } as any);
       onChanged();
     } catch (e: any) { Alert.alert("Error", e.message); }
@@ -2816,6 +2842,52 @@ function EventDetailsModal({
                   {m.horas_prev && <Text style={s.matMeta}>⏱️ {m.horas_prev}h previstas</Text>}
                   {m.tecnico && <Text style={s.matMeta}>🔧 Técnico: {m.tecnico}</Text>}
                 </View>
+              </View>
+            )}
+
+            {/* Materiales a instalar */}
+            {materialesProyecto.length > 0 && (
+              <View style={{ gap: 4 }}>
+                <Text style={s.mLabel}>MATERIALES A INSTALAR</Text>
+                {materialesProyecto.map((pm: any) => {
+                  const inst = matInstalados.find((mi: any) => mi.material_proyecto_id === pm.id) || { instalado: false, cantidad: 0 };
+                  return (
+                    <View key={pm.id} style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: COLORS.bg, padding: 6, borderRadius: 6 }}>
+                      <TouchableOpacity
+                        style={{ flexDirection: "row", alignItems: "center", gap: 4, flex: 1 }}
+                        onPress={() => {
+                          setMatInstalados((prev) => prev.map((mi: any) =>
+                            mi.material_proyecto_id === pm.id ? { ...mi, instalado: !mi.instalado, cantidad: mi.instalado ? 0 : (mi.cantidad || 1) } : mi
+                          ));
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <View style={{ width: 18, height: 18, borderRadius: 4, borderWidth: 2, borderColor: inst.instalado ? ios.colors.green : COLORS.textDisabled, alignItems: "center", justifyContent: "center", backgroundColor: inst.instalado ? ios.colors.green + "30" : "transparent" }}>
+                          {inst.instalado && <Ionicons name="checkmark" size={12} color={ios.colors.green} />}
+                        </View>
+                        <Text style={{ fontSize: 11, color: COLORS.text, flex: 1 }} numberOfLines={1}>{pm.material}</Text>
+                      </TouchableOpacity>
+                      {inst.instalado && (
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+                          <Text style={{ fontSize: 10, color: COLORS.textSecondary }}>x</Text>
+                          <TextInput
+                            style={{ width: 50, backgroundColor: COLORS.surface, borderRadius: 4, padding: 3, fontSize: 11, color: COLORS.text, textAlign: "center", borderWidth: 1, borderColor: COLORS.border }}
+                            value={String(inst.cantidad || 1)}
+                            keyboardType="decimal-pad"
+                            onChangeText={(v) => {
+                              setMatInstalados((prev) => prev.map((mi: any) =>
+                                mi.material_proyecto_id === pm.id ? { ...mi, cantidad: parseFloat(v) || 0 } : mi
+                              ));
+                            }}
+                          />
+                        </View>
+                      )}
+                      <Text style={{ fontSize: 10, color: COLORS.textDisabled, width: 40, textAlign: "right" }}>
+                        {pm.cantidad_instalada || 0}/{pm.cantidad_prevista}
+                      </Text>
+                    </View>
+                  );
+                })}
               </View>
             )}
 

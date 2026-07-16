@@ -62,12 +62,13 @@ const MODULOS = [
     badge: "Obras y materiales",
     title: "Proyectos",
     roles: "Admin · Gestor · Técnico",
-    description: "Gestión completa de obras y materiales. Cada proyecto tiene código, cliente, ubicación, fechas, estado, horas, datos financieros (venta prevista, costes reales, ingreso facturado), logística (pedido realizado, fecha entrega, nº pedido, planificación) y costes actualizados. Técnicos solo ven sus proyectos asignados. Filtros combinados por gestor, estado, año y mes. Creación manual con formulario completo.",
+    description: "Gestión completa de obras y materiales. Cada proyecto tiene código, cliente, ubicación, fechas, estado, horas, datos financieros (venta prevista, costes reales, ingreso facturado), logística (pedido realizado, fecha entrega, nº pedido, planificación), costes actualizados y lista de materiales con seguimiento de instalación. Los materiales se sincronizan con los eventos: al completar un evento se actualiza automáticamente la cantidad instalada. Técnicos solo ven sus proyectos asignados. Filtros combinados por gestor, estado, año y mes. Creación manual con formulario completo.",
     features: [
       "Ficha financiera completa con 12 campos económicos",
       "Logística: pedido, entrega, planificación y facturación",
+      "Materiales: lista con cantidad prevista vs instalada",
+      "Checklist de instalación en eventos (sincronización automática)",
       "Filtros combinados por gestor y estado simultáneamente",
-      "Técnicos solo ven sus proyectos asignados",
       "Export Excel con 20+ columnas",
     ],
     techData: { endpoint: "GET/POST/PUT /api/materials", sync: "OneDrive cada 5 min", perm: "Admin crea, Gestor edita, Técnico consulta" },
@@ -420,6 +421,119 @@ const MODULOS = [
         ))}
         <Text style={{ color: "#64748B", fontSize: 9, marginTop: 3 }}>Escribí tu nota...</Text>
       </>
+    ),
+  },
+  {
+    accent: "#10B981",
+    accentBg: "rgba(16,185,129,0.15)",
+    badge: "Control horario",
+    title: "Fichajes",
+    roles: "Admin · Gestor · Técnico · Comercial · SAT",
+    description: "Control horario laboral completo con geolocalización. Reloj en tiempo real con fichaje de entrada, salida, pausa y fin de pausa. Calendario mensual con vista de horas por día, resumen semanal/mensual/anual de horas trabajadas. Gestión de vacaciones con saldo visible y solicitud desde la app. Panel de administración para gestionar fichajes de todos los usuarios, crear y editar manualmente, exportar CSV. Permisos granulares: fichajes.view (básico), fichajes.edit_own (editar/borrar propios), fichajes.manage (admin total).\n\n"
+      + "PERMISOS:\n"
+      + "• fichajes.view — Fichar, ver fichajes propios, ver calendario mensual y vacaciones\n"
+      + "• fichajes.edit_own — Editar y borrar fichajes propios de cualquier día\n"
+      + "• fichajes.manage — Administrar fichajes de todos los usuarios, exportar CSV, configurar festivos",
+    features: [
+      "Reloj en tiempo real: entrada, salida, pausa, fin pausa",
+      "Calendario mensual con horas, dots y detalle por día",
+      "Resumen semanal / mensual / anual de horas y días",
+      "Vacaciones con saldo, solicitud y aprobación/rechazo",
+      "Admin: gestión usuarios, crear/editar/borrar fichajes, export CSV",
+      "Permisos por rol: ver, editar propio, administrar total",
+    ],
+    techData: { endpoint: "GET/POST /api/fichajes + admin CRUD", perm: "fichajes.view / edit_own / manage" },
+    renderMockup: () => (
+      <View style={{ gap: 2 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+          <View>
+            <Text style={{ color: "#F8FAFC", fontSize: 11, fontWeight: "700" }}>Mi jornada</Text>
+            <Text style={{ color: "#64748B", fontSize: 8 }}>lunes, 15 julio 2026</Text>
+          </View>
+          <Text style={{ color: "#F8FAFC", fontSize: 16, fontWeight: "800", fontFamily: "monospace" }}>14:32</Text>
+        </View>
+        <View style={{ flexDirection: "row", gap: 4, marginBottom: 4 }}>
+          <View style={{ flex: 1, backgroundColor: "#10B98160", borderRadius: 4, padding: 4, alignItems: "center" }}>
+            <Ionicons name="enter" size={10} color="#6EE7B7" />
+            <Text style={{ color: "#6EE7B7", fontSize: 7, fontWeight: "600", marginTop: 1 }}>Entrada</Text>
+          </View>
+          <View style={{ flex: 1, backgroundColor: "#EF444460", borderRadius: 4, padding: 4, alignItems: "center" }}>
+            <Ionicons name="exit" size={10} color="#FCA5A5" />
+            <Text style={{ color: "#FCA5A5", fontSize: 7, fontWeight: "600", marginTop: 1 }}>Salida</Text>
+          </View>
+        </View>
+        <View style={{ flexDirection: "row", gap: 4, marginBottom: 4 }}>
+          <View style={{ flex: 1, backgroundColor: "#EAB30840", borderRadius: 4, padding: 3, alignItems: "center" }}>
+            <Text style={{ color: "#FACC15", fontSize: 7, fontWeight: "600" }}>Pausa</Text>
+          </View>
+          <View style={{ flex: 1, backgroundColor: "#6366F140", borderRadius: 4, padding: 3, alignItems: "center" }}>
+            <Text style={{ color: "#A5B4FC", fontSize: 7, fontWeight: "600" }}>Fin pausa</Text>
+          </View>
+        </View>
+        <Text style={{ color: "#94A3B8", fontSize: 8, fontWeight: "600", marginBottom: 2 }}>Resumen</Text>
+        <View style={{ flexDirection: "row", gap: 3 }}>
+          {[{ label: "Semanal", val: "28h 30m", color: "#10B981" }, { label: "Mensual", val: "112h 15m", color: "#3B82F6" }, { label: "Anual", val: "1245h", color: "#6366F1" }].map((r, i) => (
+            <View key={i} style={{ flex: 1, backgroundColor: "#1E293B", borderRadius: 4, padding: 4, borderLeftWidth: 2, borderLeftColor: r.color, alignItems: "center" }}>
+              <Text style={{ color: "#F8FAFC", fontSize: 9, fontWeight: "700" }}>{r.val}</Text>
+              <Text style={{ color: "#64748B", fontSize: 6, marginTop: 1 }}>{r.label}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    ),
+  },
+  {
+    accent: "#14B8A6",
+    accentBg: "rgba(20,184,166,0.15)",
+    badge: "Directorio",
+    title: "Clientes",
+    roles: "Admin · Gestor",
+    description: "Directorio de clientes con ficha completa: datos fiscales (razón social, NIF), direcciones múltiples, representante, teléfono y email. Seguimiento de mantenimiento contratado con tipo (Anual/Trimestral/Semestral/A medida), fecha de alta y alerta automática 30 días antes del aniversario para renovación. Gestión de Salto KS con aviso previo al vencimiento y solicitud de presupuesto automática. Registro histórico de materiales instalados: al terminar un proyecto, todos los materiales con cantidad instalada se reflejan en la ficha del cliente con fecha de terminación, acumulando el historial de todos sus proyectos.\n\n"
+      + "SECCIONES:\n"
+      + "• Proyectos asociados — lista de proyectos del cliente\n"
+      + "• Materiales instalados — registro acumulado de todos los proyectos terminados\n"
+      + "• Incidencias reportadas — historial SAT\n"
+      + "• Mantenimientos — alertas y renovaciones\n"
+      + "• Documentación — archivos del cliente\n"
+      + "• Salto KS — gestión de vouchers y caducidad",
+    features: [
+      "Ficha completa con datos fiscales y direcciones múltiples",
+      "Historial de materiales instalados de todos los proyectos",
+      "Alerta automática de renovación de mantenimiento (30d antes)",
+      "Aviso de caducidad Salto KS con solicitud de presupuesto",
+      "Incidencias SAT y mantenimientos vinculados al cliente",
+      "Documentos adjuntos y exportación Excel",
+    ],
+    techData: { endpoint: "GET/POST/PATCH/DELETE /api/clientes", perm: "clientes.view / edit" },
+    renderMockup: () => (
+      <View style={{ gap: 2 }}>
+        <View style={{ flexDirection: "row", gap: 4, marginBottom: 4 }}>
+          <View style={{ flex: 1, backgroundColor: "#14B8A620", borderRadius: 4, padding: 4, alignItems: "center" }}>
+            <Text style={{ color: "#5EEAD4", fontSize: 8, fontWeight: "700" }}>12</Text>
+            <Text style={{ color: "#99F6E4", fontSize: 6 }}>Proyectos</Text>
+          </View>
+          <View style={{ flex: 1, backgroundColor: "#14B8A620", borderRadius: 4, padding: 4, alignItems: "center" }}>
+            <Text style={{ color: "#5EEAD4", fontSize: 8, fontWeight: "700" }}>34</Text>
+            <Text style={{ color: "#99F6E4", fontSize: 6 }}>Materiales inst.</Text>
+          </View>
+          <View style={{ flex: 1, backgroundColor: "#14B8A620", borderRadius: 4, padding: 4, alignItems: "center" }}>
+            <Text style={{ color: "#5EEAD4", fontSize: 8, fontWeight: "700" }}>5</Text>
+            <Text style={{ color: "#99F6E4", fontSize: 6 }}>Incidencias</Text>
+          </View>
+        </View>
+        <Text style={{ color: "#94A3B8", fontSize: 8, fontWeight: "600", marginBottom: 2 }}>Materiales instalados</Text>
+        {[
+          { mat: "Cilindro Salto XS4", cant: "5 uds", fecha: "15/06" },
+          { mat: "Tarjeta MIFARE 1K", cant: "20 uds", fecha: "15/06" },
+          { mat: "Fuente 12V", cant: "3 uds", fecha: "22/06" },
+        ].map((r, i) => (
+          <View key={i} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 1.5, borderBottomWidth: 0.5, borderBottomColor: "#1E293B" }}>
+            <Text style={{ color: "#E2E8F0", fontSize: 7, flex: 2 }} numberOfLines={1}>{r.mat}</Text>
+            <Text style={{ color: "#5EEAD4", fontSize: 7, width: 40, textAlign: "right" }}>{r.cant}</Text>
+            <Text style={{ color: "#64748B", fontSize: 7, width: 40, textAlign: "right" }}>{r.fecha}</Text>
+          </View>
+        ))}
+      </View>
     ),
   },
   {

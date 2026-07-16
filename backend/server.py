@@ -207,6 +207,23 @@ class Material(BaseModel):
     sync_status: str = "synced"  # synced | pending | error
     updated_at: Optional[str] = None
     updated_by: Optional[str] = None
+    # materiales del proyecto
+    materiales_proyecto: Optional[List[dict]] = None  # [{id, material, cantidad_prevista, cantidad_instalada, fecha_instalacion}]
+
+class MaterialProyectoItem(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    material: str
+    cantidad_prevista: float = 1
+    cantidad_instalada: float = 0
+    fecha_instalacion: Optional[str] = None
+
+class MaterialProyectoUpdate(BaseModel):
+    materiales: List[MaterialProyectoItem]
+
+class MaterialInstaladoEvento(BaseModel):
+    material_proyecto_id: str
+    cantidad: float = 0
+    instalado: bool = False
 
 class MaterialUpdate(BaseModel):
     fecha: Optional[str] = None
@@ -321,6 +338,7 @@ class ClienteOut(BaseModel):
     documentos: Optional[List[dict]] = None
     incidencias: Optional[List[dict]] = None
     mantenimientos: Optional[List[dict]] = None
+    materiales_instalados: Optional[List[dict]] = None  # [{material, cantidad, fecha_terminacion, proyecto_id, proyecto_nombre}]
 
 class OneDriveStatus(BaseModel):
     connected: bool
@@ -412,6 +430,13 @@ PERMISSIONS_CATALOG = [
     {"key": "preciario.view", "label": "Ver preciario y productos", "module": "Preciario"},
     {"key": "notas.view", "label": "Ver y crear notas personales", "module": "Notas"},
     {"key": "documentos.manage", "label": "Gestionar documentos (fichas/manuales)", "module": "Documentación"},
+    {"key": "fichajes.view", "label": "Ver fichajes propios", "module": "Fichajes"},
+     {"key": "fichajes.manage", "label": "Gestionar fichajes (admin)", "module": "Fichajes"},
+     {"key": "fichajes.edit_own", "label": "Editar/borrar fichajes propios", "module": "Fichajes"},
+     {"key": "certificaciones.view", "label": "Ver certificaciones", "module": "Certificaciones"},
+     {"key": "certificaciones.edit", "label": "Crear/editar certificaciones", "module": "Certificaciones"},
+     {"key": "clientes.view", "label": "Ver clientes", "module": "Clientes"},
+     {"key": "clientes.edit", "label": "Gestionar clientes", "module": "Clientes"},
 ]
 ALL_PERMS = [p["key"] for p in PERMISSIONS_CATALOG]
 
@@ -426,9 +451,9 @@ NOTIFICATION_CATALOG = [
 ALL_NOTIFS = [n["key"] for n in NOTIFICATION_CATALOG]
 
 NON_ADMIN_PERMS = [p for p in ALL_PERMS if p not in ("users.manage", "roles.manage")]
-TECNICO_PERMS = ["proyectos.view", "calendario.view", "calendario.edit", "planos.view", "planos.edit", "chat.view", "chat.edit", "planos.download", "events.edit", "dashboard.view", "notas.view", "documentos.manage"]
-COMERCIAL_PERMS = ["presupuestos.view", "presupuestos.edit", "presupuestos.export", "proyectos.view", "chat.view", "chat.edit"]
-SAT_PERMS = ["sat.view", "sat.edit", "sat.export", "chat.view", "chat.edit"]
+TECNICO_PERMS = ["proyectos.view", "calendario.view", "calendario.edit", "planos.view", "planos.edit", "chat.view", "chat.edit", "planos.download", "events.edit", "dashboard.view", "notas.view", "documentos.manage", "fichajes.view", "fichajes.edit_own", "certificaciones.view", "certificaciones.edit"]
+COMERCIAL_PERMS = ["presupuestos.view", "presupuestos.edit", "presupuestos.export", "proyectos.view", "chat.view", "chat.edit", "fichajes.view", "fichajes.edit_own"]
+SAT_PERMS = ["sat.view", "sat.edit", "sat.export", "chat.view", "chat.edit", "fichajes.view", "fichajes.edit_own"]
 
 # System roles seeded on startup. Admin role can NEVER be modified or deleted.
 DEFAULT_ROLES = [
@@ -1592,6 +1617,7 @@ class EventCreate(BaseModel):
     seguimiento: Optional[str] = None  # observaciones del técnico
     hours: Optional[float] = None  # horas asignadas al evento
     tipo_mano_obra: Optional[str] = None  # clave del tipo (ej. "obra", "sat", "desplazamiento_obra")
+    materiales_instalados: Optional[List[MaterialInstaladoEvento]] = None  # materiales instalados durante el evento
 
 class EventPatch(BaseModel):
     title: Optional[str] = None
@@ -1607,6 +1633,7 @@ class EventPatch(BaseModel):
     hours: Optional[float] = None
     budget_id: Optional[str] = None
     tipo_mano_obra: Optional[str] = None
+    materiales_instalados: Optional[List[MaterialInstaladoEvento]] = None
 
 class EventOut(BaseModel):
     id: str
@@ -1630,6 +1657,7 @@ class EventOut(BaseModel):
     hours: Optional[float] = None
     budget_id: Optional[str] = None
     tipo_mano_obra: Optional[str] = None
+    materiales_instalados: Optional[List[dict]] = None
 
 # ---------------------------------------------------------------------------
 # Guardias (técnicos de guardia por día). Independientes de eventos.
@@ -1878,6 +1906,7 @@ async def create_event(payload: EventCreate, admin: dict = Depends(require_permi
         "status": payload.status or "in_progress",
         "seguimiento": payload.seguimiento or "",
         "tipo_mano_obra": payload.tipo_mano_obra,
+        "materiales_instalados": [m.dict() for m in payload.materiales_instalados] if payload.materiales_instalados else [],
         "attachments": [],
         "created_by": admin["email"],
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -1913,7 +1942,7 @@ async def update_event(eid: str, payload: EventPatch, user: dict = Depends(curre
         # and only if they are assigned to this event (i.e. the technician in charge).
         if not is_assigned:
             raise HTTPException(403, "No autorizado")
-        allowed = {"status", "seguimiento", "hours", "tipo_mano_obra"}
+        allowed = {"status", "seguimiento", "hours", "tipo_mano_obra", "materiales_instalados"}
         if any(k not in allowed for k in data.keys()):
             raise HTTPException(403, "Técnicos solo pueden modificar estado y seguimiento")
 
@@ -1924,6 +1953,8 @@ async def update_event(eid: str, payload: EventPatch, user: dict = Depends(curre
             if not can_assign:
                 raise HTTPException(403, "No tienes permiso para asignar técnicos")
             upd[k] = v or []
+        elif k == "materiales_instalados":
+            upd[k] = [m.dict() if hasattr(m, 'dict') else m for m in (v or [])]
         else:
             upd[k] = v
     if not upd:
@@ -1968,10 +1999,13 @@ async def update_event(eid: str, payload: EventPatch, user: dict = Depends(curre
                 {"$push": {"historial_horas": {"$each": [entry], "$position": 0}}}
             )
         elif new_status == "in_progress" and prev_status in ("completed", "pending_completion"):
-            await db.materiales.update_one(
-                {"id": mid},
-                {"$pull": {"historial_horas": {"evento_id": real_id}}}
-            )
+                await db.materiales.update_one(
+                    {"id": mid},
+                    {"$pull": {"historial_horas": {"evento_id": real_id}}}
+                )
+        # Sincronizar cantidades de materiales instalados
+        updated_doc = {**ev_current, **upd}
+        _fire_and_forget(_sync_materiales_instalados(updated_doc, prev_status))
     # Notifications: whenever status changes, create an in-app notification
     # for the event's manager (if set). The seguimiento text is included so
     # the manager sees the technician's observations right in the list.
@@ -2135,7 +2169,7 @@ async def _enrich_guard(g: dict) -> dict:
 async def list_guards(
     from_: Optional[str] = Query(None, alias="from"),
     to: Optional[str] = None,
-    user: dict = Depends(current_user),
+    user: dict = Depends(require_permission("calendario.view")),
 ):
     """Lista guardias en un rango de fechas (YYYY-MM-DD)."""
     q: dict = {}
@@ -2190,7 +2224,7 @@ async def delete_guard(
 
 
 @api_router.get("/events/{eid}", response_model=EventOut)
-async def get_event(eid: str, user: dict = Depends(current_user)):
+async def get_event(eid: str, user: dict = Depends(require_permission("calendario.view"))):
     """Fetch a single event by id. Used by the notifications bell to open an
     event that may not be inside the currently-visible calendar range."""
     real_id = eid.split(":")[0]
@@ -2268,7 +2302,7 @@ class EventGestorBody(BaseModel):
 async def set_event_gestor_list(
     eid: str,
     body: EventGestorBody,
-    user: dict = Depends(current_user),
+    user: dict = Depends(require_permission("calendario.edit")),
 ):
     """Mueve un evento entre las listas del gestor."""
     valid = {"general", "archivados", "pendiente_reagendar", "pendiente_revisar"}
@@ -2322,7 +2356,7 @@ class AttachmentUpload(BaseModel):
     base64: str
 
 @api_router.post("/events/{eid}/attachments")
-async def upload_event_attachment(eid: str, payload: AttachmentUpload, user: dict = Depends(current_user)):
+async def upload_event_attachment(eid: str, payload: AttachmentUpload, user: dict = Depends(require_permission("calendario.edit"))):
     real_id = eid.split(":")[0]
     ev = await db.events.find_one({"id": real_id}, {"_id": 0})
     if not ev:
@@ -2424,7 +2458,7 @@ async def delete_event_attachment(eid: str, aid: str, user: dict = Depends(curre
     return {"ok": True}
 
 @api_router.get("/stamps", response_model=List[StampOut])
-async def list_stamps(user: dict = Depends(current_user)):
+async def list_stamps(user: dict = Depends(require_permission("planos.view"))):
     customs = await db.stamps.find({}, {"_id": 0}).to_list(500)
     out = [StampOut(**s) for s in BUILTIN_STAMPS]
     for c in customs:
@@ -2891,7 +2925,7 @@ async def create_material(payload: MaterialManualCreate, user: dict = Depends(re
 
 
 @api_router.get("/materiales/export-excel")
-async def materiales_export_excel(user: dict = Depends(current_user)):
+async def materiales_export_excel(user: dict = Depends(require_permission("proyectos.view"))):
     """Export all projects as an Excel file."""
     items = await db.materiales.find({}, {"_id": 0}).sort("row_index", 1).to_list(10000)
     import openpyxl
@@ -3157,16 +3191,126 @@ async def update_material(mid: str, payload: MaterialUpdate, user: dict = Depend
         schedule_auto_push()
     # Sincronizar carpeta del proyecto
     _fire_and_forget(_sync_project_folder(doc))
+    # Si el proyecto pasa a terminado, sincronizar materiales instalados al cliente
+    if upd.get("project_status") == "terminado" and old.get("project_status") != "terminado":
+        _fire_and_forget(_sync_materiales_cliente(mid, old.get("cliente")))
     return doc
 
+# Materiales del proyecto
+@api_router.get("/materiales/{mid}/materiales")
+async def get_materiales_proyecto(mid: str, user: dict = Depends(require_permission("proyectos.view"))):
+    doc = await db.materiales.find_one({"id": mid}, {"_id": 0, "materiales_proyecto": 1})
+    if not doc:
+        raise HTTPException(404, "Proyecto no encontrado")
+    return doc.get("materiales_proyecto") or []
+
+@api_router.put("/materiales/{mid}/materiales")
+async def update_materiales_proyecto(mid: str, body: MaterialProyectoUpdate, user: dict = Depends(current_user)):
+    doc = await db.materiales.find_one({"id": mid})
+    if not doc:
+        raise HTTPException(404, "Proyecto no encontrado")
+    # Validar permisos de edición de proyectos
+    user_perms = await get_user_permissions(user)
+    if "proyectos.edit" not in user_perms and "proyectos.editar_campo" not in user_perms:
+        raise HTTPException(403, "No tienes permiso para editar este proyecto")
+    materiales = [m.dict() for m in body.materiales]
+    await db.materiales.update_one({"id": mid}, {"$set": {"materiales_proyecto": materiales}})
+    return {"ok": True}
+
+# Sincronizar cantidades instaladas al cambiar estado de evento
+async def _sync_materiales_instalados(event: dict, old_status: str):
+    """Cuando un evento pasa a completed/pending_completion, suma las cantidades
+    instaladas al proyecto. Si vuelve a in_progress, las resta."""
+    mid = event.get("material_id")
+    if not mid:
+        return
+    mats_inst = event.get("materiales_instalados") or []
+    if not mats_inst:
+        return
+
+    proyecto = await db.materiales.find_one({"id": mid}, {"_id": 0, "materiales_proyecto": 1})
+    proy_mats = proyecto.get("materiales_proyecto") if proyecto else []
+    if not proy_mats:
+        return
+
+    new_status = event.get("status", "in_progress")
+    is_closing = new_status in ("completed", "pending_completion") and old_status not in ("completed", "pending_completion")
+    is_reopening = new_status not in ("completed", "pending_completion") and old_status in ("completed", "pending_completion")
+
+    if not is_closing and not is_reopening and old_status != new_status:
+        # Transición entre estados cerrados (completed→pending_completion o viceversa): no hacer nada
+        return
+
+    multiplier = 1 if is_closing else (-1 if is_reopening else 0)
+    if multiplier == 0:
+        return
+
+    updated = False
+    for pm in proy_mats:
+        for em in mats_inst:
+            if em.get("material_proyecto_id") == pm.get("id") and em.get("instalado"):
+                pm["cantidad_instalada"] = (pm.get("cantidad_instalada", 0) or 0) + (em.get("cantidad", 0) or 0) * multiplier
+                pm["cantidad_instalada"] = max(0, pm["cantidad_instalada"])
+                updated = True
+
+    if updated:
+        await db.materiales.update_one({"id": mid}, {"$set": {"materiales_proyecto": proy_mats}})
+
+async def _sync_materiales_cliente(project_id: str, cliente_nombre: str):
+    """Cuando un proyecto se marca como 'terminado', añade todos los materiales
+    instalados al registro del cliente."""
+    if not cliente_nombre:
+        return
+    proyecto = await db.materiales.find_one({"id": project_id}, {"_id": 0, "materiales": 1, "materiales_proyecto": 1, "cliente": 1})
+    if not proyecto:
+        return
+    mats_proyecto = proyecto.get("materiales_proyecto") or []
+    if not mats_proyecto:
+        return
+
+    nombre_proyecto = proyecto.get("materiales") or project_id[:8]
+    fecha_terminacion = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    cliente = await db.clientes.find_one({"nombre": cliente_nombre})
+    if not cliente:
+        # Buscar por nombre parcial
+        cliente = await db.clientes.find_one({"nombre": {"$regex": f"^{re.escape(cliente_nombre)}$", "$options": "i"}})
+    if not cliente:
+        return
+
+    materiales_actuales = list(cliente.get("materiales_instalados") or [])
+    for mp in mats_proyecto:
+        inst = mp.get("cantidad_instalada", 0) or 0
+        if inst <= 0:
+            continue
+        # Evitar duplicados del mismo proyecto
+        ya_existe = any(
+            m.get("proyecto_id") == project_id and m.get("material") == mp.get("material")
+            for m in materiales_actuales
+        )
+        if ya_existe:
+            continue
+        materiales_actuales.append({
+            "material": mp.get("material", ""),
+            "cantidad": inst,
+            "fecha_terminacion": fecha_terminacion,
+            "proyecto_id": project_id,
+            "proyecto_nombre": nombre_proyecto,
+        })
+
+    await db.clientes.update_one(
+        {"_id": cliente["_id"]},
+        {"$set": {"materiales_instalados": materiales_actuales}}
+    )
+
 @api_router.get("/materiales/{mid}/history")
-async def get_material_history(mid: str, user: dict = Depends(current_user)):
+async def get_material_history(mid: str, user: dict = Depends(require_permission("proyectos.view"))):
     items = await db.project_history.find({"project_id": mid}, {"_id": 0}).sort("created_at", -1).limit(50).to_list(50)
     return items
 
 # ---------------- Clientes ----------------
 @api_router.get("/clientes", response_model=List[ClienteOut])
-async def list_clientes(user: dict = Depends(current_user)):
+async def list_clientes(user: dict = Depends(require_permission("clientes.view"))):
     clientes = await db.clientes.find({}, {"_id": 0}).sort("nombre", 1).to_list(2000)
     for c in clientes:
         c["proyectos"] = None
@@ -3174,7 +3318,7 @@ async def list_clientes(user: dict = Depends(current_user)):
 
 
 @api_router.get("/clientes/export-excel")
-async def clientes_export_excel(user: dict = Depends(current_user)):
+async def clientes_export_excel(user: dict = Depends(require_permission("clientes.view"))):
     clientes = await db.clientes.find({}, {"_id": 0}).sort("nombre", 1).to_list(2000)
     try:
         from openpyxl import Workbook
@@ -3231,7 +3375,7 @@ async def clientes_export_excel(user: dict = Depends(current_user)):
 
 
 @api_router.post("/clientes", response_model=ClienteOut)
-async def create_cliente(payload: ClienteCreate, user: dict = Depends(require_any_permission("users.manage", "roles.manage"))):
+async def create_cliente(payload: ClienteCreate, user: dict = Depends(require_permission("clientes.edit"))):
     now = datetime.now(timezone.utc).isoformat()
     doc = {
         "id": str(uuid.uuid4()),
@@ -3259,7 +3403,7 @@ async def create_cliente(payload: ClienteCreate, user: dict = Depends(require_an
     return doc
 
 @api_router.get("/clientes/{cid}", response_model=ClienteOut)
-async def get_cliente(cid: str, user: dict = Depends(current_user)):
+async def get_cliente(cid: str, user: dict = Depends(require_permission("clientes.view"))):
     doc = await db.clientes.find_one({"id": cid}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Cliente no encontrado")
@@ -3281,7 +3425,7 @@ async def get_cliente(cid: str, user: dict = Depends(current_user)):
     return doc
 
 @api_router.patch("/clientes/{cid}", response_model=ClienteOut)
-async def update_cliente(cid: str, payload: ClienteUpdate, user: dict = Depends(current_user)):
+async def update_cliente(cid: str, payload: ClienteUpdate, user: dict = Depends(require_permission("clientes.edit"))):
     existing = await db.clientes.find_one({"id": cid})
     if not existing:
         raise HTTPException(404, "Cliente no encontrado")
@@ -3377,7 +3521,7 @@ async def delete_cliente(cid: str, admin: dict = Depends(current_admin)):
     return {"ok": True}
 
 @api_router.post("/materiales/{mid}/attachments")
-async def upload_material_attachment(mid: str, payload: AttachmentUpload, user: dict = Depends(current_user)):
+async def upload_material_attachment(mid: str, payload: AttachmentUpload, user: dict = Depends(require_permission("clientes.edit"))):
     """Sube un adjunto al proyecto (PDF, JPEG, PNG)."""
     perms = await get_user_permissions(user)
     if "proyectos.edit" not in perms and "proyectos.editar_campo" not in perms:
@@ -5123,7 +5267,7 @@ async def get_budget_version(bid: str, vid: str, user: dict = Depends(current_bu
     return v
 
 @api_router.post("/budget-templates")
-async def create_budget_template(payload: BudgetTemplateCreate, user: dict = Depends(current_budget_view)):
+async def create_budget_template(payload: BudgetTemplateCreate, user: dict = Depends(current_budget_edit)):
     doc = {
         "id": str(uuid.uuid4()),
         "name": payload.name,
@@ -5142,7 +5286,7 @@ async def list_budget_templates(user: dict = Depends(current_budget_view)):
     return items
 
 @api_router.delete("/budget-templates/{tid}")
-async def delete_budget_template(tid: str, user: dict = Depends(current_budget_view)):
+async def delete_budget_template(tid: str, user: dict = Depends(current_budget_edit)):
     res = await db.budget_templates.delete_one({"id": tid})
     if res.deleted_count == 0:
         raise HTTPException(404, "Plantilla no encontrada")
@@ -6451,7 +6595,7 @@ async def sat_export_excel(user: dict = Depends(current_user)):
 
 # ---- Mantenimientos SAT ----
 @api_router.get("/sat/mantenimientos")
-async def sat_mantenimientos(user: dict = Depends(current_user)):
+async def sat_mantenimientos(user: dict = Depends(require_permission("sat.view"))):
     """Devuelve mantenimientos agendados y alertas pendientes de agendar."""
     clientes = await db.clientes.find(
         {"mantenimiento_contratado": True, "alta_mantenimiento": {"$ne": ""}},
@@ -6525,7 +6669,7 @@ class SATMantenimientoCreate(BaseModel):
 
 
 @api_router.post("/sat/mantenimientos")
-async def sat_mantenimiento_create(body: SATMantenimientoCreate, user: dict = Depends(current_user)):
+async def sat_mantenimiento_create(body: SATMantenimientoCreate, user: dict = Depends(require_permission("sat.edit"))):
     cliente_id = body.cliente_id
     cliente_name = body.cliente
     fechas = body.fechas
@@ -6582,7 +6726,7 @@ async def sat_mantenimiento_create(body: SATMantenimientoCreate, user: dict = De
 
 
 @api_router.patch("/sat/mantenimientos/{mid}")
-async def sat_mantenimiento_update(mid: str, body: dict, user: dict = Depends(current_user)):
+async def sat_mantenimiento_update(mid: str, body: dict, user: dict = Depends(require_permission("sat.edit"))):
     upd = {k: v for k, v in body.items() if v is not None}
     await db.mantenimientos.update_one({"id": mid}, {"$set": upd})
     doc = await db.mantenimientos.find_one({"id": mid}, {"_id": 0})
@@ -6590,14 +6734,14 @@ async def sat_mantenimiento_update(mid: str, body: dict, user: dict = Depends(cu
 
 
 @api_router.delete("/sat/mantenimientos/{mid}")
-async def sat_mantenimiento_delete(mid: str, user: dict = Depends(current_user)):
+async def sat_mantenimiento_delete(mid: str, user: dict = Depends(require_permission("sat.edit"))):
     await db.mantenimientos.delete_one({"id": mid})
     return {"ok": True}
 
 # ---- Documentos de cliente ----
 
 @api_router.post("/clientes/{cid}/documentos")
-async def upload_cliente_documento(cid: str, body: dict, user: dict = Depends(current_user)):
+async def upload_cliente_documento(cid: str, body: dict, user: dict = Depends(require_permission("clientes.edit"))):
     doc = {
         "id": str(uuid.uuid4()),
         "nombre": body.get("nombre", "Documento"),
@@ -6612,7 +6756,7 @@ async def upload_cliente_documento(cid: str, body: dict, user: dict = Depends(cu
     return doc
 
 @api_router.delete("/clientes/{cid}/documentos/{did}")
-async def delete_cliente_documento(cid: str, did: str, user: dict = Depends(current_user)):
+async def delete_cliente_documento(cid: str, did: str, user: dict = Depends(require_permission("clientes.edit"))):
     await db.clientes.update_one(
         {"id": cid},
         {"$pull": {"documentos": {"id": did}}}
@@ -6620,7 +6764,7 @@ async def delete_cliente_documento(cid: str, did: str, user: dict = Depends(curr
     return {"ok": True}
 
 @api_router.post("/chats")
-async def chat_create(payload: ChatCreate, user: dict = Depends(current_user)):
+async def chat_create(payload: ChatCreate, user: dict = Depends(require_permission("chat.view"))):
     if user["id"] not in payload.participant_ids:
         payload.participant_ids.append(user["id"])
     pids = list(dict.fromkeys(payload.participant_ids))
@@ -6651,7 +6795,7 @@ async def chat_create(payload: ChatCreate, user: dict = Depends(current_user)):
     return chat
 
 @api_router.get("/chats")
-async def chat_list(user: dict = Depends(current_user)):
+async def chat_list(user: dict = Depends(require_permission("chat.view"))):
     chats = await db.chats.find(
         {"participant_ids": user["id"]},
         {"_id": 0},
@@ -6750,7 +6894,7 @@ async def chat_send_message(cid: str, payload: MessageCreate, user: dict = Depen
     return msg
 
 @api_router.get("/chats/unread-total")
-async def chat_unread_total(user: dict = Depends(current_user)):
+async def chat_unread_total(user: dict = Depends(require_permission("chat.view"))):
     user_chats = await db.chats.find(
         {"participant_ids": user["id"]},
         {"_id": 0, "id": 1},
@@ -7637,12 +7781,12 @@ CERTIF_TEMPLATE = ROOT_DIR.parent / "Ejemplo Certificacion.xlsx"
 # ---- Certificaciones ----
 
 @api_router.get("/certificaciones", response_model=List[CertificacionOut])
-async def list_certificaciones(material_id: str = Query(...), user: dict = Depends(current_user)):
+async def list_certificaciones(material_id: str = Query(...), user: dict = Depends(require_permission("certificaciones.view"))):
     items = await db.certificaciones.find({"material_id": material_id}, {"_id": 0}).sort("created_at", -1).to_list(200)
     return items
 
 @api_router.post("/certificaciones", response_model=CertificacionOut)
-async def create_certificacion(payload: CertificacionCreate, user: dict = Depends(current_user)):
+async def create_certificacion(payload: CertificacionCreate, user: dict = Depends(require_permission("certificaciones.edit"))):
     now = datetime.now(timezone.utc).isoformat()
     doc = payload.dict()
     doc["id"] = str(uuid.uuid4())
@@ -7653,13 +7797,13 @@ async def create_certificacion(payload: CertificacionCreate, user: dict = Depend
     return doc
 
 @api_router.get("/certificaciones/{cid}", response_model=CertificacionOut)
-async def get_certificacion(cid: str, user: dict = Depends(current_user)):
+async def get_certificacion(cid: str, user: dict = Depends(require_permission("certificaciones.view"))):
     doc = await db.certificaciones.find_one({"id": cid}, {"_id": 0})
     if not doc: raise HTTPException(404)
     return doc
 
 @api_router.patch("/certificaciones/{cid}", response_model=CertificacionOut)
-async def update_certificacion(cid: str, payload: CertificacionUpdate, user: dict = Depends(current_user)):
+async def update_certificacion(cid: str, payload: CertificacionUpdate, user: dict = Depends(require_permission("certificaciones.edit"))):
     upd = {k: v for k, v in payload.dict().items() if v is not None}
     upd["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.certificaciones.update_one({"id": cid}, {"$set": upd})
@@ -7667,7 +7811,7 @@ async def update_certificacion(cid: str, payload: CertificacionUpdate, user: dic
     return doc
 
 @api_router.delete("/certificaciones/{cid}")
-async def delete_certificacion(cid: str, user: dict = Depends(current_user)):
+async def delete_certificacion(cid: str, user: dict = Depends(require_permission("certificaciones.edit"))):
     await db.certificaciones.delete_one({"id": cid})
     return {"ok": True}
 
@@ -7935,7 +8079,621 @@ JSON:"""
         result = _json.loads(raw)
         return result
     except Exception as e:
-        raise HTTPException(500, f"Error IA: {str(e)[:200]}")
+         raise HTTPException(500, f"Error IA: {str(e)[:200]}")
+
+
+# ── Fichajes ──
+# Helper functions
+def _minutos_a_horas(total_minutos: float) -> str:
+    if total_minutos <= 0:
+        return "0h 0m"
+    h = int(total_minutos // 60)
+    m = int(total_minutos % 60)
+    return f"{h}h {m}m"
+
+def _calcular_total(entrada: Optional[str], salida: Optional[str]) -> str:
+    if not entrada or not salida:
+        return "0h 0m"
+    try:
+        e = datetime.fromisoformat(entrada)
+        s = datetime.fromisoformat(salida)
+        diff = (s - e).total_seconds() / 60
+        return _minutos_a_horas(diff)
+    except Exception:
+        return "0h 0m"
+
+def _fecha_str(dt=None) -> str:
+    d = dt or datetime.now(timezone.utc)
+    return d.strftime("%Y-%m-%d")
+
+def _inicio_semana(dt=None) -> str:
+    d = (dt or datetime.now(timezone.utc)).replace(hour=0, minute=0, second=0, microsecond=0)
+    lunes = d - timedelta(days=d.weekday())
+    return lunes.strftime("%Y-%m-%d")
+
+def _inicio_mes(dt=None) -> str:
+    d = dt or datetime.now(timezone.utc)
+    return f"{d.year}-{d.month:02d}-01"
+
+def _fin_mes(dt=None) -> str:
+    d = dt or datetime.now(timezone.utc)
+    if d.month == 12:
+        next_month = datetime(d.year + 1, 1, 1, tzinfo=timezone.utc)
+    else:
+        next_month = datetime(d.year, d.month + 1, 1, tzinfo=timezone.utc)
+    last_day = next_month - timedelta(days=1)
+    return last_day.strftime("%Y-%m-%d")
+
+def _fecha_limite_anio() -> str:
+    return (datetime.now(timezone.utc) - timedelta(days=365)).strftime("%Y-%m-%d")
+
+# Models
+class FichajeIn(BaseModel):
+    tipo: str = "entrada"  # "entrada" | "salida" | "pausa" | "reanudar"
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    dispositivo: Optional[str] = None
+
+class FichajeDetalle(BaseModel):
+    fecha: str
+    entrada: Optional[str] = None
+    salida: Optional[str] = None
+    total: str = "0h 0m"
+    tipo: str = "presencial"
+
+class TotalesFichaje(BaseModel):
+    horas_trabajadas: str = "0h"
+    dias_trabajados: int = 0
+    vacaciones: int = 0
+
+class FichajeDetalleOut(BaseModel):
+    usuario: dict
+    fichajes: List[FichajeDetalle] = []
+    totales: TotalesFichaje = TotalesFichaje()
+
+class FichajeEditarIn(BaseModel):
+    entrada: Optional[str] = None
+    salida: Optional[str] = None
+
+class FichajeCrearIn(BaseModel):
+    user_id: str
+    fecha: str
+    entrada: str
+    salida: str
+
+class VacacionGestionIn(BaseModel):
+    estado: str  # "aprobada" | "rechazada"
+
+class HorasResumen(BaseModel):
+    entrada: Optional[str] = None
+    salida: Optional[str] = None
+    total: str = "0h 0m"
+
+# Usuario: listar mis fichajes
+@api_router.get("/fichajes")
+async def fichajes_usuario_listar(
+    user: dict = Depends(require_permission("fichajes.view")),
+    user_id: Optional[str] = None,
+    from_: Optional[str] = Query(None, alias="from"),
+    to: Optional[str] = None,
+):
+    perms = user.get("permissions", [])
+    uid = user_id if user_id and "fichajes.manage" in perms else user["id"]
+    q: dict = {"user_id": uid, "deleted": {"$ne": True}}
+    if from_:
+        q["$or"] = [
+            {"entrada": {"$gte": from_}},
+            {"salida": {"$gte": from_}},
+        ]
+    if to:
+        # Ensure both entrada and salida are within range
+        q = {"user_id": uid, "deleted": {"$ne": True}}
+        if from_ and to:
+            q["entrada"] = {"$gte": from_, "$lte": to}
+        elif to:
+            q["entrada"] = {"$lte": to}
+
+    fichajes = []
+    async for f in db.fichajes.find(q, {"_id": 0}).sort("entrada", -1):
+        entrada_full = f.get("entrada")
+        salida_full = f.get("salida")
+        f_tipo = f.get("tipo", "presencial")
+        fecha = (entrada_full or "")[:10]
+        hora = (entrada_full or "")[11:16] if f_tipo in ("entrada", "reanudar", "fin_pausa") else (salida_full or "")[11:16]
+        fichajes.append({
+            "id": f.get("id", str(f.get("_id", ""))),
+            "user_id": f["user_id"],
+            "fecha": fecha,
+            "entrada": entrada_full,
+            "salida": salida_full,
+            "hora": hora or "--:--",
+            "total": _calcular_total(entrada_full, salida_full),
+            "tipo": f_tipo,
+            "lat": f.get("lat"),
+            "lng": f.get("lng"),
+        })
+    return fichajes
+
+# Usuario: fichar
+@api_router.post("/fichajes")
+async def fichajes_usuario_crear(payload: FichajeIn, user: dict = Depends(require_permission("fichajes.view"))):
+    uid = user["id"]
+    ahora = datetime.now(timezone.utc).isoformat()
+
+    if payload.tipo in ("entrada", "reanudar", "fin_pausa"):
+        doc = {
+            "id": str(uuid.uuid4()),
+            "user_id": uid,
+            "entrada": ahora,
+            "salida": None,
+            "tipo": payload.tipo,
+            "lat": payload.lat,
+            "lng": payload.lng,
+            "dispositivo": payload.dispositivo,
+            "deleted": False,
+        }
+        await db.fichajes.insert_one(doc)
+        doc.pop("_id", None)
+        return {"ok": True, "id": doc["id"], "entrada": ahora}
+    elif payload.tipo in ("salida", "pausa", "inicio_pausa"):
+        # "entrada" y "fin_pausa"/"reanudar" = abrir (arriba)
+        # "salida", "pausa", "inicio_pausa" = cerrar el último abierto
+        fichaje_abierto = await db.fichajes.find_one(
+            {"user_id": uid, "salida": None, "deleted": {"$ne": True}},
+            sort=[("entrada", -1)],
+        )
+        if fichaje_abierto:
+            final_tipo = "pausa" if payload.tipo in ("inicio_pausa", "pausa") else payload.tipo
+            await db.fichajes.update_one(
+                {"id": fichaje_abierto["id"]},
+                {"$set": {
+                    "salida": ahora,
+                    "tipo": fichaje_abierto.get("tipo", final_tipo),
+                    "lat_salida": payload.lat,
+                    "lng_salida": payload.lng,
+                }},
+            )
+            return {"ok": True, "id": fichaje_abierto["id"], "salida": ahora}
+        else:
+            raise HTTPException(400, "No hay un fichaje de entrada abierto para cerrar")
+
+    raise HTTPException(400, f"Tipo de fichaje no reconocido: {payload.tipo}")
+
+# Usuario: borrar un fichaje propio (solo del día actual)
+@api_router.delete("/fichajes/{fichaje_id}")
+async def fichajes_usuario_eliminar(
+    fichaje_id: str,
+    user: dict = Depends(require_permission("fichajes.view")),
+):
+    uid = user["id"]
+    fichaje = await db.fichajes.find_one({"id": fichaje_id, "user_id": uid, "deleted": {"$ne": True}})
+    if not fichaje:
+        raise HTTPException(404, "Fichaje no encontrado")
+
+    hoy = _fecha_str()
+    fecha_fichaje = (fichaje.get("entrada") or "")[:10]
+    has_edit = _has_perm(user, "fichajes.edit_own") or _has_perm(user, "fichajes.manage")
+    if not has_edit and fecha_fichaje != hoy:
+        raise HTTPException(403, "Solo puedes borrar fichajes del día de hoy. Necesitas el permiso de editar fichajes propios para días anteriores.")
+
+    await db.fichajes.update_one(
+        {"id": fichaje_id},
+        {"$set": {"deleted": True, "deleted_by": uid, "deleted_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"ok": True}
+
+# Usuario: editar un fichaje propio
+class FichajeEditarPropioIn(BaseModel):
+    entrada: Optional[str] = None   # "HH:MM"
+    salida: Optional[str] = None    # "HH:MM"
+
+def _has_perm(user: dict, perm: str) -> bool:
+    perms = user.get("permissions", [])
+    return perm in perms or user.get("role") == "admin"
+
+@api_router.put("/fichajes/{fichaje_id}")
+async def fichajes_usuario_editar(
+    fichaje_id: str,
+    body: FichajeEditarPropioIn,
+    user: dict = Depends(require_permission("fichajes.view")),
+):
+    uid = user["id"]
+    fichaje = await db.fichajes.find_one({"id": fichaje_id, "user_id": uid, "deleted": {"$ne": True}})
+    if not fichaje:
+        raise HTTPException(404, "Fichaje no encontrado")
+
+    fecha_fichaje = (fichaje.get("entrada") or "")[:10]
+    hoy = _fecha_str()
+    has_edit = _has_perm(user, "fichajes.edit_own") or _has_perm(user, "fichajes.manage")
+    if not has_edit and fecha_fichaje != hoy:
+        raise HTTPException(403, "Necesitas el permiso 'Editar fichajes propios' para modificar fichajes de días anteriores")
+
+    upd = {}
+    if body.entrada is not None:
+        upd["entrada"] = f"{fecha_fichaje}T{body.entrada}:00"
+    if body.salida is not None:
+        upd["salida"] = f"{fecha_fichaje}T{body.salida}:00"
+
+    if upd:
+        await db.fichajes.update_one({"id": fichaje_id}, {"$set": upd})
+
+    return {"ok": True}
+
+# Config fichajes (festivos, horarios)
+class ConfigFichajesIn(BaseModel):
+    festivos: Optional[List[str]] = None
+    hora_entrada: Optional[str] = None
+    hora_salida: Optional[str] = None
+    horario_verano: Optional[bool] = None
+
+@api_router.get("/config-fichajes")
+async def config_fichajes_get(user: dict = Depends(require_permission("fichajes.view"))):
+    doc = await db.config.find_one({"_id": "fichajes"}) or {}
+    doc.pop("_id", None)
+    return doc
+
+@api_router.put("/config-fichajes")
+async def config_fichajes_put(body: ConfigFichajesIn, user: dict = Depends(require_permission("fichajes.manage"))):
+    upd = {k: v for k, v in body.dict().items() if v is not None}
+    if upd:
+        await db.config.update_one({"_id": "fichajes"}, {"$set": upd}, upsert=True)
+    return {"ok": True}
+
+
+# Admin: listar usuarios con resumen
+@api_router.get("/fichajes/admin/usuarios")
+async def fichajes_admin_usuarios(user: dict = Depends(require_permission("fichajes.manage"))):
+    users = await db.users.find({}, {"_id": 0, "id": 1, "name": 1, "email": 1}).to_list(1000)
+
+    hoy = _fecha_str()
+    inicio_sem = _inicio_semana()
+    inicio_mes_d = _inicio_mes()
+    fin_mes_d = _fin_mes()
+
+    hoyd = hoy + "T00:00:00"
+    hoyh = hoy + "T23:59:59"
+    semd = inicio_sem + "T00:00:00"
+    mesh = fin_mes_d + "T23:59:59"
+
+    user_ids = [u["id"] for u in users]
+
+    fichajes_hoy = {}
+    async for f in db.fichajes.find({
+        "user_id": {"$in": user_ids},
+        "deleted": {"$ne": True},
+        "entrada": {"$gte": hoyd, "$lte": hoyh},
+    }, {"_id": 0}):
+        uid = f["user_id"]
+        fichajes_hoy.setdefault(uid, []).append(f)
+
+    fichajes_semana = {}
+    async for f in db.fichajes.find({
+        "user_id": {"$in": user_ids},
+        "deleted": {"$ne": True},
+        "entrada": {"$gte": semd},
+    }, {"_id": 0}):
+        uid = f["user_id"]
+        fichajes_semana.setdefault(uid, []).append(f)
+
+    fichajes_mes = {}
+    async for f in db.fichajes.find({
+        "user_id": {"$in": user_ids},
+        "deleted": {"$ne": True},
+        "entrada": {"$gte": inicio_mes_d + "T00:00:00", "$lte": mesh},
+    }, {"_id": 0}):
+        uid = f["user_id"]
+        fichajes_mes.setdefault(uid, []).append(f)
+
+    result = []
+    for u in users:
+        uid = u["id"]
+        hoy_list = fichajes_hoy.get(uid, [])
+        hoy_res: dict = {"entrada": None, "salida": None, "total": "0h 0m"}
+        if hoy_list:
+            primer = min(hoy_list, key=lambda f: f.get("entrada", ""))
+            ultimo = max(hoy_list, key=lambda f: f.get("salida") or f.get("entrada", ""))
+            hoy_res["entrada"] = primer.get("entrada", "")[11:16] if primer.get("entrada") else None
+            hoy_res["salida"] = ultimo.get("salida", "")[11:16] if ultimo.get("salida") else None
+            hoy_total = sum(
+                (datetime.fromisoformat(f["salida"]) - datetime.fromisoformat(f["entrada"])).total_seconds()
+                for f in hoy_list if f.get("entrada") and f.get("salida")
+            ) / 60
+            hoy_res["total"] = _minutos_a_horas(hoy_total)
+
+        sem_min = sum(
+            (datetime.fromisoformat(f["salida"]) - datetime.fromisoformat(f["entrada"])).total_seconds()
+            for f in fichajes_semana.get(uid, []) if f.get("entrada") and f.get("salida")
+        ) / 60
+
+        mes_min = sum(
+            (datetime.fromisoformat(f["salida"]) - datetime.fromisoformat(f["entrada"])).total_seconds()
+            for f in fichajes_mes.get(uid, []) if f.get("entrada") and f.get("salida")
+        ) / 60
+
+        result.append({
+            "id": uid,
+            "name": u.get("name") or u.get("email", ""),
+            "email": u.get("email", ""),
+            "hoy": hoy_res,
+            "semana": _minutos_a_horas(sem_min),
+            "mes": _minutos_a_horas(mes_min),
+        })
+
+    return result
+
+# Admin: detalle de fichajes por usuario
+@api_router.get("/fichajes/admin/detalle/{user_id}")
+async def fichajes_admin_detalle(
+    user_id: str,
+    desde: str = Query(...),
+    hasta: str = Query(...),
+    user: dict = Depends(require_permission("fichajes.manage")),
+):
+    target = await db.users.find_one({"id": user_id}, {"_id": 0, "id": 1, "name": 1, "email": 1})
+    if not target:
+        raise HTTPException(404, "Usuario no encontrado")
+
+    todos = await db.fichajes.find({
+        "user_id": user_id,
+        "deleted": {"$ne": True},
+        "entrada": {"$gte": desde + "T00:00:00", "$lte": hasta + "T23:59:59"},
+    }, {"_id": 0}).sort("entrada", 1).to_list(5000)
+
+    fichajes = []
+    total_min = 0.0
+    dias_set = set()
+    for f in todos:
+        entrada_str = f.get("entrada", "")[11:16] if f.get("entrada") else None
+        salida_str = f.get("salida", "")[11:16] if f.get("salida") else None
+        fichajes.append({
+            "id": f.get("id", str(f.get("_id", ""))),
+            "fecha": f.get("entrada", "")[:10] if f.get("entrada") else "",
+            "entrada": entrada_str,
+            "salida": salida_str,
+            "total": _calcular_total(f.get("entrada"), f.get("salida")),
+            "tipo": f.get("tipo", "presencial"),
+        })
+        if f.get("entrada") and f.get("salida"):
+            total_min += (datetime.fromisoformat(f["salida"]) - datetime.fromisoformat(f["entrada"])).total_seconds() / 60
+        if f.get("entrada"):
+            dias_set.add(f["entrada"][:10])
+
+    vac_count = await db.vacaciones.count_documents({
+        "user_id": user_id,
+        "estado": "aprobada",
+        "fecha_inicio": {"$lte": hasta},
+        "fecha_fin": {"$gte": desde},
+    })
+
+    return {
+        "usuario": {"id": target["id"], "name": target.get("name") or target.get("email", "")},
+        "fichajes": fichajes,
+        "totales": {
+            "horas_trabajadas": f"{int(total_min // 60)}h {int(total_min % 60)}m",
+            "dias_trabajados": len(dias_set),
+            "vacaciones": vac_count,
+        },
+    }
+
+# Admin: editar fichaje
+@api_router.put("/fichajes/admin/editar/{fichaje_id}")
+async def fichajes_admin_editar(
+    fichaje_id: str,
+    body: FichajeEditarIn,
+    user: dict = Depends(require_permission("fichajes.manage")),
+):
+    fichaje = await db.fichajes.find_one({"id": fichaje_id})
+    if not fichaje:
+        raise HTTPException(404, "Fichaje no encontrado")
+
+    upd = {}
+    if body.entrada is not None:
+        fecha_base = (fichaje.get("entrada") or "")[:10] if fichaje.get("entrada") else _fecha_str()
+        upd["entrada"] = f"{fecha_base}T{body.entrada}:00"
+    if body.salida is not None:
+        fecha_base = (fichaje.get("salida") or fichaje.get("entrada") or "")[:10] if (fichaje.get("salida") or fichaje.get("entrada")) else _fecha_str()
+        upd["salida"] = f"{fecha_base}T{body.salida}:00"
+
+    if upd:
+        await db.fichajes.update_one({"id": fichaje_id}, {"$set": upd})
+
+    return {"ok": True}
+
+# Admin: crear fichaje manual
+@api_router.post("/fichajes/admin/crear")
+async def fichajes_admin_crear(
+    body: FichajeCrearIn,
+    user: dict = Depends(require_permission("fichajes.manage")),
+):
+    target = await db.users.find_one({"id": body.user_id})
+    if not target:
+        raise HTTPException(404, "Usuario no encontrado")
+
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": body.user_id,
+        "tipo": "presencial",
+        "entrada": f"{body.fecha}T{body.entrada}:00",
+        "salida": f"{body.fecha}T{body.salida}:00",
+        "created_by": user["id"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "deleted": False,
+    }
+    await db.fichajes.insert_one(doc)
+    doc.pop("_id", None)
+    return {"ok": True, "id": doc["id"]}
+
+# Admin: eliminar fichaje (soft delete)
+@api_router.delete("/fichajes/admin/eliminar/{fichaje_id}")
+async def fichajes_admin_eliminar(
+    fichaje_id: str,
+    user: dict = Depends(require_permission("fichajes.manage")),
+):
+    fichaje = await db.fichajes.find_one({"id": fichaje_id})
+    if not fichaje:
+        raise HTTPException(404, "Fichaje no encontrado")
+
+    await db.fichajes.update_one(
+        {"id": fichaje_id},
+        {"$set": {"deleted": True, "deleted_by": user["id"], "deleted_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"ok": True}
+
+# Admin: exportar CSV
+@api_router.get("/fichajes/admin/exportar")
+async def fichajes_admin_exportar(
+    desde: str = Query(...),
+    hasta: str = Query(...),
+    user_id: Optional[str] = Query(None),
+    user: dict = Depends(require_permission("fichajes.manage")),
+):
+    query: dict = {
+        "deleted": {"$ne": True},
+        "entrada": {"$gte": desde + "T00:00:00", "$lte": hasta + "T23:59:59"},
+    }
+    if user_id:
+        query["user_id"] = user_id
+
+    users_map = {}
+    async for u in db.users.find({}, {"_id": 0, "id": 1, "name": 1, "email": 1}):
+        users_map[u["id"]] = u.get("name") or u.get("email", "")
+
+    rows = []
+    async for f in db.fichajes.find(query, {"_id": 0}).sort("entrada", 1):
+        rows.append(f)
+
+    csv_lines = ["Usuario,Fecha,Entrada,Salida,Total,Tipo"]
+    for r in rows:
+        nombre = users_map.get(r["user_id"], r["user_id"])
+        fecha = r.get("entrada", "")[:10] if r.get("entrada") else ""
+        entrada = r.get("entrada", "")[11:16] if r.get("entrada") else ""
+        salida = r.get("salida", "")[11:16] if r.get("salida") else ""
+        total = _calcular_total(r.get("entrada"), r.get("salida"))
+        tipo = r.get("tipo", "presencial")
+        csv_lines.append(f"{nombre},{fecha},{entrada},{salida},{total},{tipo}")
+
+    return Response(
+        content="\n".join(csv_lines),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=fichajes_{desde}_{hasta}.csv"},
+    )
+
+# Admin: listar vacaciones
+@api_router.get("/fichajes/admin/vacaciones")
+async def fichajes_admin_vacaciones(
+    user_id: Optional[str] = Query(None),
+    user: dict = Depends(require_permission("fichajes.manage")),
+):
+    query: dict = {}
+    if user_id:
+        query["user_id"] = user_id
+
+    vacs = []
+    async for v in db.vacaciones.find(query, {"_id": 0}).sort("fecha_inicio", -1):
+        target = await db.users.find_one({"id": v["user_id"]}, {"_id": 0, "name": 1, "email": 1})
+        v["user_name"] = (target.get("name") or target.get("email", "")) if target else v.get("user_id", "")
+        vacs.append(v)
+
+    return vacs
+
+# Admin: gestionar vacacion (aprobar/rechazar)
+@api_router.put("/fichajes/admin/vacaciones/{vac_id}")
+async def fichajes_admin_vacaciones_gestionar(
+    vac_id: str,
+    body: VacacionGestionIn,
+    user: dict = Depends(require_permission("fichajes.manage")),
+):
+    vac = await db.vacaciones.find_one({"id": vac_id})
+    if not vac:
+        raise HTTPException(404, "Solicitud no encontrada")
+
+    await db.vacaciones.update_one(
+        {"id": vac_id},
+        {"$set": {"estado": body.estado, "gestionado_por": user["id"], "gestionado_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"ok": True}
+
+
+# ── Vacaciones (usuario) ──
+class VacacionIn(BaseModel):
+    fecha_inicio: str
+    fecha_fin: str
+    tipo: str = "vacaciones"
+    motivo: Optional[str] = None
+
+@api_router.get("/vacaciones")
+async def vacaciones_listar(
+    estado: Optional[str] = None,
+    user: dict = Depends(require_permission("fichajes.view")),
+):
+    uid = user["id"]
+    q = {"user_id": uid}
+    if estado:
+        q["estado"] = estado
+    vacs = []
+    async for v in db.vacaciones.find(q, {"_id": 0}).sort("created_at", -1):
+        vacs.append({
+            "id": v["id"],
+            "user_id": v["user_id"],
+            "fecha_inicio": v.get("fecha_inicio"),
+            "fecha_fin": v.get("fecha_fin"),
+            "tipo": v.get("tipo", "vacaciones"),
+            "motivo": v.get("motivo"),
+            "estado": v.get("estado", "pendiente"),
+            "created_at": v.get("created_at"),
+        })
+    return vacs
+
+@api_router.post("/vacaciones")
+async def vacaciones_solicitar(
+    body: VacacionIn,
+    user: dict = Depends(require_permission("fichajes.view")),
+):
+    uid = user["id"]
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": uid,
+        "fecha_inicio": body.fecha_inicio,
+        "fecha_fin": body.fecha_fin,
+        "tipo": body.tipo,
+        "motivo": body.motivo,
+        "estado": "pendiente",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.vacaciones.insert_one(doc)
+    return {"ok": True, "id": doc["id"]}
+
+@api_router.get("/vacaciones/saldo/{user_id}")
+async def vacaciones_saldo(
+    user_id: str,
+    user: dict = Depends(require_permission("fichajes.view")),
+):
+    # Simple saldo: 22 días anuales por defecto
+    ahora = datetime.now(timezone.utc)
+    anio = ahora.year
+    inicio_anio = f"{anio}-01-01"
+    fin_anio = f"{anio}-12-31"
+
+    aprobadas = await db.vacaciones.find({
+        "user_id": user_id,
+        "estado": "aprobada",
+        "fecha_inicio": {"$gte": inicio_anio},
+        "fecha_fin": {"$lte": fin_anio},
+    }, {"_id": 0}).to_list(100)
+
+    dias_usados = 0
+    for v in aprobadas:
+        ini = datetime.strptime(v["fecha_inicio"], "%Y-%m-%d")
+        fin = datetime.strptime(v["fecha_fin"], "%Y-%m-%d")
+        dias_usados += (fin - ini).days + 1
+
+    dias_anuales = 22
+    return {
+        "user_id": user_id,
+        "dias_anuales": dias_anuales,
+        "dias_usados": dias_usados,
+        "dias_disponibles": max(0, dias_anuales - dias_usados),
+    }
 
 
 app.include_router(api_router)

@@ -194,7 +194,16 @@ export default function NotasLibresScreen() {
 
   const content = (
     <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
-      {!isWide && <IOSHeader title="Notas libres" showBack />}
+      {isWide ? (
+        <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: 8, gap: 8, backgroundColor: COLORS.surface }}>
+          <TouchableOpacity onPress={() => { if (router.canGoBack()) router.back(); else router.replace("/notas"); }} activeOpacity={0.6}>
+            <Ionicons name="arrow-back" size={20} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: COLORS.text }}>Notas libres</Text>
+        </View>
+      ) : (
+        <IOSHeader title="Notas libres" showBack />
+      )}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}

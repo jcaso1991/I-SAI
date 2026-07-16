@@ -918,7 +918,7 @@ export default function PlanEditor() {
   return (
     <SafeAreaView style={s.root} edges={["top"]}>
       <View style={s.header}>
-        <TouchableOpacity style={s.iconBtn} onPress={() => {
+        <TouchableOpacity style={[s.iconBtn, { flexDirection: "row", gap: 4, width: "auto", paddingHorizontal: 8 }]} onPress={() => {
           if (sourceEventId) {
             router.replace({ pathname: "/calendario", params: { openEvent: sourceEventId } });
           } else {
@@ -926,7 +926,8 @@ export default function PlanEditor() {
             router.replace("/planos");
           }
         }}>
-          <Ionicons name="chevron-back" size={26} color={COLORS.navy} />
+          <Ionicons name="chevron-back" size={22} color={COLORS.navy} />
+          <Text style={{ fontSize: 13, fontWeight: "600", color: COLORS.navy }}>Planos</Text>
         </TouchableOpacity>
         <View style={{ flex: 1, alignItems: "center" }}>
           <Text style={s.headerTitle} numberOfLines={1}>{title}</Text>
@@ -2325,8 +2326,8 @@ const s = StyleSheet.create({
   },
 
   // --- Floating toolbar ---
-  floatingToolbar: {
-    position: "absolute", top: 12, left: 12, zIndex: 20,
+   floatingToolbar: {
+    position: "absolute", top: 52, left: 12, zIndex: 20,
     borderRadius: 18, padding: 8, gap: 6, minWidth: 44,
     backgroundColor: "rgba(15,23,42,0.75)",
     borderWidth: 1, borderColor: "rgba(255,255,255,0.08)",

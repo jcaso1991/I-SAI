@@ -10,6 +10,25 @@ import { api, COLORS } from "../../src/api";
 import { useThemedStyles } from "../../src/theme";
 import { ios } from "../../src/ui/iosTheme";
 
+function RowInfo({ s, editando, label, value, icon, action }: {
+  s: any; editando: boolean; label: string; value?: string | null; icon?: string; action?: () => void;
+}) {
+  if (!editando && !value) return null;
+  return (
+    <View style={s.infoRow}>
+      <View style={{ flex: 1 }}>
+        <Text style={s.infoLabel}>{label}</Text>
+        <Text style={s.infoValue}>{value || "—"}</Text>
+      </View>
+      {icon && action && !editando && (
+        <TouchableOpacity onPress={action} style={s.actionCircle}>
+          <Ionicons name={icon as any} size={16} color={COLORS.primary} />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
 export default function ClienteDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -46,6 +65,8 @@ export default function ClienteDetail() {
   const [proyectos, setProyectos] = useState<any[]>([]);
   const [incidencias, setIncidencias] = useState<any[]>([]);
   const [mantenimientosList, setMantenimientosList] = useState<any[]>([]);
+  const [materialesInstalados, setMaterialesInstalados] = useState<any[]>([]);
+  const [showMatInst, setShowMatInst] = useState(true);
   const [documentos, setDocumentos] = useState<any[]>([]);
 
   const [showDocs, setShowDocs] = useState(true);
@@ -89,6 +110,7 @@ export default function ClienteDetail() {
         setProyectos(data.proyectos || []);
         setIncidencias(data.incidencias || []);
         setMantenimientosList(data.mantenimientos || []);
+        setMaterialesInstalados(data.materiales_instalados || []);
         setDocumentos(data.documentos || []);
 
         setOriginal(JSON.stringify({
@@ -168,23 +190,6 @@ export default function ClienteDetail() {
       <SafeAreaView style={s.root} edges={["top"]}>
         <View style={s.centered}><ActivityIndicator color={COLORS.primary} size="large" /></View>
       </SafeAreaView>
-    );
-  }
-
-  function RowInfo({ label, value, icon, action }: { label: string; value?: string | null; icon?: string; action?: () => void }) {
-    if (!editando && !value) return null;
-    return (
-      <View style={s.infoRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={s.infoLabel}>{label}</Text>
-          <Text style={s.infoValue}>{value || "—"}</Text>
-        </View>
-        {icon && action && !editando && (
-          <TouchableOpacity onPress={action} style={s.actionCircle}>
-            <Ionicons name={icon as any} size={16} color={COLORS.primary} />
-          </TouchableOpacity>
-        )}
-      </View>
     );
   }
 
@@ -270,10 +275,10 @@ export default function ClienteDetail() {
             </View>
           ) : (
             <View>
-              <RowInfo label="Representante / Contacto" value={representante} />
-              <RowInfo label="Teléfono" value={telefono} icon="call-outline" action={() => Linking.openURL(`tel:${telefono}`)} />
-              <RowInfo label="Email corporativo" value={email} icon="mail-outline" action={() => Linking.openURL(`mailto:${email}`)} />
-              <RowInfo label="Ubicación principal" value={`${direccion}${poblacion ? `, ${poblacion}` : ""}${provincia ? ` (${provincia})` : ""}`} icon="map-outline" />
+              <RowInfo s={s} editando={editando} label="Representante / Contacto" value={representante} />
+              <RowInfo s={s} editando={editando} label="Teléfono" value={telefono} icon="call-outline" action={() => Linking.openURL(`tel:${telefono}`)} />
+              <RowInfo s={s} editando={editando} label="Email corporativo" value={email} icon="mail-outline" action={() => Linking.openURL(`mailto:${email}`)} />
+              <RowInfo s={s} editando={editando} label="Ubicación principal" value={`${direccion}${poblacion ? `, ${poblacion}` : ""}${provincia ? ` (${provincia})` : ""}`} icon="map-outline" />
             </View>
           )}
         </View>
@@ -318,10 +323,10 @@ export default function ClienteDetail() {
               </View>
             ) : (
               <View style={{ marginTop: 4 }}>
-                <RowInfo label="Modalidad de Cobertura" value={tipoMantenimiento} />
-                <RowInfo label="Revisiones Planificadas" value={`${revisiones} visitas al año`} />
-                <RowInfo label="Fecha Incorporación" value={altaMantenimiento} />
-                <RowInfo label="Próxima Revisión" value={fechaPrimeraRevision} />
+                <RowInfo s={s} editando={editando} label="Modalidad de Cobertura" value={tipoMantenimiento} />
+                <RowInfo s={s} editando={editando} label="Revisiones Planificadas" value={`${revisiones} visitas al año`} />
+                <RowInfo s={s} editando={editando} label="Fecha Incorporación" value={altaMantenimiento} />
+                <RowInfo s={s} editando={editando} label="Próxima Revisión" value={fechaPrimeraRevision} />
               </View>
             )
           ) : (
@@ -357,9 +362,9 @@ export default function ClienteDetail() {
               </View>
             ) : (
               <View style={{ marginTop: 4 }}>
-                <RowInfo label="Estado" value="Activo" />
-                <RowInfo label="Tipo de Renovación" value={saltoKsTipoRenovacion} />
-                <RowInfo label="Fecha Renovación Voucher" value={saltoKsFechaRenovacion} />
+                <RowInfo s={s} editando={editando} label="Estado" value="Activo" />
+                <RowInfo s={s} editando={editando} label="Tipo de Renovación" value={saltoKsTipoRenovacion} />
+                <RowInfo s={s} editando={editando} label="Fecha Renovación Voucher" value={saltoKsFechaRenovacion} />
               </View>
             )
           ) : (
@@ -417,6 +422,40 @@ export default function ClienteDetail() {
                     </View>
                   </View>
                 ))
+              )}
+            </View>
+          )}
+        </View>
+
+        <View style={s.section}>
+          <TouchableOpacity style={s.accordionHeader} onPress={() => setShowMatInst(!showMatInst)} activeOpacity={0.7}>
+            <View style={s.rowAlignCenter}>
+              <Ionicons name="cube-outline" size={18} color={ios.colors.green} />
+              <Text style={s.accordionTitle}>Materiales Instalados ({materialesInstalados.length})</Text>
+            </View>
+            <Ionicons name={showMatInst ? "chevron-up" : "chevron-down"} size={16} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+          {showMatInst && (
+            <View style={s.accordionContent}>
+              {materialesInstalados.length === 0 ? (
+                <Text style={s.emptySectionText}>Sin materiales instalados registrados.</Text>
+              ) : (
+                <View style={{ gap: 2 }}>
+                  <View style={{ flexDirection: "row", paddingVertical: 4, paddingHorizontal: 8, backgroundColor: COLORS.primarySoft, borderRadius: 6, marginBottom: 4 }}>
+                    <Text style={{ flex: 2, fontSize: 10, fontWeight: "700", color: COLORS.textSecondary, textTransform: "uppercase" }}>Material</Text>
+                    <Text style={{ width: 50, fontSize: 10, fontWeight: "700", color: COLORS.textSecondary, textTransform: "uppercase", textAlign: "center" }}>Cant.</Text>
+                    <Text style={{ flex: 1, fontSize: 10, fontWeight: "700", color: COLORS.textSecondary, textTransform: "uppercase", textAlign: "right" }}>Fecha</Text>
+                    <Text style={{ flex: 1.2, fontSize: 10, fontWeight: "700", color: COLORS.textSecondary, textTransform: "uppercase", textAlign: "right" }}>Proyecto</Text>
+                  </View>
+                  {materialesInstalados.map((m: any, i: number) => (
+                    <View key={i} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 6, paddingHorizontal: 8, backgroundColor: i % 2 === 0 ? COLORS.readonly : "transparent", borderRadius: 4, gap: 4 }}>
+                      <Text style={{ flex: 2, fontSize: 12, fontWeight: "600", color: COLORS.text }} numberOfLines={1}>{m.material}</Text>
+                      <Text style={{ width: 50, fontSize: 12, fontWeight: "700", color: ios.colors.green, textAlign: "center" }}>{m.cantidad}</Text>
+                      <Text style={{ flex: 1, fontSize: 10, color: COLORS.textSecondary, textAlign: "right" }}>{m.fecha_terminacion || "-"}</Text>
+                      <Text style={{ flex: 1.2, fontSize: 10, color: COLORS.textDisabled, textAlign: "right" }} numberOfLines={1}>{m.proyecto_nombre || m.proyecto_id?.slice(0, 8) || "-"}</Text>
+                    </View>
+                  ))}
+                </View>
               )}
             </View>
           )}

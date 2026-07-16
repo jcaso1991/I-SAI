@@ -71,3 +71,11 @@ Cada vez que recibís un mensaje de la persona usuaria, antes de hacer CUALQUIER
    - No → respondé directamente.
 
 NO saltees pasos. NO empieces a investigar antes de pasar por los 3 gates. Si dudás entre paso 2 y paso 3, elegí paso 2. No pidas confirmación para tareas técnicas cuando la intención de la persona ya es clara. Nunca cierres el turno con un plan para aprobar si podés ejecutar el trabajo de forma segura.
+
+## Documentación obligatoria
+
+Cada cambio o añadido en la aplicación debe quedar reflejado en estos dos archivos:
+1. **`frontend/app/portfolio.tsx`** — Info App dentro de la aplicación. Añadir/actualizar el módulo en el array `MODULOS`.
+2. **`backend/pdf_funcionalidades.py`** — Documento PDF offline. Actualizar la sección correspondiente (módulos, permisos, endpoints, relaciones, diagrama).
+
+Siempre después de hacer cambios en funcionalidad, permisos, endpoints o relaciones entre módulos, actualizá ambos archivos sin que la persona tenga que pedirlo.

@@ -211,7 +211,7 @@ export default function PresupuestosIndex() {
           })}
         </View>
 
-        <ScrollView contentContainerStyle={styles.scrollWrapper}>
+         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollWrapper}>
           {loading ? (
             <ActivityIndicator size="large" color={BRAND_COLORS.primary} style={{ marginTop: 40 }} />
           ) : filteredBudgets.length === 0 ? (

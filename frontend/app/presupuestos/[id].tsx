@@ -17,6 +17,108 @@ import { ios, fontStyle } from "../../src/ui/iosTheme";
 
 type Equipo = { elemento: string; cantidad?: string; ubicacion?: string; observaciones?: string };
 
+function Section({ s, title, children }: { s: any; title: string; children: React.ReactNode }) {
+  return (
+    <View style={s.section}>
+      <Text style={s.sectionTitle}>{title}</Text>
+      <View style={{ gap: 10 }}>{children}</View>
+    </View>
+  );
+}
+function Field({ s, label, value, onChange, placeholder, multiline }: {
+  s: any;
+  label?: string;
+  value?: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  multiline?: boolean;
+}) {
+   return (
+     <View style={{ gap: 4, flex: 1 }}>
+       {label && <Text style={s.lbl}>{label}</Text>}
+       <TextInput
+          value={value}
+          onChangeText={onChange}
+          placeholder={placeholder}
+          placeholderTextColor={COLORS.textDisabled}
+          multiline={multiline}
+          style={[s.inp, multiline && { minHeight: 80, textAlignVertical: "top" }]}
+        />
+     </View>
+   );
+}
+function Check({ s, label, value, onChange }: {
+  s: any;
+  label: string;
+  value?: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <TouchableOpacity style={s.check} onPress={() => onChange(!value)} activeOpacity={0.7}>
+      <View style={[s.checkBox, value && s.checkBoxOn]}>
+        {value && <Ionicons name="checkmark" size={16} color="#fff" />}
+      </View>
+      <Text style={s.checkLbl}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+function ElementoCombo({ s, value, onChange, suggestions, style, isOpen, onOpenChange }: {
+  s: any;
+  value: string;
+  onChange: (v: string) => void;
+  suggestions: string[];
+  style?: any;
+  isOpen: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const q = (value || "").toLowerCase().trim();
+  const filtered = q
+    ? suggestions.filter((it) => it.toLowerCase().includes(q))
+    : suggestions;
+  const showList = isOpen && filtered.length > 0;
+
+  return (
+    <View style={[{ position: "relative", zIndex: isOpen ? 50 : 1 }, style]}>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <TextInput
+          value={value}
+          onChangeText={(v) => { onChange(v); if (v.length > 0 && !isOpen) onOpenChange(true); }}
+          onFocus={() => onOpenChange(true)}
+          onBlur={() => setTimeout(() => onOpenChange(false), 200)}
+          style={[s.eqInp, { flex: 1, paddingRight: 28 }]}
+          placeholder="Elemento (escribir o elegir…)"
+          placeholderTextColor={COLORS.textDisabled}
+        />
+        <TouchableOpacity
+          style={{ position: "absolute", right: 2, padding: 4 }}
+          onPress={() => onOpenChange(!isOpen)}
+        >
+          <Ionicons name={isOpen ? "chevron-up" : "chevron-down"} size={18} color={COLORS.primary} />
+        </TouchableOpacity>
+      </View>
+      {showList && (
+        <View style={s.comboList}>
+          <ScrollView
+            style={{ maxHeight: 220 }}
+            keyboardShouldPersistTaps="always"
+            nestedScrollEnabled
+          >
+            {filtered.slice(0, 50).map((it, idx) => (
+              <TouchableOpacity
+                key={idx}
+                style={s.comboItem}
+                onPress={() => { onChange(it); onOpenChange(false); }}
+              >
+                <Text style={s.comboItemTxt}>{it}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function BudgetEditor() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string; material_id?: string }>();
@@ -24,108 +126,6 @@ export default function BudgetEditor() {
   const { isWide } = useBreakpoint();
 
   const s = useThemedStyles(useS);
-
-  function Section({ title, children }: { title: string; children: React.ReactNode }) {
-    return (
-      <View style={s.section}>
-        <Text style={s.sectionTitle}>{title}</Text>
-        <View style={{ gap: 10 }}>{children}</View>
-      </View>
-    );
-  }
-  function Field({ label, value, onChange, placeholder, multiline }: {
-    label?: string;
-    value?: string;
-    onChange: (v: string) => void;
-    placeholder?: string;
-    multiline?: boolean;
-  }) {
-     return (
-       <View style={{ gap: 4, flex: 1 }}>
-         {label && <Text style={s.lbl}>{label}</Text>}
-         <TextInput
-            value={value}
-            onChangeText={onChange}
-            placeholder={placeholder}
-            placeholderTextColor={COLORS.textDisabled}
-            multiline={multiline}
-            style={[s.inp, multiline && { minHeight: 80, textAlignVertical: "top" }]}
-          />
-       </View>
-     );
-  }
-  function Check({ label, value, onChange }: {
-    label: string;
-    value?: boolean;
-    onChange: (v: boolean) => void;
-  }) {
-    return (
-      <TouchableOpacity style={s.check} onPress={() => onChange(!value)} activeOpacity={0.7}>
-        <View style={[s.checkBox, value && s.checkBoxOn]}>
-          {value && <Ionicons name="checkmark" size={16} color="#fff" />}
-        </View>
-        <Text style={s.checkLbl}>{label}</Text>
-      </TouchableOpacity>
-    );
-  }
-  function ElementoCombo({ value, onChange, suggestions, style, isOpen, onOpenChange }: {
-    value: string;
-    onChange: (v: string) => void;
-    suggestions: string[];
-    style?: any;
-    isOpen: boolean;
-    onOpenChange: (v: boolean) => void;
-  }) {
-    const q = (value || "").toLowerCase().trim();
-    const filtered = q
-      ? suggestions.filter((it) => it.toLowerCase().includes(q))
-      : suggestions;
-    const showList = isOpen && filtered.length > 0;
-
-    return (
-      <View style={[{ position: "relative", zIndex: isOpen ? 50 : 1 }, style]}>
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <TextInput
-            testID="elemento-input"
-            value={value}
-            onChangeText={(v) => { onChange(v); if (v.length > 0 && !isOpen) onOpenChange(true); }}
-            onFocus={() => onOpenChange(true)}
-            onBlur={() => setTimeout(() => onOpenChange(false), 200)}
-            style={[s.eqInp, { flex: 1, paddingRight: 28 }]}
-            placeholder="Elemento (escribir o elegir…)"
-            placeholderTextColor={COLORS.textDisabled}
-          />
-          <TouchableOpacity
-            testID="elemento-dropdown"
-            style={{ position: "absolute", right: 2, padding: 4 }}
-            onPress={() => onOpenChange(!isOpen)}
-          >
-            <Ionicons name={isOpen ? "chevron-up" : "chevron-down"} size={18} color={COLORS.primary} />
-          </TouchableOpacity>
-        </View>
-        {showList && (
-          <View style={s.comboList}>
-            <ScrollView
-              style={{ maxHeight: 220 }}
-              keyboardShouldPersistTaps="always"
-              nestedScrollEnabled
-            >
-              {filtered.slice(0, 50).map((it, idx) => (
-                <TouchableOpacity
-                  key={idx}
-                  style={s.comboItem}
-                  onPress={() => { onChange(it); onOpenChange(false); }}
-                >
-                  <Text style={s.comboItemTxt}>{it}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-      </View>
-    );
-  }
-
   const [me, setMe] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -350,32 +350,32 @@ export default function BudgetEditor() {
           </TouchableOpacity>
         </View>
       </View>
-      <ScrollView contentContainerStyle={[s.scroll, isWide && { maxWidth: 900, alignSelf: "center", width: "100%" }]}>
-        <Section title="DATOS DEL PROYECTO">
-          <Field label="Nº Proyecto" value={f.n_proyecto} onChange={(v) => set("n_proyecto", v)} />
-          <Field label="Cliente" value={f.cliente} onChange={(v) => set("cliente", v)} />
-          <Field label="Nombre instalación" value={f.nombre_instalacion} onChange={(v) => set("nombre_instalacion", v)} />
-          <Field label="Dirección" value={f.direccion} onChange={(v) => set("direccion", v)} />
-          <Field label="Contacto 1" value={f.contacto_1} onChange={(v) => set("contacto_1", v)} />
-          <Field label="Contacto 2" value={f.contacto_2} onChange={(v) => set("contacto_2", v)} />
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[s.scroll, isWide && { maxWidth: 900, alignSelf: "center", width: "100%" }]}>
+        <Section s={s} title="DATOS DEL PROYECTO">
+          <Field s={s} label="Nº Proyecto" value={f.n_proyecto} onChange={(v) => set("n_proyecto", v)} />
+          <Field s={s} label="Cliente" value={f.cliente} onChange={(v) => set("cliente", v)} />
+          <Field s={s} label="Nombre instalación" value={f.nombre_instalacion} onChange={(v) => set("nombre_instalacion", v)} />
+          <Field s={s} label="Dirección" value={f.direccion} onChange={(v) => set("direccion", v)} />
+          <Field s={s} label="Contacto 1" value={f.contacto_1} onChange={(v) => set("contacto_1", v)} />
+          <Field s={s} label="Contacto 2" value={f.contacto_2} onChange={(v) => set("contacto_2", v)} />
         </Section>
 
-        <Section title="OBSERVACIONES PRESUPUESTO">
-          <Field multiline value={f.observaciones_presupuesto} onChange={(v) => set("observaciones_presupuesto", v)} />
+        <Section s={s} title="OBSERVACIONES PRESUPUESTO">
+          <Field s={s} multiline value={f.observaciones_presupuesto} onChange={(v) => set("observaciones_presupuesto", v)} />
         </Section>
 
-        <Section title="FECHAS INSTALACIÓN">
+        <Section s={s} title="FECHAS INSTALACIÓN">
           <View style={{ flexDirection: "row", gap: 12 }}>
-            <Field label="Inicio" value={f.fecha_inicio} onChange={(v) => set("fecha_inicio", v)} placeholder="DD/MM/AAAA" />
-            <Field label="Fin" value={f.fecha_fin} onChange={(v) => set("fecha_fin", v)} placeholder="DD/MM/AAAA" />
+            <Field s={s} label="Inicio" value={f.fecha_inicio} onChange={(v) => set("fecha_inicio", v)} placeholder="DD/MM/AAAA" />
+            <Field s={s} label="Fin" value={f.fecha_fin} onChange={(v) => set("fecha_fin", v)} placeholder="DD/MM/AAAA" />
           </View>
         </Section>
 
-        <Section title="OBSERVACIONES EJECUCIÓN">
-          <Field multiline value={f.observaciones_ejecucion} onChange={(v) => set("observaciones_ejecucion", v)} />
+        <Section s={s} title="OBSERVACIONES EJECUCIÓN">
+          <Field s={s} multiline value={f.observaciones_ejecucion} onChange={(v) => set("observaciones_ejecucion", v)} />
         </Section>
 
-        <Section title="LISTADO DE EQUIPOS">
+        <Section s={s} title="LISTADO DE EQUIPOS">
           <View style={s.eqHeader}>
             <Text style={[s.eqHeaderTxt, { flex: 2 }]}>ELEMENTO</Text>
             <Text style={[s.eqHeaderTxt, { flex: 0.6 }]}>CANT</Text>
@@ -392,6 +392,7 @@ export default function BudgetEditor() {
             return (
               <View key={i} style={[s.eqRow, { zIndex: rowZ, position: "relative" }]}>
                 <ElementoCombo
+                  s={s}
                   value={e.elemento}
                   onChange={(v) => setEq(i, "elemento", v)}
                   suggestions={defaultEquipos}
@@ -414,7 +415,7 @@ export default function BudgetEditor() {
           </TouchableOpacity>
         </Section>
 
-        <Section title="ADJUNTOS">
+        <Section s={s} title="ADJUNTOS">
           <View style={{ gap: 6 }}>
             {attachments.map((att: any) => (
               <View key={att.id} style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: COLORS.surface, borderRadius: ios.radius.md, padding: 10, borderWidth: 1, borderColor: COLORS.border }}>
@@ -432,26 +433,26 @@ export default function BudgetEditor() {
           </View>
         </Section>
 
-        <Section title="ENTREGAS">
-          <Check label="Entrega tarjeta mantenimiento" value={f.entrega_tarjeta_mantenimiento} onChange={(v) => set("entrega_tarjeta_mantenimiento", v)} />
-          <Check label="Entrega de llave técnica Salto (cilindro/mini)" value={f.entrega_llave_salto} onChange={(v) => set("entrega_llave_salto", v)} />
-          <Check label="Entrega EPS100" value={f.entrega_eps100} onChange={(v) => set("entrega_eps100", v)} />
+        <Section s={s} title="ENTREGAS">
+          <Check s={s} label="Entrega tarjeta mantenimiento" value={f.entrega_tarjeta_mantenimiento} onChange={(v) => set("entrega_tarjeta_mantenimiento", v)} />
+          <Check s={s} label="Entrega de llave técnica Salto (cilindro/mini)" value={f.entrega_llave_salto} onChange={(v) => set("entrega_llave_salto", v)} />
+          <Check s={s} label="Entrega EPS100" value={f.entrega_eps100} onChange={(v) => set("entrega_eps100", v)} />
         </Section>
 
-        <Section title="FIRMA I-SAI">
+        <Section s={s} title="FIRMA I-SAI">
           <View style={s.signaturePadWrap}>
             <SignaturePad value={f.firma_isai} onChange={(v) => set("firma_isai", v)} />
           </View>
-          <Field label="Nombre y Apellidos" value={f.nombre_isai} onChange={(v) => set("nombre_isai", v)} />
-          <Field label="Cargo" value={f.cargo_isai} onChange={(v) => set("cargo_isai", v)} />
+          <Field s={s} label="Nombre y Apellidos" value={f.nombre_isai} onChange={(v) => set("nombre_isai", v)} />
+          <Field s={s} label="Cargo" value={f.cargo_isai} onChange={(v) => set("cargo_isai", v)} />
         </Section>
 
-        <Section title="FIRMA CLIENTE">
+        <Section s={s} title="FIRMA CLIENTE">
           <View style={s.signaturePadWrap}>
             <SignaturePad value={f.firma_cliente} onChange={(v) => set("firma_cliente", v)} />
           </View>
-          <Field label="Nombre y Apellidos" value={f.nombre_cliente} onChange={(v) => set("nombre_cliente", v)} />
-          <Field label="Cargo" value={f.cargo_isai} onChange={(v) => set("cargo_isai", v)} />
+          <Field s={s} label="Nombre y Apellidos" value={f.nombre_cliente} onChange={(v) => set("nombre_cliente", v)} />
+          <Field s={s} label="Cargo" value={f.cargo_isai} onChange={(v) => set("cargo_isai", v)} />
         </Section>
 
         <TouchableOpacity style={[s.bigBtn, { backgroundColor: COLORS.accent }]} onPress={generatePdf}>

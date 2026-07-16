@@ -287,7 +287,7 @@ def _s1_introduccion():
         ["Python", "3.12", "Lenguaje principal del backend"],
         ["FastAPI", "0.110.1", "Framework web REST API con OpenAPI/Swagger"],
         ["Uvicorn", "0.25.0", "Servidor ASGI de alto rendimiento"],
-        ["MongoDB", "7.x", "Base de datos NoSQL con 24 colecciones por tenant"],
+        ["MongoDB", "7.x", "Base de datos NoSQL con 25 colecciones por tenant"],
         ["Motor", "3.3.1", "Driver asincrono de MongoDB para Python"],
         ["Expo SDK", "54", "Framework de desarrollo movil multiplataforma"],
         ["React", "19", "Libreria de interfaz de usuario"],
@@ -380,8 +380,14 @@ def _s2_roles():
         ["Chat", "Crear grupos", "Si", "Si", "-", "-"],
         ["Dashboard", "Ver dashboard", "Si", "Si", "-", "-"],
         ["Financiero", "Ver panel financiero", "Si", "Si", "-", "-"],
-        ["Fichajes", "Fichar entrada/salida", "Si", "Si", "Si", "-"],
-        ["Fichajes", "Ver historico fichajes", "Si", "Si", "-", "-"],
+        ["Fichajes", "Fichar entrada/salida/pausa", "Si", "Si", "Si", "Si"],
+        ["Fichajes", "Calendario mensual propio", "Si", "Si", "Si", "Si"],
+        ["Fichajes", "Editar/borrar fichajes propios", "Si", "Si", "Si", "Si"],
+        ["Fichajes", "Ver resumen semanal/mensual/anual", "Si", "Si", "Si", "Si"],
+        ["Fichajes", "Solicitar vacaciones", "Si", "Si", "Si", "Si"],
+        ["Fichajes", "Admin: gestionar todos los fichajes", "Si", "Si", "-", "-"],
+        ["Fichajes", "Admin: exportar CSV", "Si", "Si", "-", "-"],
+        ["Fichajes", "Admin: aprobar vacaciones", "Si", "Si", "-", "-"],
         ["Preciario", "Consultar preciario", "Si", "Si", "Si", "Si"],
         ["Preciario", "Editar precios y stock", "Si", "-", "-", "-"],
         ["Documentos", "Ver documentos", "Si", "Si", "Si", "Si"],
@@ -429,15 +435,20 @@ def _s3_modulos():
     ))
 
     modulos = [
-        ("Proyectos (Materiales)",
-         "El corazon operativo de I-SAI. Cada proyecto representa una instalacion real que "
-         "pasa por un ciclo de vida completo: desde su creacion (pendiente) hasta su cierre "
-         "(facturado/terminado). Un proyecto incluye tecnicos asignados, fechas de inicio y fin, "
-         "materiales necesarios, horas estimadas y reales, notas internas y un historial completo "
-         "de cambios. El modulo de materiales permite asignar productos del preciario (con calculo "
-         "automatico de costes), gestionar stock reservado y generar listados para compras. "
-         "Los gestores pueden monitorizar el progreso de cada proyecto desde el dashboard, "
-         "mientras que los tecnicos actualizan el estado desde el movil en tiempo real."),
+         ("Proyectos (Materiales)",
+          "El corazon operativo de I-SAI. Cada proyecto representa una instalacion real que "
+          "pasa por un ciclo de vida completo: desde su creacion (pendiente) hasta su cierre "
+          "(facturado/terminado). Un proyecto incluye tecnicos asignados, fechas de inicio y fin, "
+          "materiales necesarios, horas estimadas y reales, notas internas y un historial completo "
+          "de cambios. El modulo de materiales permite asignar productos del preciario (con calculo "
+          "automatico de costes), gestionar stock reservado y generar listados para compras.\n\n"
+          "NUEVO: Seguimiento de materiales del proyecto con cantidad prevista vs instalada. "
+          "Cada proyecto tiene una lista de materiales con cantidades planificadas. Los tecnicos "
+          "marcan materiales como instalados desde los eventos del calendario, y el sistema "
+          "sincroniza automaticamente las cantidades al completar eventos. Esto permite "
+          "monitorizar en tiempo real que porcentaje de materiales se ha instalado en cada obra. "
+          "Los gestores pueden monitorizar el progreso de cada proyecto desde el dashboard, "
+          "mientras que los tecnicos actualizan el estado desde el movil en tiempo real."),
 
         ("Calendario + cascada automatica",
          "Calendario visual compartido con vistas semanales y mensuales donde se planifican "
@@ -530,14 +541,36 @@ def _s3_modulos():
          "expandir. Con datos de prueba generados (986 proyectos), el sistema muestra ~6,4M "
          "en ventas previstas y un margen real medio del 39%."),
 
-        ("Fichajes (entrada/salida, geolocalizacion)",
-         "Control horario completo para cumplimiento de la legislacion laboral espanola "
-         "(RD-ley 8/2019). Cada tecnico ficha entrada y salida desde el movil, y el sistema "
-         "registra: hora, ubicacion GPS (latitud/longitud), proyecto asociado y tipo de "
-         "jornada. La geolocalizacion permite verificar que los fichajes se realizan en "
-         "las ubicaciones de obra y no desde otros lugares. El historico de fichajes es "
-         "exportable a Excel para la gestoria laboral. El panel de fichajes muestra la "
-         "jornada acumulada semanal y mensual de cada empleado."),
+        ("Fichajes (control horario, vacaciones, calendario, admin)",
+         "Control horario laboral completo con geolocalizacion para cumplimiento del "
+         "RD-ley 8/2019. Reloj en tiempo real con fichaje de entrada, salida, pausa y "
+         "fin de pausa. Calendario mensual interactivo con vista de horas por dia, dots "
+         "de estado (verde=completo, amarillo=pendiente) y navegacion de meses hasta 1 "
+         "año atras. Resumen semanal, mensual y anual de horas trabajadas y dias con "
+         "actividad. Gestion de vacaciones con saldo visible (22 dias anuales), solicitud "
+         "desde la app y panel de aprobacion/rechazo para administradores.\n\n"
+         "Panel de administracion: vista resumen de todos los usuarios con KPIs (fichados "
+         "hoy, horas mes), detalle por usuario con calendario mensual y tabla de fichajes "
+         "del dia seleccionado, edicion inline de horas, creacion manual de fichajes, "
+         "eliminacion (soft delete), exportacion CSV y gestion de solicitudes de vacaciones.\n\n"
+         "Sistema de permisos granular con tres niveles: fichajes.view (fichar, ver historico "
+         "propio y vacaciones), fichajes.edit_own (editar y borrar fichajes propios de cualquier "
+         "dia), fichajes.manage (administrar todos los usuarios, exportar, configurar festivos). "
+         "Todos los roles (admin, gestor, tecnico, comercial, SAT) tienen acceso al modulo con "
+         "los permisos correspondientes a su funcion."),
+
+        ("Clientes (directorio, mantenimiento, Salto KS, materiales instalados)",
+         "Directorio de clientes con ficha completa: datos fiscales (razon social, NIF), "
+         "direcciones multiples, representante, telefono y email. Seguimiento de "
+         "mantenimiento contratado con tipo (Anual/Trimestral/Semestral/A medida), fecha "
+         "de alta y alerta automatica 30 dias antes del aniversario para renovacion. "
+         "Gestion de Salto KS con aviso previo al vencimiento y solicitud de presupuesto "
+         "automatica.\n\n"
+         "NUEVO: Registro historico de materiales instalados. Al terminar un proyecto, "
+         "todos los materiales con cantidad instalada se copian automaticamente a la ficha "
+         "del cliente con fecha de terminacion y nombre del proyecto. El registro se acumula "
+         "con todos los proyectos del cliente, permitiendo consultar que materiales tiene "
+         "instalados cada cliente y cuando se instalaron."),
 
         ("Preciario (56k productos, descuentos, stock)",
          "Base de datos con mas de 56.000 productos del sector de seguridad electronica: "
@@ -732,9 +765,16 @@ def _s5_diagrama():
         "               |                 |                                   |\n"
         "               v                 |                                   |\n"
         "     +------------+              |                                   |\n"
-        "     |  Fichajes  |              |                                   |\n"
-        "     | (GPS, hora)|              |                                   |\n"
-        "     +------------+              |                                   |\n"
+         "     |  Fichajes  |              |                                   |\n"
+         "     |(GPS, pausa)|              |                                   |\n"
+         "     |  + admin   |              |                                   |\n"
+         "     +-----+------+              |                                   |\n"
+         "           |                      |                                   |\n"
+         "           v                      |                                   |\n"
+         "     +------------+               |                                   |\n"
+         "     | Vacaciones |               |                                   |\n"
+         "     |(saldo 22d) |               |                                   |\n"
+         "     +------------+               |                                   |\n"
         "                                 |                                   |\n"
         "          +----------------------+-----------------------+           |\n"
         "          |                      |                       |           |\n"
@@ -760,7 +800,7 @@ def _s5_diagrama():
         "                  +------------+\n"
         "\n"
         "  Cada cliente (empresa) tiene su propia base de datos MongoDB\n"
-        "  independiente con 24 colecciones. Los datos nunca se mezclan\n"
+        "  independiente con 25 colecciones. Los datos nunca se mezclan\n"
         "  entre clientes. El sistema identifica la BD a partir del token\n"
         "  JWT del usuario autenticado.\n"
     )
@@ -1363,7 +1403,7 @@ def _s11_endpoints():
         ["/api/chat", "5", "Listado conversaciones, envio mensajes (texto, imagen, archivo), crear grupo, anadir/quitar miembros, historico mensajes por conversacion"],
         ["/api/dashboard", "15", "Un endpoint por cada seccion del dashboard (planificacion, KPIs, proyectos, horas, pipeline, SAT, mapa, YoY, geo, financiero, etc.)"],
         ["/api/financial", "4", "Facturacion mensual, beneficio bruto, comparativa objetivos, top clientes por facturacion"],
-        ["/api/clocking", "4", "Fichaje entrada/salida (con GPS), historico fichajes (rango fechas, por usuario), resumen semanal/mensual, exportacion Excel"],
+        ["/api/fichajes", "10+", "Fichaje entrada/salida/pausa/reanudar (GPS), listar fichajes propios, editar/borrar propios. Admin: lista usuarios con KPIs, detalle por usuario, crear/editar/eliminar fichajes, exportar CSV, gestionar vacaciones, configurar festivos"],
         ["/api/pricing", "5", "Busqueda productos (texto/codigo/familia), detalle producto, precios y descuentos por cliente, gestion stock, importacion Excel"],
         ["/api/salto", "3", "Catalogo productos Salto, busqueda, detalle con ficha tecnica PDF"],
         ["/api/notes", "5", "CRUD notas, busqueda full-text, filtrado por tags, vinculacion a entidades (proyecto/cliente/SAT), compartir nota"],
@@ -1509,17 +1549,22 @@ def _s13_relaciones():
 
     for titulo, detalle in [
         ("Clientes → Proyectos", "Campo cliente_id en materiales vincula cada proyecto a un cliente. Al abrir un proyecto se muestran los datos del cliente. En la ficha del cliente aparecen todos sus proyectos asociados."),
-        ("Proyectos → Eventos (Calendario)", "Campo material_id en events vincula eventos al proyecto. Las horas de eventos completados se suman como horas_imputadas del proyecto. El calendario muestra el nombre del proyecto en cada evento."),
+        ("Proyectos → Eventos (Calendario)", "Campo material_id en events vincula eventos al proyecto. Las horas de eventos completados se suman como horas_imputadas del proyecto. El calendario muestra el nombre del proyecto en cada evento. Cuando un evento pasa a completado, tambien sincroniza las cantidades de materiales instalados al proyecto."),
+        ("Proyectos → Materiales (Seguimiento instalacion)", "Cada proyecto tiene una lista de materiales (materiales_proyecto) con cantidad prevista e instalada. Los tecnicos marcan materiales como instalados desde los eventos del calendario. Al completar un evento, el sistema suma automaticamente las cantidades al proyecto. Si se revierte a 'en curso', las resta. Esto permite tracking en tiempo real de que porcentaje de materiales se ha instalado."),
         ("Proyectos → Certificaciones", "Campo material_id en certificaciones. Un proyecto puede tener multiples certificaciones, cada una con lineas de alcance (previsto) y ejecutado (real)."),
         ("Proyectos → Presupuestos", "Campo material_id en budgets. Presupuesto aceptado se vincula al proyecto. Estados: pendiente, en_revision, enviado, aceptado. Backend valida transiciones."),
         ("Clientes → SAT (Incidencias)", "Campo client_id en sat_incidents. Incidencias SAT asociadas al cliente, visibles en su ficha con estado y fecha."),
         ("Clientes → Mantenimiento SAT", "Campos mantenimiento_contratado + alta_mantenimiento. Un mes antes del aniversario de la fecha de alta se genera automaticamente una incidencia SAT con tipo 'Renovar mantenimiento'."),
         ("Clientes → Salto KS", "Campos salto_ks_activo + salto_ks_fecha_renovacion. 30 dias antes del vencimiento se genera notificacion y solicitud de presupuesto automatica."),
+        ("Clientes → Materiales Instalados", "Cuando un proyecto pasa a estado 'terminado', todos los materiales con cantidad_instalada > 0 se copian automaticamente al cliente (materiales_instalados). Se evitan duplicados por proyecto. El cliente acumula el historial de materiales de todos sus proyectos terminados, con fecha de terminacion y nombre del proyecto."),
         ("Clientes → Solicitudes Presupuesto", "Solicitudes de presupuesto desde formulario publico o generadas automaticamente por Salto KS. Visibles en Admin > Solicitudes."),
         ("Proyectos → Dashboard OEC", "Proyectos con costes reales y horas imputadas. El calculo de Obra en Curso usa la formula de la seccion 13.2."),
         ("Proyectos → Dashboard Financiero", "Proyectos con datos financieros y horas_imputadas. Panel financiero muestra venta prevista, costes y margenes por ano y gestor."),
         ("Eventos → Dashboard Horas Tecnicos", "Horas de eventos sumadas por assigned_user_ids. Clasificadas como M.O. o Desplazamiento segun tipo_mano_obra. Filtrable por ano/mes."),
         ("Presupuestos → Pipeline Estados", "Maquina de estados: pendiente → en_revision → enviado → aceptado. Backend bloquea saltos invalidos. Cada cambio guarda _status_history."),
+        ("Fichajes → Roles y Permisos", "Tres niveles de permiso: fichajes.view (fichar, ver propio), fichajes.edit_own (editar/borrar propio), fichajes.manage (admin total). Asignados por rol: admin/gestor tienen manage, tecnico/comercial/SAT tienen view+edit_own."),
+        ("Fichajes → Vacaciones", "Solicitud de vacaciones desde la app con seleccion de fechas y motivo. El admin aprueba/rechaza desde el panel. Saldo visible con barra de progreso. Dias anuales: 22."),
+        ("Fichajes → Calendario Mensual", "Cada usuario tiene su propio calendario mensual con horas por dia, dots de estado y detalle de fichajes al pulsar un dia. Navegacion hasta 1 año atras."),
     ]:
         E.append(Paragraph(f"<b>{titulo}:</b> {detalle}", S["body"]))
 

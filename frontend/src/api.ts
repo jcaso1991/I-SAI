@@ -75,6 +75,9 @@ export const api = {
   uploadMaterialAttachment: (mid: string, body: { filename: string; mime_type: string; base64: string }) =>
     request(`/materiales/${mid}/attachments`, { method: "POST", body: JSON.stringify(body) }),
   getMaterialHistory: (id: string) => request(`/materiales/${id}/history`),
+  getMaterialesProyecto: (id: string) => request(`/materiales/${id}/materiales`),
+  updateMaterialesProyecto: (mid: string, materiales: any[]) =>
+    request(`/materiales/${mid}/materiales`, { method: "PUT", body: JSON.stringify({ materiales }) }),
   stats: () => request("/stats"),
   statsByManager: (year?: string) => request(`/stats/by-manager${year && year !== "todos" ? "?year=" + year : ""}`),
   getDashboard: () => request("/dashboard"),
@@ -418,6 +421,47 @@ export const api = {
   chatSendFile: (cid: string, fileBase64: string, fileName: string, fileMime: string) => request(`/chats/${cid}/messages`, { method: "POST", body: JSON.stringify({ text: "", file_base64: fileBase64, file_name: fileName, file_mime: fileMime }) }),
   chatCreate: (body: { participant_ids: string[]; name?: string; project_id?: string; event_id?: string }) => request("/chats", { method: "POST", body: JSON.stringify(body) }),
   chatUnreadTotal: () => request("/chats/unread-total"),
+
+  // Fichajes
+  fichajeCrear: (body: { tipo: string; lat?: number; lng?: number; dispositivo?: string }) =>
+    request("/fichajes", { method: "POST", body: JSON.stringify(body) }),
+  fichajeEditar: (fichajeId: string, entrada?: string, salida?: string) =>
+    request(`/fichajes/${fichajeId}`, { method: "PUT", body: JSON.stringify({ entrada: entrada || null, salida: salida || null }) }),
+  fichajeEliminar: (fichajeId: string) =>
+    request(`/fichajes/${fichajeId}`, { method: "DELETE" }),
+  fichajesListar: (user_id?: string, from?: string, to?: string) => {
+    const p = new URLSearchParams();
+    if (user_id) p.set("user_id", user_id);
+    if (from) p.set("from", from);
+    if (to) p.set("to", to);
+    const qs = p.toString();
+    return request(`/fichajes${qs ? "?" + qs : ""}`);
+  },
+  fichajesAdminUsuarios: () => request("/fichajes/admin/usuarios"),
+  fichajesAdminDetalle: (userId: string, desde: string, hasta: string) =>
+    request(`/fichajes/admin/detalle/${userId}?desde=${desde}&hasta=${hasta}`),
+  fichajesAdminEditar: (fichajeId: string, entrada: string | null, salida: string | null) =>
+    request(`/fichajes/admin/editar/${fichajeId}`, { method: "PUT", body: JSON.stringify({ entrada, salida }) }),
+  fichajesAdminCrear: (userId: string, fecha: string, entrada: string, salida: string) =>
+    request("/fichajes/admin/crear", { method: "POST", body: JSON.stringify({ user_id: userId, fecha, entrada, salida }) }),
+  fichajesAdminEliminar: (fichajeId: string) =>
+    request(`/fichajes/admin/eliminar/${fichajeId}`, { method: "DELETE" }),
+  fichajesAdminVacaciones: (userId?: string) =>
+    request(`/fichajes/admin/vacaciones${userId ? "?user_id=" + userId : ""}`),
+  fichajesAdminVacacionesGestionar: (vacId: string, estado: string) =>
+    request(`/fichajes/admin/vacaciones/${vacId}`, { method: "PUT", body: JSON.stringify({ estado }) }),
+  fichajesAdminExportar: async (desde: string, hasta: string, userId?: string) => {
+    const t = await getToken();
+    const res = await fetch(apiUrl(`/fichajes/admin/exportar?desde=${encodeURIComponent(desde)}&hasta=${encodeURIComponent(hasta)}${userId ? `&user_id=${encodeURIComponent(userId)}` : ""}`), { headers: t ? { Authorization: `Bearer ${t}` } : {} });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.text();
+  },
+  vacacionesSolicitar: (body: { fecha_inicio: string; fecha_fin: string; tipo: string; motivo?: string }) =>
+    request("/vacaciones", { method: "POST", body: JSON.stringify(body) }),
+  vacacionesListar: () => request("/vacaciones"),
+  vacacionesSaldo: (user_id: string) => request(`/vacaciones/saldo/${user_id}`),
+  configFichajes: () => request("/config-fichajes"),
+  updateConfigFichajes: (body: any) => request("/config-fichajes", { method: "PUT", body: JSON.stringify(body) }),
 
   // Muestrario
   getMuestrario: () => request("/muestrario"),

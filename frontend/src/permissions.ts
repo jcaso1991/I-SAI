@@ -11,15 +11,20 @@ import { api } from "./api";
 
 export type PermissionKey =
   | "proyectos.view" | "proyectos.edit" | "proyectos.editar_campo"
-  | "calendario.view" | "calendario.edit"
-  | "planos.view" | "planos.edit"
-  | "presupuestos.view" | "presupuestos.edit"
-  | "sat.view" | "sat.edit"
-  | "chat.view"
+  | "calendario.view" | "calendario.edit" | "calendario.assign" | "events.edit"
+  | "planos.view" | "planos.edit" | "planos.download"
+  | "presupuestos.view" | "presupuestos.edit" | "presupuestos.export"
+  | "sat.view" | "sat.edit" | "sat.export"
+  | "chat.view" | "chat.edit"
   | "users.manage" | "roles.manage" | "onedrive.manage"
   | "preciario.view" | "preciario.ver_precios" | "preciario.edit"
   | "notas.view"
-  | "documentos.manage";
+  | "documentos.manage"
+  | "fichajes.view" | "fichajes.manage" | "fichajes.edit_own"
+  | "certificaciones.view" | "certificaciones.edit"
+  | "clientes.view" | "clientes.edit"
+  | "dashboard.view"
+  | "materiales.view_hours";
 
 export type Me = {
   id: string;
@@ -64,7 +69,7 @@ export function usePermissions() {
  */
 export type NavItem =
   | "home" | "dashboard" | "calendario" | "planos" | "proyectos"
-  | "presupuestos" | "chat" | "sat" | "ajustes";
+  | "presupuestos" | "chat" | "sat" | "ajustes" | "fichajes";
 
 export function visibleNav(perms: string[]): NavItem[] {
   const items: NavItem[] = ["home", "dashboard"]; // home + dashboard siempre visibles
@@ -74,6 +79,7 @@ export function visibleNav(perms: string[]): NavItem[] {
   if (perms.includes("presupuestos.view")) items.push("presupuestos");
   if (perms.includes("chat.view")) items.push("chat");
   if (perms.includes("sat.view")) items.push("sat");
+  if (perms.includes("fichajes.view")) items.push("fichajes");
   // Ajustes is visible to everyone (theme + portfolio etc)
   items.push("ajustes");
   return items;

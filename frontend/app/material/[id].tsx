@@ -51,6 +51,36 @@ function toISOString(d: Date): string {
 const ENTREGA_OPTS = ["Entrega", "Recogida"];
 const TP_OPTS = ["TOTAL", "PARCIAL"];
 
+function ReadRow({ s, label, value }: { s: any; label: string; value?: string | null }) {
+  return (
+    <View style={s.roRow}>
+      <Text style={s.roLabel}>{label}</Text>
+      <Text style={s.roValue}>{value || "—"}</Text>
+    </View>
+  );
+}
+
+function ChipGroup({ s, value, options, onChange, testID }: {
+  s: any; value?: string | null; options: string[]; onChange: (v: string) => void; testID?: string;
+}) {
+  return (
+    <View style={s.chipRow} testID={testID}>
+      {options.map((o) => {
+        const active = (value || "").toLowerCase() === o.toLowerCase();
+        return (
+          <TouchableOpacity
+            key={o} testID={`${testID}-${o}`}
+            style={[s.chip, active && s.chipActive]}
+            onPress={() => onChange(active ? "" : o)}
+          >
+            <Text style={[s.chipText, active && s.chipTextActive]}>{o}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
 export default function MaterialDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -78,6 +108,10 @@ export default function MaterialDetail() {
   const [showLinkedBudgets, setShowLinkedBudgets] = useState(false);
   const [linkedCertificaciones, setLinkedCertificaciones] = useState<any[]>([]);
   const [showLinkedCertificaciones, setShowLinkedCertificaciones] = useState(false);
+  const [materiales, setMateriales] = useState<any[]>([]);
+  const [showMat, setShowMat] = useState(false);
+  const [nuevoMaterial, setNuevoMaterial] = useState("");
+  const [nuevaCantidad, setNuevaCantidad] = useState("1");
   const [showTechPicker, setShowTechPicker] = useState(false);
   const [showManagerPicker, setShowManagerPicker] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
@@ -107,37 +141,6 @@ export default function MaterialDetail() {
   const esEditorCompleto = has("proyectos.edit");
   const esEditorLimitado = has("proyectos.editar_campo") && !esEditorCompleto;
   const puedeEditar = esEditorCompleto || esEditorLimitado;
-
-  function ReadRow({ label, value }: { label: string; value?: string | null }) {
-    return (
-      <View style={s.roRow}>
-        <Text style={s.roLabel}>{label}</Text>
-        <Text style={s.roValue}>{value || "—"}</Text>
-      </View>
-    );
-  }
-
-  function ChipGroup({
-    value, options, onChange, testID,
-  }: { value?: string | null; options: string[]; onChange: (v: string) => void; testID?: string }) {
-    return (
-      <View style={s.chipRow} testID={testID}>
-        {options.map((o) => {
-          const active = (value || "").toLowerCase() === o.toLowerCase();
-          return (
-            <TouchableOpacity
-              key={o}
-              testID={`${testID}-${o}`}
-              style={[s.chip, active && s.chipActive]}
-              onPress={() => onChange(active ? "" : o)}
-            >
-              <Text style={[s.chipText, active && s.chipTextActive]}>{o}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    );
-  }
 
   useEffect(() => {
     (async () => {
@@ -315,7 +318,7 @@ export default function MaterialDetail() {
               <Ionicons name="location" size={14} color={COLORS.textSecondary} />
               <Text style={s.matMetaText}>{m.ubicacion || "—"}</Text>
               {m.ubicacion ? (
-                <TouchableOpacity onPress={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(m.ubicacion + ", " + (m.cliente || ""))}`, "_blank")} style={{ marginLeft: 4 }}>
+                <TouchableOpacity onPress={() => { if (typeof window !== "undefined") window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(m.ubicacion + ", " + (m.cliente || ""))}`, "_blank"); }} style={{ marginLeft: 4 }}>
                   <Ionicons name="navigate-outline" size={16} color={COLORS.primary} />
                 </TouchableOpacity>
               ) : null}
@@ -324,7 +327,7 @@ export default function MaterialDetail() {
 
           <View style={s.section}>
             <Text style={s.sectionTitle}>INFORMACIÓN FIJA</Text>
-            <ReadRow label="Horas PREV" value={m.horas_prev} />
+            <ReadRow s={s} label="Horas PREV" value={m.horas_prev} />
             <TouchableOpacity
               style={s.roRow}
               onPress={() => setShowDesglose(!showDesglose)}
@@ -369,7 +372,7 @@ export default function MaterialDetail() {
                 ))}
               </View>
             )}
-            <ReadRow label="Comercial" value={m.comercial} />
+            <ReadRow s={s} label="Comercial" value={m.comercial} />
 
             <Text style={[s.fieldLabel, { marginTop: ios.spacing.lg }]}>Importe venta previsto</Text>
             <View style={s.finRow}>
@@ -897,6 +900,83 @@ export default function MaterialDetail() {
                 ))}
               </View>
             )}
+            {/* Materiales del proyecto */}
+            <View style={{ marginTop: 12 }}>
+              <TouchableOpacity
+                style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                onPress={async () => { setShowMat(!showMat); if (!showMat && !materiales.length) { const m = await api.getMaterialesProyecto(id).catch(() => []); setMateriales(m); } }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="cube-outline" size={16} color={COLORS.primary} />
+                <Text style={s.fieldLabel}>Materiales del proyecto ({materiales.length})</Text>
+                <Ionicons name={showMat ? "chevron-up" : "chevron-down"} size={14} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+              {showMat && (
+                <View style={{ marginTop: 6, gap: 6 }}>
+                  {materiales.map((m: any, i: number) => (
+                    <View key={m.id || i} style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: COLORS.surface, padding: 8, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border }}>
+                      <View style={{ flex: 2 }}>
+                        <Text style={{ fontSize: 11, fontWeight: "600", color: COLORS.text }} numberOfLines={1}>{m.material}</Text>
+                      </View>
+                      <View style={{ flex: 0.8, alignItems: "center" }}>
+                        <Text style={{ fontSize: 10, color: COLORS.textDisabled }}>Prev.</Text>
+                        <Text style={{ fontSize: 13, fontWeight: "700", color: COLORS.text }}>{m.cantidad_prevista}</Text>
+                      </View>
+                      <View style={{ flex: 0.8, alignItems: "center" }}>
+                        <Text style={{ fontSize: 10, color: COLORS.textDisabled }}>Inst.</Text>
+                        <Text style={{ fontSize: 13, fontWeight: "700", color: m.cantidad_instalada > 0 ? ios.colors.green : COLORS.textSecondary }}>{m.cantidad_instalada || 0}</Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => {
+                          Alert.alert("Eliminar", `¿Quitar "${m.material}"?`, [
+                            { text: "Cancelar", style: "cancel" },
+                            { text: "Quitar", style: "destructive", onPress: () => {
+                              const nuevos = materiales.filter((_: any, j: number) => j !== i);
+                              setMateriales(nuevos);
+                              api.updateMaterialesProyecto(id, nuevos).catch(() => {});
+                            }},
+                          ]);
+                        }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons name="close-circle-outline" size={16} color={COLORS.textDisabled} />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  {/* Añadir material */}
+                  <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+                    <TextInput
+                      style={{ flex: 2, backgroundColor: COLORS.surface, borderRadius: 8, padding: 8, fontSize: 12, color: COLORS.text, borderWidth: 1, borderColor: COLORS.border }}
+                      value={nuevoMaterial}
+                      onChangeText={setNuevoMaterial}
+                      placeholder="Material..."
+                      placeholderTextColor={COLORS.textDisabled}
+                    />
+                    <TextInput
+                      style={{ flex: 0.8, backgroundColor: COLORS.surface, borderRadius: 8, padding: 8, fontSize: 12, color: COLORS.text, borderWidth: 1, borderColor: COLORS.border, textAlign: "center" }}
+                      value={nuevaCantidad}
+                      onChangeText={setNuevaCantidad}
+                      placeholder="Cant"
+                      placeholderTextColor={COLORS.textDisabled}
+                      keyboardType="decimal-pad"
+                    />
+                    <TouchableOpacity
+                      style={{ backgroundColor: COLORS.primary, borderRadius: 8, padding: 8 }}
+                      onPress={() => {
+                        if (!nuevoMaterial.trim()) return;
+                        const nuevos = [...materiales, { id: Math.random().toString(36), material: nuevoMaterial.trim(), cantidad_prevista: parseFloat(nuevaCantidad) || 1, cantidad_instalada: 0, fecha_instalacion: null }];
+                        setMateriales(nuevos);
+                        setNuevoMaterial(""); setNuevaCantidad("");
+                        api.updateMaterialesProyecto(id, nuevos).catch(() => {});
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="add" size={18} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </View>
           </View>
         </ScrollView>
 

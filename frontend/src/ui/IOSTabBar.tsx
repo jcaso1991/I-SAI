@@ -10,7 +10,7 @@ import { useThemedStyles } from "../theme";
 export type BottomTab =
   | "home" | "dashboard" | "proyectos" | "calendario" | "planos"
   | "presupuestos" | "chat" | "ajustes" | "sat" | "documentos"
-  | "documentaciones" | "notas" | "clientes";
+  | "documentaciones" | "notas" | "clientes" | "fichajes";
 
 const TAB_PERM_MAP: Record<BottomTab, string | null> = {
   home: null,
@@ -26,7 +26,7 @@ const TAB_PERM_MAP: Record<BottomTab, string | null> = {
   notas: "notas.view",
   clientes: null,
   ajustes: null,
-
+  fichajes: "fichajes.view",
 };
 
 const TAB_ROUTES: Record<BottomTab, string> = {
@@ -42,6 +42,7 @@ const TAB_ROUTES: Record<BottomTab, string> = {
   documentaciones: "/documentaciones",
   notas: "/notas",
   clientes: "/clientes",
+  fichajes: "/fichajes",
   ajustes: "/admin",
 
 };
@@ -60,6 +61,7 @@ const LABELS: Record<BottomTab, string> = {
   documentaciones: "Docs. y Software",
   notas: "Notas",
   clientes: "Clientes",
+  fichajes: "Fichajes",
 
 };
 
@@ -74,10 +76,12 @@ function Icon({ tab, on, size }: { tab: BottomTab; on: boolean; size: number }) 
   if (tab === "planos") return <Ionicons name={on ? "map" : "map-outline"} size={size} color={color} />;
   if (tab === "presupuestos") return <Ionicons name={on ? "document-text" : "document-text-outline"} size={size} color={color} />;
   if (tab === "sat") return <Ionicons name={on ? "headset" : "headset-outline"} size={size} color={color} />;
+  if (tab === "chat") return <Ionicons name={on ? "chatbubbles" : "chatbubbles-outline"} size={size} color={color} />;
   if (tab === "documentos") return <Ionicons name={on ? "folder-open" : "folder-open-outline"} size={size} color={color} />;
   if (tab === "notas") return <Ionicons name={on ? "book" : "book-outline"} size={size} color={color} />;
 
   if (tab === "clientes") return <Ionicons name={on ? "people" : "people-outline"} size={size} color={color} />;
+  if (tab === "fichajes") return <Ionicons name={on ? "time" : "time-outline"} size={size} color={color} />;
 
   return <Ionicons name={on ? "settings" : "settings-outline"} size={size} color={color} />;
 }
@@ -134,7 +138,7 @@ export default function IOSTabBar({ active, isAdmin: _isAdmin }: { active: Botto
     router.replace(TAB_ROUTES[tab] as any);
   };
 
-  const allTabs: BottomTab[] = ["ajustes", "proyectos", "home", "dashboard", "calendario", "planos", "presupuestos", "sat", "documentos", "notas", "clientes"];
+  const allTabs: BottomTab[] = ["ajustes", "proyectos", "home", "dashboard", "calendario", "planos", "presupuestos", "sat", "documentos", "notas", "clientes", "fichajes"];
   const isReady = perms !== null;
   const visibleTabs = !isReady
     ? allTabs.filter((t) => t !== "sat")
@@ -143,7 +147,7 @@ export default function IOSTabBar({ active, isAdmin: _isAdmin }: { active: Botto
         return p === null || perms!.includes(p);
       });
 
-  const ORDER: BottomTab[] = ["home", "dashboard", "calendario", "planos", "proyectos", "documentos", "presupuestos", "chat", "notas", "sat", "clientes", "ajustes"];
+  const ORDER: BottomTab[] = ["home", "dashboard", "calendario", "planos", "proyectos", "documentos", "fichajes", "presupuestos", "chat", "notas", "sat", "clientes", "ajustes"];
   const ordered = ORDER.filter((t) => visibleTabs.includes(t));
 
   return (
