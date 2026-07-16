@@ -813,7 +813,7 @@ from collections import defaultdict
 
 _rate_window = 10  # seconds
 _rate_max = 60     # max requests per window per IP
-_auth_rate_max = 5  # max login attempts per window per IP
+_auth_rate_max = 20  # max login attempts per window per IP
 _rate_store: dict[str, list[float]] = defaultdict(list)
 _rate_last_cleanup = _time.time()
 
@@ -836,7 +836,7 @@ async def _rate_limit(request: Request, max_req: int = _rate_max):
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    await _rate_limit(request, 200)
+    await _rate_limit(request, 500)
     return await call_next(request)
 import asyncio
 _sync_lock = asyncio.Lock()
@@ -1073,6 +1073,19 @@ async def update_homepage(payload: HomepageUpdate, user: dict = Depends(current_
     homepage = payload.homepage or "/home"
     await db.users.update_one({"id": user["id"]}, {"$set": {"homepage": homepage}})
     return {"homepage": homepage}
+
+class ModulosOrderUpdate(BaseModel):
+    modulos_order: List[str] = []
+
+@api_router.get("/auth/modulos-order")
+async def get_modulos_order(user: dict = Depends(current_user)):
+    u = await db.users.find_one({"id": user["id"]}, {"_id": 0, "modulos_order": 1})
+    return {"modulos_order": (u or {}).get("modulos_order") or []}
+
+@api_router.patch("/auth/modulos-order")
+async def update_modulos_order(payload: ModulosOrderUpdate, user: dict = Depends(current_user)):
+    await db.users.update_one({"id": user["id"]}, {"$set": {"modulos_order": payload.modulos_order}})
+    return {"ok": True}
 
 @api_router.get("/auth/tipos-mano-obra")
 async def get_tipos_mano_obra(user: dict = Depends(current_user)):
@@ -8128,11 +8141,17 @@ def _fecha_limite_anio() -> str:
     return (datetime.now(timezone.utc) - timedelta(days=365)).strftime("%Y-%m-%d")
 
 # Models
+class Geoloc(BaseModel):
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    dispositivo: Optional[str] = None
+
 class FichajeIn(BaseModel):
     tipo: str = "entrada"  # "entrada" | "salida" | "pausa" | "reanudar"
     lat: Optional[float] = None
     lng: Optional[float] = None
     dispositivo: Optional[str] = None
+    geoloc: Optional[Geoloc] = None
 
 class FichajeDetalle(BaseModel):
     fecha: str
@@ -8180,18 +8199,13 @@ async def fichajes_usuario_listar(
     perms = user.get("permissions", [])
     uid = user_id if user_id and "fichajes.manage" in perms else user["id"]
     q: dict = {"user_id": uid, "deleted": {"$ne": True}}
+    time_filter: dict = {}
     if from_:
-        q["$or"] = [
-            {"entrada": {"$gte": from_}},
-            {"salida": {"$gte": from_}},
-        ]
+        time_filter["$gte"] = from_
     if to:
-        # Ensure both entrada and salida are within range
-        q = {"user_id": uid, "deleted": {"$ne": True}}
-        if from_ and to:
-            q["entrada"] = {"$gte": from_, "$lte": to}
-        elif to:
-            q["entrada"] = {"$lte": to}
+        time_filter["$lte"] = to
+    if time_filter:
+        q["entrada"] = time_filter
 
     fichajes = []
     async for f in db.fichajes.find(q, {"_id": 0}).sort("entrada", -1):
@@ -8220,39 +8234,56 @@ async def fichajes_usuario_crear(payload: FichajeIn, user: dict = Depends(requir
     uid = user["id"]
     ahora = datetime.now(timezone.utc).isoformat()
 
+    # Geolocalización unificada: usar geoloc si viene, sino lat/lng legacy
+    geo = payload.geoloc or (Geoloc(lat=payload.lat, lng=payload.lng, dispositivo=payload.dispositivo) if payload.lat or payload.lng else None)
+    geo_dict = geo.dict() if geo else {}
+
     if payload.tipo in ("entrada", "reanudar", "fin_pausa"):
+        # Validar que no hay un fichaje abierto del mismo tipo
+        abierto = await db.fichajes.find_one(
+            {"user_id": uid, "salida": None, "deleted": {"$ne": True}},
+            sort=[("entrada", -1)],
+        )
+        if abierto and payload.tipo in ("entrada", "reanudar", "fin_pausa"):
+            raise HTTPException(400, "Ya tienes un fichaje abierto. Ciérralo antes de abrir uno nuevo.")
+
         doc = {
             "id": str(uuid.uuid4()),
             "user_id": uid,
             "entrada": ahora,
             "salida": None,
             "tipo": payload.tipo,
-            "lat": payload.lat,
-            "lng": payload.lng,
-            "dispositivo": payload.dispositivo,
+            "geoloc_entrada": geo_dict if geo_dict else None,
             "deleted": False,
         }
+        # Mantener compatibilidad con campos legacy
+        if geo:
+            doc["lat"] = geo.lat
+            doc["lng"] = geo.lng
+            doc["dispositivo"] = geo.dispositivo
+
         await db.fichajes.insert_one(doc)
         doc.pop("_id", None)
         return {"ok": True, "id": doc["id"], "entrada": ahora}
     elif payload.tipo in ("salida", "pausa", "inicio_pausa"):
-        # "entrada" y "fin_pausa"/"reanudar" = abrir (arriba)
-        # "salida", "pausa", "inicio_pausa" = cerrar el último abierto
         fichaje_abierto = await db.fichajes.find_one(
             {"user_id": uid, "salida": None, "deleted": {"$ne": True}},
             sort=[("entrada", -1)],
         )
         if fichaje_abierto:
             final_tipo = "pausa" if payload.tipo in ("inicio_pausa", "pausa") else payload.tipo
-            await db.fichajes.update_one(
-                {"id": fichaje_abierto["id"]},
-                {"$set": {
-                    "salida": ahora,
-                    "tipo": fichaje_abierto.get("tipo", final_tipo),
-                    "lat_salida": payload.lat,
-                    "lng_salida": payload.lng,
-                }},
-            )
+            upd = {
+                "salida": ahora,
+                "tipo": fichaje_abierto.get("tipo", final_tipo),
+            }
+            if geo_dict:
+                upd["geoloc_salida"] = geo_dict
+            # Legacy
+            if payload.lat is not None:
+                upd["lat_salida"] = payload.lat
+                upd["lng_salida"] = payload.lng
+
+            await db.fichajes.update_one({"id": fichaje_abierto["id"]}, {"$set": upd})
             return {"ok": True, "id": fichaje_abierto["id"], "salida": ahora}
         else:
             raise HTTPException(400, "No hay un fichaje de entrada abierto para cerrar")
@@ -8336,7 +8367,24 @@ async def config_fichajes_get(user: dict = Depends(require_permission("fichajes.
 async def config_fichajes_put(body: ConfigFichajesIn, user: dict = Depends(require_permission("fichajes.manage"))):
     upd = {k: v for k, v in body.dict().items() if v is not None}
     if upd:
-        await db.config.update_one({"_id": "fichajes"}, {"$set": upd}, upsert=True)
+        # Validar solapamiento
+        entrada_check = upd.get("entrada") or fichaje.get("entrada")
+        salida_check = upd.get("salida") or fichaje.get("salida")
+        if entrada_check and salida_check and upd.get("entrada") and upd.get("salida"):
+            overlap = await db.fichajes.find_one({
+                "id": {"$ne": fichaje_id},
+                "user_id": fichaje["user_id"],
+                "deleted": {"$ne": True},
+                "$or": [
+                    {"entrada": {"$lte": salida_check}, "salida": {"$gte": entrada_check}},
+                    {"entrada": {"$gte": entrada_check, "$lte": salida_check}},
+                ]
+            })
+            if overlap:
+                raise HTTPException(400, "El horario se solapa con un fichaje existente del mismo usuario")
+
+        await db.fichajes.update_one({"id": fichaje_id}, {"$set": upd})
+
     return {"ok": True}
 
 
@@ -8509,12 +8557,27 @@ async def fichajes_admin_crear(
     if not target:
         raise HTTPException(404, "Usuario no encontrado")
 
+    entrada_iso = f"{body.fecha}T{body.entrada}:00"
+    salida_iso = f"{body.fecha}T{body.salida}:00"
+
+    # Validar solapamiento
+    overlap = await db.fichajes.find_one({
+        "user_id": body.user_id,
+        "deleted": {"$ne": True},
+        "$or": [
+            {"entrada": {"$lte": salida_iso}, "salida": {"$gte": entrada_iso}},
+            {"entrada": {"$gte": entrada_iso, "$lte": salida_iso}},
+        ]
+    })
+    if overlap:
+        raise HTTPException(400, "El horario se solapa con un fichaje existente del mismo usuario")
+
     doc = {
         "id": str(uuid.uuid4()),
         "user_id": body.user_id,
         "tipo": "presencial",
-        "entrada": f"{body.fecha}T{body.entrada}:00",
-        "salida": f"{body.fecha}T{body.salida}:00",
+        "entrada": entrada_iso,
+        "salida": salida_iso,
         "created_by": user["id"],
         "created_at": datetime.now(timezone.utc).isoformat(),
         "deleted": False,

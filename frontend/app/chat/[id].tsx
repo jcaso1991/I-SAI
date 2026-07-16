@@ -162,7 +162,7 @@ export default function ChatDetail() {
                   <View style={[s.bubble, isMine ? s.bubbleMine : s.bubbleOther]}>
                     {msg.file_base64 && (
                       <TouchableOpacity onPress={() => {
-                        const win = window.open();
+                        const win = typeof window !== "undefined" ? window.open() : null;
                         win?.document.write(`<iframe src="data:${msg.file_mime};base64,${msg.file_base64}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
                       }}>
                         {msg.file_mime?.startsWith("image/") ? (

@@ -268,7 +268,7 @@ export default function BudgetEditor() {
         const url = URL.createObjectURL(blob);
         const baseName = (f.n_proyecto || id).toString().replace(/[^\w.-]+/g, "_").slice(0, 40) || "hoja";
         // Try open in new tab; browsers will allow downloading from the PDF viewer
-        const w = window.open(url, "_blank");
+         const w = typeof window !== "undefined" ? window.open(url, "_blank") : null;
         if (!w) {
           // fallback: force download
           const a = document.createElement("a");

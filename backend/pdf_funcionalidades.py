@@ -501,14 +501,18 @@ def _s3_modulos():
          "interna, manteniendo todos los datos dentro de la plataforma corporativa y "
          "fuera de aplicaciones de mensajeria personal."),
 
-        ("Dashboard y KPIs (15 secciones de analisis)",
-         "El cuadro de mando integral para la direccion de la empresa. Quince secciones "
-         "independientes de analisis que cubren todos los aspectos del negocio: planificacion "
-         "operativa, carga de trabajo, KPIs financieros, salud del SAT, pipeline comercial, "
-         "distribucion geografica y comparativas temporales. Cada seccion incluye graficos "
-         "interactivos (barras, anillos, lineas, mapas de calor) con datos en tiempo real "
-         "extraidos del resto de modulos. Disenado para que un CEO pueda tomar decisiones "
-         "con datos en menos de 5 minutos de consulta diaria. Se detalla en la seccion 6."),
+         ("Dashboard y KPIs (15 secciones de analisis)",
+          "El cuadro de mando integral para la direccion de la empresa. Quince secciones "
+          "independientes de analisis que cubren todos los aspectos del negocio: planificacion "
+          "operativa, carga de trabajo, KPIs financieros, salud del SAT, pipeline comercial, "
+          "distribucion geografica y comparativas temporales. Cada seccion incluye graficos "
+          "interactivos (barras, anillos, lineas, mapas de calor) con datos en tiempo real "
+          "extraidos del resto de modulos. Disenado para que un CEO pueda tomar decisiones "
+          "con datos en menos de 5 minutos de consulta diaria. Se detalla en la seccion 6.\n\n"
+          "La pantalla principal incluye una cuadricula de modulos de gestion centrales "
+          "que cada usuario puede reordenar a su gusto mediante el boton 'Editar'. "
+          "El orden se guarda por usuario via GET/PATCH /auth/modulos-order y persiste "
+          "entre sesiones."),
 
         ("Panel financiero (ventas y beneficios)",
          "Submodulo del dashboard accesible desde la barra lateral y desde una tarjeta en "
@@ -1390,7 +1394,7 @@ def _s11_endpoints():
 
     endpoints_data = [
         [Paragraph("<b>Grupo</b>", S["table_header"]), Paragraph("<b>N.º</b>", S["table_header"]), Paragraph("<b>Descripcion</b>", S["table_header"])],
-        ["/api/auth", "6", "Login, registro, renovacion JWT, recuperacion contrasena, verificacion email, cambio contrasena"],
+        ["/api/auth", "9", "Login, registro, renovacion JWT, recuperacion contrasena, verificacion email, cambio contrasena, homepage (GET/PATCH), modulos-order (GET/PATCH)"],
         ["/api/users", "8", "CRUD usuarios, perfil propio, cambio contrasena, asignacion permisos, busqueda, listado por rol"],
         ["/api/roles", "3", "Listado de roles disponibles, permisos de cada rol, asignacion de rol a usuario"],
         ["/api/projects", "10", "CRUD proyectos, cambio de estado, gestion materiales, historial cambios, busqueda y filtros, horas acumuladas, exportacion"],

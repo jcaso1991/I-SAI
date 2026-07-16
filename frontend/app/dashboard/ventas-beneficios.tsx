@@ -254,9 +254,9 @@ export default function VentasBeneficios() {
 
   return (
     <ResponsiveLayout active="ventas-beneficios">
-      <SafeAreaView style={s.root} edges={["top"]}>
+      <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
         <View style={s.header}>
-          <TouchableOpacity style={s.iconBtn} onPress={() => router.replace("/dashboard")}>
+          <TouchableOpacity style={s.iconBtn} onPress={() => { if (router.canGoBack()) router.back(); else router.replace("/dashboard"); }}>
             <Ionicons name="chevron-back" size={24} color={PREMIUM_COLORS.textPrimary} />
           </TouchableOpacity>
           <View style={{ alignItems: "center" }}>

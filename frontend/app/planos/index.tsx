@@ -23,6 +23,7 @@ type ModalStep = "choose" | "libre" | "proyecto";
 
 export default function PlansList() {
   const router = useRouter();
+  const { isWide } = useBreakpoint();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -129,7 +130,7 @@ export default function PlansList() {
   return (
     <>
     <ResponsiveLayout active="planos" isAdmin={me?.role === "admin"} userName={me?.name}>
-      <SafeAreaView style={s.root} edges={["top"]}>
+      <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
       <View style={s.header}>
         <TouchableOpacity style={s.iconBtn} onPress={() => router.replace("/home")}>
           <Ionicons name="chevron-back" size={26} color={COLORS.navy} />
@@ -226,7 +227,7 @@ export default function PlansList() {
     {linkPlan && (
       <Modal visible={!!linkPlan} transparent animationType="fade" onRequestClose={() => setLinkPlan(null)}>
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", alignItems: "center" }}>
-          <View style={{ backgroundColor: COLORS.surface, borderRadius: ios.radius.lg, width: 400, maxHeight: "70%", overflow: "hidden", ...ios.shadow.modal }}>
+          <View style={{ backgroundColor: COLORS.surface, borderRadius: ios.radius.lg, width: isWide ? 400 : "90%", maxHeight: "70%", overflow: "hidden", ...ios.shadow.modal }}>
             <View style={{ flexDirection: "row", alignItems: "center", padding: ios.spacing.lg, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
               <Text style={{ fontSize: 16, fontWeight: "900", color: COLORS.text, flex: 1 }} numberOfLines={1}>Vincular "{linkPlan.title}"</Text>
               <TouchableOpacity onPress={() => setLinkPlan(null)}><Ionicons name="close" size={22} color={COLORS.textSecondary} /></TouchableOpacity>

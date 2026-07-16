@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { api, clearToken, COLORS } from "../../src/api";
 import ResponsiveLayout from "../../src/ResponsiveLayout";
 import { useThemedStyles } from "../../src/theme";
+import { useBreakpoint } from "../../src/useBreakpoint";
 import { ios, fontStyle } from "../../src/ui/iosTheme";
 
 type ChatItem = {
@@ -24,6 +25,7 @@ type ChatItem = {
 
 export default function ChatIndex() {
   const router = useRouter();
+  const { isWide } = useBreakpoint();
   const s = useThemedStyles(useS);
   const [me, setMe] = useState<any>(null);
   const [chats, setChats] = useState<ChatItem[]>([]);
@@ -77,7 +79,7 @@ export default function ChatIndex() {
 
   return (
     <ResponsiveLayout active="chat" isAdmin={me?.role === "admin"} onLogout={logout} userName={me?.name}>
-      <SafeAreaView style={s.root} edges={["top"]}>
+      <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
         <View style={s.header}>
           <View>
             <Text style={s.headerTitle}>Mensajería</Text>

@@ -83,6 +83,7 @@ export default function FichajesAdminScreen() {
   const [exportMesSel, setExportMesSel] = useState(-1);
 
   const [kpiUsuarios, setKpiUsuarios] = useState({ total: 0, fichadosHoy: 0, horasMes: "0h" });
+  const [kpifilter, setKpiFilter] = useState<"fichados" | "all">("all");
 
   // Calendario para el detalle
   const [anchorMonth, setAnchorMonth] = useState(new Date());
@@ -97,12 +98,12 @@ export default function FichajesAdminScreen() {
   const today = useMemo(() => `${hoyDia.getFullYear()}-${pad(hoyDia.getMonth() + 1)}-${pad(hoyDia.getDate())}`, []);
 
   const usuariosFiltrados = useMemo(() => {
+    let list = usuarios;
     const q = busqueda.toLowerCase().trim();
-    if (!q) return usuarios;
-    return usuarios.filter(
-      (u) => (u.name || "").toLowerCase().includes(q) || (u.email || "").toLowerCase().includes(q)
-    );
-  }, [usuarios, busqueda]);
+    if (q) list = list.filter(u => (u.name || "").toLowerCase().includes(q) || (u.email || "").toLowerCase().includes(q));
+    if (kpifilter === "fichados") list = list.filter(u => u.hoy?.entrada);
+    return list;
+  }, [usuarios, busqueda, kpifilter]);
 
   useFocusEffect(useCallback(() => {
     let alive = true;
@@ -337,7 +338,7 @@ export default function FichajesAdminScreen() {
 
   if (loading) {
     return (
-    <ResponsiveLayout active="fichajes-admin">
+    <ResponsiveLayout active="fichajes">
         <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
           <ActivityIndicator style={{ marginTop: 60 }} color={COLORS.primary} />
         </SafeAreaView>
@@ -366,16 +367,16 @@ export default function FichajesAdminScreen() {
       </View>
 
       <View style={s.kpiRow}>
-        <View style={s.kpiCard}>
+        <TouchableOpacity style={s.kpiCard} onPress={() => { setKpiFilter(kpifilter === "all" ? "all" : "all"); setSelectedUserId(""); }} activeOpacity={0.7}>
           <Ionicons name="people" size={18} color={ios.colors.indigo} />
           <Text style={s.kpiVal}>{kpiUsuarios.total}</Text>
           <Text style={s.kpiLabel}>{"Usuarios"}</Text>
-        </View>
-        <View style={s.kpiCard}>
+        </TouchableOpacity>
+        <TouchableOpacity style={[s.kpiCard, kpifilter === "fichados" && { backgroundColor: ios.colors.green + "18", borderColor: ios.colors.green }]} onPress={() => setKpiFilter(kpifilter === "fichados" ? "all" : "fichados")} activeOpacity={0.7}>
           <Ionicons name="time" size={18} color={ios.colors.green} />
           <Text style={s.kpiVal}>{kpiUsuarios.fichadosHoy}</Text>
           <Text style={s.kpiLabel}>{"Fichados hoy"}</Text>
-        </View>
+        </TouchableOpacity>
         <View style={s.kpiCard}>
           <Ionicons name="hourglass" size={18} color={ios.colors.orange} />
           <Text style={s.kpiVal}>{kpiUsuarios.horasMes}</Text>
@@ -600,7 +601,16 @@ export default function FichajesAdminScreen() {
                                     <Text style={[s.tablaTd, { flex: 1 }]}>{f.entrada || "-"}</Text>
                                     <Text style={[s.tablaTd, { flex: 1 }]}>{f.salida || "-"}</Text>
                                     <Text style={[s.tablaTd, { width: 60 }]}>{f.total}</Text>
-                                    <View style={[{ width: 70, flexDirection: "row", gap: 8 }]}>
+                                    <View style={[{ width: 80, flexDirection: "row", gap: 6, alignItems: "center" }]}>
+                                      {((f as any).lat || (f as any).geoloc_entrada?.lat) && (
+                                        <TouchableOpacity onPress={() => {
+                                          const lat = (f as any).geoloc_entrada?.lat || (f as any).lat;
+                                          const lng = (f as any).geoloc_entrada?.lng || (f as any).lng;
+                                          if (typeof window !== "undefined") window.open(`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`, "_blank");
+                                        }}>
+                                          <Ionicons name="location-outline" size={14} color={ios.colors.indigo} />
+                                        </TouchableOpacity>
+                                      )}
                                       <TouchableOpacity onPress={() => { setEditingId(f.id); setEditEntrada(f.entrada || ""); setEditSalida(f.salida || ""); }}>
                                         <Ionicons name="create-outline" size={16} color={COLORS.primary} />
                                       </TouchableOpacity>

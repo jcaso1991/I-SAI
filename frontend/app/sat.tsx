@@ -619,7 +619,7 @@ function IncidentCard({ item, clientName, onPress }:
             `📝 ${item.observaciones || ""}`,
             `📌 Estado: ${item.status || "pendiente"}`,
           ].filter(Boolean).join("\n");
-          window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+          if (typeof window !== "undefined") window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
         }}
       >
         <Ionicons name="logo-whatsapp" size={18} color="#25D366" />
@@ -659,7 +659,7 @@ function ClientCard({ client, canEditSat, onEdit, onNewIncident, onViewIncidents
             </View>
             <TouchableOpacity onPress={() => {
               const tel = client.telefono.replace(/\s+/g, "");
-              window.open(`https://wa.me/${tel}`, "_blank");
+              if (typeof window !== "undefined") window.open(`https://wa.me/${tel}`, "_blank");
             }}>
               <Ionicons name="logo-whatsapp" size={16} color="#25D366" />
             </TouchableOpacity>

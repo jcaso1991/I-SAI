@@ -68,9 +68,9 @@ export default function ObraEnCurso() {
 
   return (
     <ResponsiveLayout active="ventas-beneficios">
-      <SafeAreaView style={s.root} edges={["top"]}>
+      <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
         <View style={s.header}>
-          <TouchableOpacity style={s.iconBtn} onPress={() => router.replace("/dashboard/ventas-beneficios")}>
+          <TouchableOpacity style={s.iconBtn} onPress={() => { if (router.canGoBack()) router.back(); else router.replace("/dashboard/ventas-beneficios"); }}>
             <Ionicons name="chevron-back" size={26} color={COLORS.text} />
           </TouchableOpacity>
           <Text style={s.headerTitle}>Obra en curso</Text>

@@ -203,7 +203,7 @@ export default function DocumentacionesScreen() {
     </>
   );
 
-  return <ResponsiveLayout active="documentaciones">{content}</ResponsiveLayout>;
+  return <ResponsiveLayout active="documentos">{content}</ResponsiveLayout>;
 }
 
 const useS = () => StyleSheet.create({

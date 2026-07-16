@@ -57,7 +57,7 @@ export default function SolicitudesScreen() {
     const r = selected;
     const color = STATUS_COLORS[r.status] || "#F59E0B";
     return (
-      <ResponsiveLayout active="admin">
+      <ResponsiveLayout active="solicitudes">
         <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
           <View style={s.header}>
             <TouchableOpacity style={s.iconBtn} onPress={() => setSelected(null)}>
@@ -128,7 +128,7 @@ export default function SolicitudesScreen() {
 
   // Vista lista
   return (
-    <ResponsiveLayout active="admin">
+    <ResponsiveLayout active="solicitudes">
       <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
         <View style={s.header}>
           {!isWide && (

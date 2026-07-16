@@ -104,7 +104,7 @@ export default function ClientesIndex() {
   );
 
   const content = (
-    <SafeAreaView style={s.root} edges={["top"]}>
+    <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
       <View style={s.header}>
         <View>
           <Text style={s.headerTitle}>Clientes</Text>

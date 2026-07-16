@@ -405,7 +405,7 @@ export default function Admin() {
               const token = await getToken();
               if (!token) { Alert.alert("Error", "No hay sesión activa"); return; }
               const base = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/+$/, "");
-              window.open(`${base}/api/config/pdf-funcionalidades?token=${encodeURIComponent(token)}`, "_blank");
+              if (typeof window !== "undefined") window.open(`${base}/api/config/pdf-funcionalidades?token=${encodeURIComponent(token)}`, "_blank");
             }}
           >
             <Ionicons name="download" size={20} color="#fff" />

@@ -56,6 +56,9 @@ export const api = {
   me: () => request("/auth/me"),
   updateHomepage: (homepage: string) =>
     request("/auth/homepage", { method: "PATCH", body: JSON.stringify({ homepage }) }),
+  getModulosOrder: () => request("/auth/modulos-order"),
+  updateModulosOrder: (modulos_order: string[]) =>
+    request("/auth/modulos-order", { method: "PATCH", body: JSON.stringify({ modulos_order }) }),
   listMateriales: (q?: string, pendingOnly?: boolean, managerId?: string, unassigned?: boolean, projectStatus?: string, year?: string, month?: string) => {
     const p = new URLSearchParams();
     if (q) p.set("q", q);

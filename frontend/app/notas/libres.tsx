@@ -150,7 +150,7 @@ export default function NotasLibresScreen() {
   const shareModal = (
     <Modal visible={!!shareNota} transparent animationType="fade" onRequestClose={() => setShareNota(null)}>
       <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center" }} activeOpacity={1} onPress={() => setShareNota(null)}>
-        <View style={{ backgroundColor: COLORS.surface, borderRadius: 20, width: 380, maxHeight: "75%", overflow: "hidden", borderWidth: 1, borderColor: COLORS.border, ...(Platform.OS === "web" ? { backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" } : {}) } as any} onStartShouldSetResponder={() => true}>
+        <View style={{ backgroundColor: COLORS.surface, borderRadius: 20, width: isWide ? 380 : "90%", maxHeight: "75%", overflow: "hidden", borderWidth: 1, borderColor: COLORS.border, ...(Platform.OS === "web" ? { backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" } : {}) } as any} onStartShouldSetResponder={() => true}>
           <View style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
             <Text style={{ fontSize: 17, fontWeight: "700", color: COLORS.text, letterSpacing: -0.3 }}>Enviar por chat</Text>
             <Text style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: 4 }} numberOfLines={1}>{shareNota?.titulo || shareNota?.contenido || "Nota"}</Text>

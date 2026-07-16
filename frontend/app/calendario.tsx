@@ -1219,7 +1219,7 @@ function MultiView({
         ) : visibleUsers.map((user) => {
           const thisUserEvents = events.filter((ev) => (ev.assigned_user_ids || []).includes(user.id));
           return (
-            <View key={user.id} style={{ width: 340, borderRightWidth: 1, borderRightColor: COLORS.border }}>
+            <View key={user.id} style={{ width: isWide ? 340 : 290, borderRightWidth: 1, borderRightColor: COLORS.border }}>
               {/* User header */}
               <View style={{ paddingHorizontal: ios.spacing.md, paddingVertical: ios.spacing.sm, backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border, borderRightWidth: 0 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>

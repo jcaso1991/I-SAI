@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Alert, TextInput, Platform, RefreshControl,
+  Animated,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -46,6 +47,8 @@ export default function FichajesScreen() {
   const [fichajesMes, setFichajesMes] = useState<any[]>([]);
   const [fichajesAnio, setFichajesAnio] = useState<any[]>([]);
   const [config, setConfig] = useState<any>(null);
+  const [toast, setToast] = useState<{ visible: boolean; msg: string; ok: boolean }>({ visible: false, msg: "", ok: true });
+  const toastAnim = useRef(new Animated.Value(0)).current;
 
   // Vacaciones form
   const [fechaInicio, setFechaInicio] = useState("");
@@ -200,6 +203,16 @@ export default function FichajesScreen() {
     };
   }, [fichajesAnio]);
 
+  const showToast = (msg: string, ok = true) => {
+    setToast({ visible: true, msg, ok });
+    toastAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(toastAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
+      Animated.delay(2500),
+      Animated.timing(toastAnim, { toValue: 0, duration: 250, useNativeDriver: true }),
+    ]).start(() => setToast({ visible: false, msg: "", ok: true }));
+  };
+
   async function fichar(tipo: string) {
      try {
       await getLocation();
@@ -211,7 +224,7 @@ export default function FichajesScreen() {
       });
       await cargarFichajesHoy();
       cargarResumen();
-      Alert.alert("Fichaje registrado", `${tipo.replace("_", " ").toUpperCase()} registrado a las ${fmtTimeNow()}`);
+      showToast(`${tipo.replace("_", " ").toUpperCase()} registrado a las ${fmtTimeNow()}`, true);
     } catch (e: any) {
       Alert.alert("Error", e.message || "No se pudo crear el fichaje");
     }
@@ -407,6 +420,13 @@ export default function FichajesScreen() {
           {/* === FICHAR === */}
           {tab === "fichar" && (
             <ScrollView contentContainerStyle={s.ficharWrap} refreshControl={<RefreshControl refreshing={loading} onRefresh={cargarFichajesHoy} />}>
+              {/* Toast banner */}
+              {toast.visible && (
+                <Animated.View style={[s.toastBanner, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }, toast.ok ? s.toastOk : s.toastErr]}>
+                  <Ionicons name={toast.ok ? "checkmark-circle" : "alert-circle"} size={16} color="#fff" />
+                  <Text style={s.toastText}>{toast.msg}</Text>
+                </Animated.View>
+              )}
               {/* Reloj grande */}
               <View style={s.relojCard}>
                 <Text style={s.relojLabel}>{"Hora actual"}</Text>
@@ -419,21 +439,21 @@ export default function FichajesScreen() {
               {/* Botones de fichar */}
               <View style={s.botonesRow}>
                 <TouchableOpacity style={[s.btnFichaje, s.btnEntrada]} onPress={() => fichar("entrada")} activeOpacity={0.7}>
-                  <Ionicons name="enter" size={28} color="#fff" />
+                  <Ionicons name="enter" size={20} color="#fff" />
                   <Text style={s.btnFichajeTxt}>{"Entrada"}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[s.btnFichaje, s.btnSalida]} onPress={() => fichar("salida")} activeOpacity={0.7}>
-                  <Ionicons name="exit" size={28} color="#fff" />
+                  <Ionicons name="exit" size={20} color="#fff" />
                   <Text style={s.btnFichajeTxt}>{"Salida"}</Text>
                 </TouchableOpacity>
               </View>
               <View style={s.botonesRow}>
                 <TouchableOpacity style={[s.btnFichaje, s.btnPausa]} onPress={() => fichar("inicio_pausa")} activeOpacity={0.7}>
-                  <Ionicons name="pause" size={28} color="#fff" />
+                  <Ionicons name="pause" size={20} color="#fff" />
                   <Text style={s.btnFichajeTxt}>{"Pausa"}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[s.btnFichaje, s.btnFinPausa]} onPress={() => fichar("fin_pausa")} activeOpacity={0.7}>
-                  <Ionicons name="play" size={28} color="#fff" />
+                  <Ionicons name="play" size={20} color="#fff" />
                   <Text style={s.btnFichajeTxt}>{"Fin pausa"}</Text>
                 </TouchableOpacity>
               </View>
@@ -618,49 +638,17 @@ export default function FichajesScreen() {
                   ))}
                 </View>
                 <View style={s.calGrid}>
-                  {calendarioDias.map((d) => {
-                    const isToday = d.key === hoyDia;
-                    const isSelected = d.key === selectedDay;
-                    const completo = d.tieneEntrada && d.tieneSalida;
-                    const incompleto = d.tieneEntrada && !d.tieneSalida;
-                    let bg = "transparent";
-                    if (isSelected) bg = COLORS.primary + "18";
-                    else if (d.vacStatus === "aprobada") bg = "#10B98130";
-                    else if (d.vacStatus === "pendiente") bg = "#8B5CF630";
-                    else if (d.vacStatus === "rechazada") bg = "#EF444430";
-                    else if (d.esFestivo) bg = ios.colors.red + "10";
-                    else if (incompleto) bg = ios.colors.yellow + "18";
-                    else if (completo) bg = ios.colors.green + "12";
-
-                    return (
-                      <TouchableOpacity
-                        key={d.key}
-                        style={[
-                          s.calDay, { height: isWide ? 42 : 36 },
-                          { backgroundColor: bg },
-                          isToday && { borderColor: COLORS.primary, borderWidth: 2 },
-                          !d.enMes && { opacity: 0.25 },
-                        ]}
-                        onPress={() => d.enMes && setSelectedDay(d.key === selectedDay ? null : d.key)}
-                        activeOpacity={0.6}
-                      >
-                        <Text style={[
-                          s.calDayNum,
-                          isToday && { color: COLORS.primary, fontWeight: "800" },
-                          d.esFestivo && { color: ios.colors.red },
-                          !d.enMes && { color: COLORS.textDisabled },
-                        ]}>{d.dia}</Text>
-                        <View style={{ flexDirection: "row", gap: 1, flexWrap: "wrap", justifyContent: "center" }}>
-                          {d.fichajes.filter((f: any) => f.entrada && f.salida).map((f: any, fi: number) => (
-                            <View key={fi} style={[s.calDayDot, { backgroundColor: f.tipo === "entrada" || f.tipo === "fin_pausa" ? ios.colors.green : ios.colors.orange }]} />
-                          ))}
-                        </View>
-                        {d.horas && (
-                          <Text style={s.calDayHoras}>{d.horas}</Text>
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
+                  {calendarioDias.map((d: any) => (
+                    <CalendarDay
+                      key={d.key}
+                      d={d}
+                      isToday={d.key === hoyDia}
+                      isSelected={d.key === selectedDay}
+                      s={s}
+                      isWide={isWide}
+                      onPress={() => d.enMes && setSelectedDay(d.key === selectedDay ? null : d.key)}
+                    />
+                  ))}
                 </View>
               </View>
 
@@ -761,6 +749,30 @@ export default function FichajesScreen() {
   );
 }
 
+const CalendarDay = memo(({ d, isToday, isSelected, s, isWide, onPress }: any) => {
+  const completo = d.tieneEntrada && d.tieneSalida;
+  const incompleto = d.tieneEntrada && !d.tieneSalida;
+  let bg = "transparent";
+  if (isSelected) bg = COLORS.primary + "18";
+  else if (d.vacStatus === "aprobada") bg = "#10B98130";
+  else if (d.vacStatus === "pendiente") bg = "#8B5CF630";
+  else if (d.vacStatus === "rechazada") bg = "#EF444430";
+  else if (d.esFestivo) bg = ios.colors.red + "10";
+  else if (incompleto) bg = ios.colors.yellow + "18";
+  else if (completo) bg = ios.colors.green + "12";
+  return (
+    <TouchableOpacity style={[s.calDay, { height: isWide ? 42 : 36 }, { backgroundColor: bg }, isToday && { borderColor: COLORS.primary, borderWidth: 2 }, !d.enMes && { opacity: 0.25 }]} onPress={onPress} activeOpacity={0.6}>
+      <Text style={[s.calDayNum, isToday && { color: COLORS.primary, fontWeight: "800" }, d.esFestivo && { color: ios.colors.red }, !d.enMes && { color: COLORS.textDisabled }]}>{d.dia}</Text>
+      <View style={{ flexDirection: "row", gap: 1, flexWrap: "wrap", justifyContent: "center" }}>
+        {d.fichajes.filter((f: any) => f.entrada && f.salida).map((f: any, fi: number) => (
+          <View key={fi} style={[s.calDayDot, { backgroundColor: f.tipo === "entrada" || f.tipo === "fin_pausa" ? ios.colors.green : ios.colors.orange }]} />
+        ))}
+      </View>
+      {d.horas && <Text style={s.calDayHoras}>{d.horas}</Text>}
+    </TouchableOpacity>
+  );
+});
+
 const useS = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
   body: { flex: 1 },
@@ -774,19 +786,19 @@ const useS = () => StyleSheet.create({
   tabLabelActive: { color: COLORS.primary },
 
   // Fichar
-  ficharWrap: { padding: 16, gap: 16 },
-  relojCard: { alignItems: "center", padding: 28, borderRadius: ios.radius.card, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, ...ios.shadow.card },
+  ficharWrap: { padding: 12, gap: 12 },
+  relojCard: { alignItems: "center", padding: 18, borderRadius: ios.radius.card, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, ...ios.shadow.card },
   relojLabel: { fontSize: 13, color: COLORS.textSecondary, fontWeight: "500", textTransform: "uppercase", letterSpacing: 1 },
-  relojTiempo: { fontSize: 48, fontWeight: "800", color: COLORS.text, fontFamily: Platform.OS === "web" ? "'SF Mono', 'Menlo', monospace" : "monospace", letterSpacing: 2, marginTop: 4 },
+  relojTiempo: { fontSize: 40, fontWeight: "800", color: COLORS.text, fontFamily: Platform.OS === "web" ? "'SF Mono', 'Menlo', monospace" : "monospace", letterSpacing: 2, marginTop: 2 },
   relojFecha: { fontSize: 14, color: COLORS.textSecondary, marginTop: 6, textTransform: "capitalize" },
 
-  botonesRow: { flexDirection: "row", gap: 12 },
-  btnFichaje: { flex: 1, paddingVertical: 22, borderRadius: ios.radius.card, alignItems: "center", gap: 8, borderWidth: 1, borderColor: "transparent", ...ios.shadow.card },
+  botonesRow: { flexDirection: "row", gap: 8 },
+  btnFichaje: { flex: 1, paddingVertical: 14, borderRadius: ios.radius.card, alignItems: "center", gap: 4, borderWidth: 1, borderColor: "transparent", ...ios.shadow.card },
   btnEntrada: { backgroundColor: ios.colors.green },
   btnSalida: { backgroundColor: ios.colors.red },
   btnPausa: { backgroundColor: ios.colors.yellow },
   btnFinPausa: { backgroundColor: ios.colors.indigo },
-  btnFichajeTxt: { fontSize: 14, fontWeight: "700", color: "#fff", letterSpacing: 1 },
+  btnFichajeTxt: { fontSize: 12, fontWeight: "700", color: "#fff", letterSpacing: 0.5 },
 
   ubicacionRow: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: COLORS.surface, borderRadius: 8, padding: 10, borderWidth: 1, borderColor: COLORS.border },
   ubicacionTxt: { fontSize: 12, color: COLORS.textSecondary, fontFamily: Platform.OS === "web" ? "'SF Mono', monospace" : "monospace" },
@@ -905,4 +917,12 @@ const useS = () => StyleSheet.create({
   leyendaItem: { flexDirection: "row", alignItems: "center", gap: 8 },
   leyendaDot: { width: 8, height: 8, borderRadius: 4 },
   leyendaTxt: { fontSize: 12, color: COLORS.textSecondary },
+
+  toastBanner: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    padding: 12, borderRadius: 10, marginBottom: 12,
+  },
+  toastOk: { backgroundColor: ios.colors.green },
+  toastErr: { backgroundColor: ios.colors.red },
+  toastText: { color: "#fff", fontSize: 13, fontWeight: "600", flex: 1 },
 });

@@ -281,7 +281,7 @@ export default function MaterialDetail() {
 
   if (loading) {
     return (
-      <SafeAreaView style={s.root}>
+      <SafeAreaView style={s.root} edges={["top"]}>
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator color={COLORS.primary} size="large" />
         </View>
@@ -889,7 +889,7 @@ export default function MaterialDetail() {
                         const byteNums = new Array(byteChars.length);
                         for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
                         const blob = new Blob([new Uint8Array(byteNums)], { type: a.mime_type || "application/pdf" });
-                        window.open(URL.createObjectURL(blob), "_blank");
+                        if (typeof window !== "undefined") window.open(URL.createObjectURL(blob), "_blank");
                       }
                     }}
                   >

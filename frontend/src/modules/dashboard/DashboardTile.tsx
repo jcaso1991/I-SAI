@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Platform } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useBreakpoint } from "../../useBreakpoint";
 import { useThemedStyles } from "../../theme";
+import { COLORS } from "../../api";
 import { useS } from "./DashboardStyles";
 
 interface DashboardTileProps {
@@ -12,10 +13,11 @@ interface DashboardTileProps {
   title: string;
   accent: string;
   onPress: () => void;
+  selected?: boolean;
 }
 
 export default function DashboardTile({
-  testID, icon, iconFamily = "ion", title, accent, onPress,
+  testID, icon, iconFamily = "ion", title, accent, onPress, selected,
 }: DashboardTileProps) {
   const { isWide } = useBreakpoint();
   const s = useThemedStyles(useS);
@@ -34,7 +36,12 @@ export default function DashboardTile({
       style={[
         s.tile,
         isWide && s.tileWide,
-        webStyle
+        webStyle,
+        selected && {
+          borderWidth: 2,
+          borderColor: COLORS.primary,
+          borderStyle: "dashed",
+        } as any,
       ]}
       onPress={onPress}
       activeOpacity={0.7}

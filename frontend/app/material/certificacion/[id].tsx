@@ -220,7 +220,7 @@ export default function CertificacionEditor() {
     if (!id) return;
     const token = await getToken();
     const url = `${BACKEND_URL}/api/certificaciones/${id}/excel`;
-    window.open(`${url}?token=${encodeURIComponent(token || "")}`, "_blank");
+    if (typeof window !== "undefined") window.open(`${url}?token=${encodeURIComponent(token || "")}`, "_blank");
   };
 
   const exportPdf = async () => {
@@ -228,7 +228,7 @@ export default function CertificacionEditor() {
     if (!id) return;
     const token = await getToken();
     const url = `${BACKEND_URL}/api/certificaciones/${id}/pdf`;
-    window.open(`${url}?token=${encodeURIComponent(token || "")}`, "_blank");
+    if (typeof window !== "undefined") window.open(`${url}?token=${encodeURIComponent(token || "")}`, "_blank");
   };
 
   const del = () => {

@@ -22,9 +22,10 @@ const MODULOS = [
     badge: "Panel de control",
     title: "Dashboard",
     roles: "Admin · Gestor",
-    description: "Panel de control con KPIs en tiempo real: eventos del día, tickets SAT pendientes, presupuestos en curso. Widgets: anillo de proyectos por estado, barras de horas por gestor, top técnicos del mes, horas imputadas por técnico (M.O. vs desplazamiento) con filtro por año/mes y export Excel. Embudo de presupuestos, mapa de proyectos activos. Alertas críticas con notificación inmediata.",
+    description: "Panel de control con KPIs en tiempo real: eventos del día, tickets SAT pendientes, presupuestos en curso. Widgets: anillo de proyectos por estado, barras de horas por gestor, top técnicos del mes, horas imputadas por técnico (M.O. vs desplazamiento) con filtro por año/mes y export Excel. Embudo de presupuestos, mapa de proyectos activos. Alertas críticas con notificación inmediata. Módulos de gestión centrales reordenables por usuario: toca 'Editar' y arrastra los accesos directos a tu orden preferido. El orden se guarda por usuario y persiste entre sesiones.",
     features: [
       "KPIs en tiempo real: eventos, SAT, presupuestos, horas",
+      "Módulos centrales reordenables por usuario (persistente)",
       "Horas imputadas por técnico con gráfico M.O. vs desplazamiento",
       "Widgets personalizables (toggle visibilidad por sección)",
       "Export Excel de horas con gráficos y desglose mensual",
@@ -797,7 +798,7 @@ export default function Portfolio() {
           <View style={s.heroOverlay1} />
           <View style={s.heroOverlay2} />
           <View style={s.heroOverlay3} />
-          <SafeAreaView style={s.heroSafe}>
+          <SafeAreaView style={s.heroSafe} edges={["top"]}>
             <View style={s.heroHeader}>
               <TouchableOpacity
                 style={s.heroBackBtn}
