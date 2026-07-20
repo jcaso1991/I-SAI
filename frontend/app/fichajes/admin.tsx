@@ -144,7 +144,7 @@ export default function FichajesAdminScreen() {
         fichadosHoy,
         horasMes: `${Math.floor(totalMinMes / 60)}h ${Math.round(totalMinMes % 60)}m`,
       });
-    } catch {}
+    } catch { /* silent */ }
   }
 
   // Cargar todos los fichajes del mes para el usuario seleccionado
@@ -271,7 +271,7 @@ export default function FichajesAdminScreen() {
     try {
       const data = await api.fichajesAdminVacaciones();
       setVacaciones(data || []);
-    } catch {}
+    } catch { /* silent */ }
     finally {
       setVacLoading(false);
     }

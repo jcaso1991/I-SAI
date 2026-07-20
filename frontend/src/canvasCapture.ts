@@ -113,7 +113,7 @@ function findDomNode(ref: any): HTMLElement | null {
     if (node && typeof window !== "undefined" && node instanceof window.HTMLElement) {
       return node;
     }
-  } catch {}
+  } catch { /* silent */ }
   if (candidate.tagName) return candidate as HTMLElement;
   return null;
 }

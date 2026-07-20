@@ -85,7 +85,7 @@ export default function NotificationsBell({
       const res = await api.listNotifications();
       setItems(res.items || []);
       setUnread(res.unread || 0);
-    } catch {}
+    } catch { /* silent */ }
   }, []);
 
   useEffect(() => {

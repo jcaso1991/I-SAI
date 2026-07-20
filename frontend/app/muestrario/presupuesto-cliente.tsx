@@ -47,7 +47,7 @@ export default function PresupuestoClienteScreen() {
     try {
       const saved = localStorage?.getItem?.("mylock_cart");
       if (saved) setCart(JSON.parse(saved));
-    } catch {}
+    } catch { /* silent */ }
   }, []);
 
   const saveCart = (items: CartItem[]) => {

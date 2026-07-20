@@ -736,7 +736,7 @@ export default function NotasIndexScreen() {
   const shareModal = (
     <Modal visible={!!shareNota} transparent animationType="fade" onRequestClose={() => setShareNota(null)}>
       <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center" }} activeOpacity={1} onPress={() => setShareNota(null)}>
-        <View style={{ backgroundColor: COLORS.surface, borderRadius: 20, width: 380, maxHeight: "75%", overflow: "hidden", borderWidth: 1, borderColor: COLORS.border, ...(Platform.OS === "web" ? { backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" } : {}) } as any} onStartShouldSetResponder={() => true}>
+        <View style={{ backgroundColor: COLORS.surface, borderRadius: 20, width: isWide ? 380 : "90%", maxHeight: "75%", overflow: "hidden", borderWidth: 1, borderColor: COLORS.border, ...(Platform.OS === "web" ? { backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" } : {}) } as any} onStartShouldSetResponder={() => true}>
           <View style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
             <Text style={{ fontSize: 17, fontWeight: "700", color: COLORS.text, letterSpacing: -0.3 }}>Enviar por chat</Text>
             <Text style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: 4 }} numberOfLines={1}>{shareNota?.titulo || shareNota?.contenido || "Nota"}</Text>
@@ -815,19 +815,19 @@ const useS = () => StyleSheet.create({
   panel: {
     flex: 1,
     ...Platform.select({
-      web: { backgroundColor: "rgba(255,255,255,0.02)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" } as any,
+      web: { backgroundColor: COLORS.bg, backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" } as any,
       default: { backgroundColor: COLORS.bg },
     }),
-    borderRadius: 20, borderWidth: 1, borderColor: "rgba(255,255,255,0.04)",
+    borderRadius: 20, borderWidth: 1, borderColor: COLORS.border,
     padding: 16, margin: 8,
   },
 
   // --- Search & Filters ---
   searchBar: {
     flexDirection: "row", alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.03)",
+    backgroundColor: COLORS.surface,
     borderRadius: 14,
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1, borderColor: COLORS.border,
     paddingHorizontal: 14, paddingVertical: Platform.OS === "web" ? 10 : 8,
     gap: 10, marginBottom: 12,
   },
@@ -836,24 +836,24 @@ const useS = () => StyleSheet.create({
   filterChip: {
     flexDirection: "row", alignItems: "center", gap: 5,
     paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 20, borderWidth: 1, borderColor: "rgba(255,255,255,0.06)",
-    backgroundColor: "rgba(255,255,255,0.02)",
+    borderRadius: 20, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.bg,
   },
   filterChipActive: { backgroundColor: "rgba(59,130,246,0.12)", borderColor: "rgba(59,130,246,0.25)" },
-  filterChipText: { fontSize: 12, fontWeight: "500", color: "rgba(255,255,255,0.35)" },
-  filterChipTextActive: { color: "#60A5FA" },
+  filterChipText: { fontSize: 12, fontWeight: "500", color: COLORS.textSecondary },
+  filterChipTextActive: { color: COLORS.primary },
 
   // --- New note button ---
   newNoteBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
     paddingVertical: 12, borderRadius: 14, marginBottom: 16,
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderWidth: 1.5, borderColor: "rgba(139,92,246,0.3)",
+    backgroundColor: COLORS.primarySoft,
+    borderWidth: 1.5, borderColor: COLORS.primary + "40",
     ...Platform.select({
       web: { transition: "all 0.2s ease" } as any,
     }),
   },
-  newNoteBtnText: { fontSize: 14, fontWeight: "700", color: "#fff", letterSpacing: 0.3 },
+  newNoteBtnText: { fontSize: 14, fontWeight: "700", color: COLORS.primary, letterSpacing: 0.3 },
 
   // --- Section headers ---
   sectionHeader: {
@@ -861,14 +861,14 @@ const useS = () => StyleSheet.create({
     paddingVertical: 8, paddingHorizontal: 8, marginBottom: 4,
   },
   sectionDot: { width: 6, height: 6, borderRadius: 3 },
-  sectionTitle: { fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.3)", letterSpacing: 0.5, textTransform: "uppercase" },
-  sectionCount: { fontSize: 11, color: "rgba(255,255,255,0.2)", fontWeight: "500" },
+  sectionTitle: { fontSize: 11, fontWeight: "600", color: COLORS.textDisabled, letterSpacing: 0.5, textTransform: "uppercase" },
+  sectionCount: { fontSize: 11, color: COLORS.textDisabled, fontWeight: "500" },
 
   // --- Note card ---
   noteCard: {
-    backgroundColor: "rgba(255,255,255,0.03)",
+    backgroundColor: COLORS.surface,
     borderRadius: 16,
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1, borderColor: COLORS.border,
     padding: 14, marginBottom: 6,
     flexDirection: "row",
     ...Platform.select({
@@ -876,64 +876,64 @@ const useS = () => StyleSheet.create({
     }),
   },
   noteTitle: { fontSize: 15, fontWeight: "600", color: COLORS.text, letterSpacing: -0.2, flex: 1 },
-  notePreview: { fontSize: 12, color: "rgba(255,255,255,0.35)", marginTop: 4, lineHeight: 18 },
-  noteDate: { fontSize: 10, color: "rgba(255,255,255,0.25)", fontWeight: "500" },
-  tagPill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, backgroundColor: "rgba(59,130,246,0.12)" },
-  tagText: { fontSize: 10, color: "#60A5FA", fontWeight: "500" },
+  notePreview: { fontSize: 12, color: COLORS.textSecondary, marginTop: 4, lineHeight: 18 },
+  noteDate: { fontSize: 10, color: COLORS.textDisabled, fontWeight: "500" },
+  tagPill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, backgroundColor: COLORS.primary + "18" },
+  tagText: { fontSize: 10, color: COLORS.primary, fontWeight: "500" },
   iconBtn: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" },
 
   // --- Date changer overlay ---
   dateChanger: {
     position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
     flexDirection: "row", alignItems: "center", gap: 6,
-    backgroundColor: "rgba(255,255,255,0.05)", paddingHorizontal: 12,
-    borderRadius: 16, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: COLORS.bg, paddingHorizontal: 12,
+    borderRadius: 16, borderWidth: 1, borderColor: COLORS.border,
     ...Platform.select({
       web: { backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" } as any,
     }),
   },
   dateInput: {
     flex: 1, fontSize: 12, color: COLORS.text,
-    backgroundColor: "rgba(255,255,255,0.04)", borderRadius: 8,
+    backgroundColor: COLORS.surface, borderRadius: 8,
     paddingHorizontal: 10, paddingVertical: 6,
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1, borderColor: COLORS.border,
   },
   btnOk: {
-    backgroundColor: "rgba(255,255,255,0.06)", paddingHorizontal: 14, paddingVertical: 6,
-    borderRadius: 8, borderWidth: 1.5, borderColor: "rgba(59,130,246,0.3)",
+    backgroundColor: COLORS.primarySoft, paddingHorizontal: 14, paddingVertical: 6,
+    borderRadius: 8, borderWidth: 1.5, borderColor: COLORS.primary + "40",
   },
-  btnOkText: { fontSize: 12, fontWeight: "700", color: "#60A5FA" },
+  btnOkText: { fontSize: 12, fontWeight: "700", color: COLORS.primary },
   btnCancel: {
-    backgroundColor: "rgba(255,255,255,0.02)", paddingHorizontal: 14, paddingVertical: 6,
-    borderRadius: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.06)",
+    backgroundColor: COLORS.surface, paddingHorizontal: 14, paddingVertical: 6,
+    borderRadius: 8, borderWidth: 1, borderColor: COLORS.border,
   },
-  btnCancelText: { fontSize: 12, fontWeight: "600", color: "rgba(255,255,255,0.35)" },
+  btnCancelText: { fontSize: 12, fontWeight: "600", color: COLORS.textSecondary },
 
   // --- Editor ---
   editor: {
-    backgroundColor: "rgba(255,255,255,0.03)",
+    backgroundColor: COLORS.surface,
     borderRadius: 20,
     padding: 18, gap: 14, marginBottom: 16,
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1, borderColor: COLORS.border,
     ...Platform.select({
       web: { backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" } as any,
     }),
   },
   editorHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   editorTitle: { fontSize: 15, fontWeight: "700", color: COLORS.text, letterSpacing: -0.2 },
-  inputTitulo: { fontSize: 16, fontWeight: "600", color: COLORS.text, paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.06)" },
+  inputTitulo: { fontSize: 16, fontWeight: "600", color: COLORS.text, paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   inputContenido: { fontSize: 13, color: COLORS.text, minHeight: 100, lineHeight: 20, paddingVertical: 6 },
   btnGuardar: {
     paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12, alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1.5, borderColor: "rgba(59,130,246,0.3)",
+    backgroundColor: COLORS.primarySoft,
+    borderWidth: 1.5, borderColor: COLORS.primary + "40",
   },
-  btnGuardarText: { fontSize: 13, fontWeight: "700", color: "#60A5FA" },
+  btnGuardarText: { fontSize: 13, fontWeight: "700", color: COLORS.primary },
   btnCancelar: {
     paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12, alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.02)", borderWidth: 1, borderColor: "rgba(255,255,255,0.06)",
+    backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
   },
-  btnCancelarText: { fontSize: 13, fontWeight: "600", color: "rgba(255,255,255,0.35)" },
+  btnCancelarText: { fontSize: 13, fontWeight: "600", color: COLORS.textSecondary },
 
   // --- Calendar ---
   calHeader: {
@@ -942,29 +942,29 @@ const useS = () => StyleSheet.create({
   },
   todayBtn: {
     paddingHorizontal: 14, paddingVertical: 6, borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: "rgba(255,255,255,0.06)",
+    backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
   },
-  todayBtnText: { fontSize: 12, fontWeight: "600", color: "rgba(255,255,255,0.5)" },
+  todayBtnText: { fontSize: 12, fontWeight: "600", color: COLORS.textSecondary },
   calArrow: {
     width: 30, height: 30, borderRadius: 10,
     alignItems: "center", justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.03)", borderWidth: 1, borderColor: "rgba(255,255,255,0.06)",
+    backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
   },
   calMonthTitle: { fontSize: 18, fontWeight: "700", color: COLORS.text, letterSpacing: -0.5 },
-  viewToggle: { flexDirection: "row", borderRadius: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.06)", overflow: "hidden", backgroundColor: "rgba(255,255,255,0.02)" },
+  viewToggle: { flexDirection: "row", borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, overflow: "hidden", backgroundColor: COLORS.surface },
   viewToggleBtn: { paddingHorizontal: 14, paddingVertical: 6 },
-  viewToggleActive: { backgroundColor: "rgba(255,255,255,0.08)" },
-  viewToggleText: { fontSize: 11, fontWeight: "600", color: "rgba(255,255,255,0.3)" },
+  viewToggleActive: { backgroundColor: COLORS.primarySoft },
+  viewToggleText: { fontSize: 11, fontWeight: "600", color: COLORS.textDisabled },
   viewToggleTextActive: { color: COLORS.text },
   calFilterBtn: {
     width: 30, height: 30, borderRadius: 10,
     alignItems: "center", justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.03)", borderWidth: 1, borderColor: "rgba(255,255,255,0.06)",
+    backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
   },
   weekRow: { flexDirection: "row", marginBottom: 2 },
   weekDay: {
     width: "14.28%", textAlign: "center",
-    fontSize: 10, fontWeight: "500", color: "rgba(255,255,255,0.25)",
+    fontSize: 10, fontWeight: "500", color: COLORS.textDisabled,
     paddingVertical: 8, letterSpacing: 0.5, textTransform: "uppercase",
   },
   grid: { flexDirection: "row", flexWrap: "wrap" },
@@ -974,10 +974,10 @@ const useS = () => StyleSheet.create({
     borderRadius: 12, marginBottom: 2,
     flexGrow: 1, overflow: "hidden", minHeight: 56,
   },
-  dayToday: { backgroundColor: "rgba(255,255,255,0.03)" },
-  daySelected: { backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
-  dayNum: { fontSize: 13, fontWeight: "400", color: "rgba(255,255,255,0.4)", textAlign: "center" },
-  dayNumToday: { color: "#fff", fontWeight: "700" },
+  dayToday: { backgroundColor: COLORS.surface },
+  daySelected: { backgroundColor: COLORS.primarySoft, borderWidth: 1, borderColor: COLORS.primary + "40" },
+  dayNum: { fontSize: 13, fontWeight: "400", color: COLORS.textSecondary, textAlign: "center" },
+  dayNumToday: { color: COLORS.primary, fontWeight: "700" },
   dayNumWrap: {
     width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", alignSelf: "center",
   },
@@ -988,12 +988,12 @@ const useS = () => StyleSheet.create({
     ...Platform.select({ web: { boxShadow: "0 0 12px rgba(59,130,246,0.25)" } as any, default: {} }),
   },
   calEventMini: {
-    backgroundColor: "rgba(255,255,255,0.03)",
+    backgroundColor: COLORS.surface,
     borderRadius: 4, paddingHorizontal: 4, paddingVertical: 2,
     marginBottom: 1,
   },
-  calEventMiniText: { fontSize: 8, color: "rgba(255,255,255,0.3)", fontWeight: "500" },
-  calEventMore: { fontSize: 8, color: "rgba(255,255,255,0.25)", textAlign: "center", fontWeight: "600" },
+  calEventMiniText: { fontSize: 8, color: COLORS.textDisabled, fontWeight: "500" },
+  calEventMore: { fontSize: 8, color: COLORS.textDisabled, textAlign: "center", fontWeight: "600" },
   dotsRow: { flexDirection: "row", gap: 3, justifyContent: "center", marginTop: 2 },
   dot: { width: 5, height: 5, borderRadius: 2.5, opacity: 0.5 },
 
@@ -1006,17 +1006,17 @@ const useS = () => StyleSheet.create({
   addNoteBtn: {
     flexDirection: "row", alignItems: "center", gap: 6,
     paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.03)",
+    backgroundColor: COLORS.surface,
     borderWidth: 1.5, borderColor: "rgba(139,92,246,0.25)",
   },
-  addNoteBtnText: { fontSize: 12, fontWeight: "700", color: "#C4B5FD" },
+  addNoteBtnText: { fontSize: 12, fontWeight: "700", color: COLORS.primary },
 
   // --- FAB ---
   fab: {
     position: "absolute", bottom: 24, right: 20,
     width: 56, height: 56, borderRadius: 28,
     alignItems: "center", justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: COLORS.primarySoft,
     borderWidth: 1.5, borderColor: "rgba(139,92,246,0.3)",
     ...Platform.select({
       web: { backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" } as any,

@@ -31,7 +31,7 @@ export default function Admin() {
       const p = await api.getPrecios();
       setPrecios(p || {});
       setDraftPrecios(p || {});
-    } catch {}
+    } catch { /* silent */ }
   };
 
   const savePrecios = async () => {
@@ -272,7 +272,7 @@ export default function Admin() {
                   setHomepage(mod.to);
                   try {
                     await api.updateHomepage(mod.to);
-                  } catch {}
+                  } catch { /* silent */ }
                 }}
               >
                 <Ionicons name={mod.icon as any} size={18} color={homepage === mod.to ? COLORS.primary : COLORS.textSecondary} />

@@ -122,7 +122,7 @@ export default function VentasBeneficios() {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.ok) setManagers(await res.json());
-      } catch {}
+      } catch { /* silent */ }
     });
   }, []);
 

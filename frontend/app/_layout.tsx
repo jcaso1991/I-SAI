@@ -37,8 +37,10 @@ export default function RootLayout() {
     <ThemeProvider>
       <SafeAreaProvider>
         <ToastProvider>
-          <ThemedStatusBar />
-          <ThemedStack />
+          <View style={{ flex: 1, position: "relative" } as any}>
+            <ThemedStatusBar />
+            <ThemedStack />
+          </View>
           <GlobalSearch />
         </ToastProvider>
       </SafeAreaProvider>

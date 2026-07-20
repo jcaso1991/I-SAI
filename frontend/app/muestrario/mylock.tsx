@@ -59,7 +59,7 @@ export default function MyLockScreen() {
   // Vista WebView (configurador)
   if (webViewUrl) {
     return (
-      <ResponsiveLayout active="muestrario" isAdmin={false} onLogout={() => {}} userName="">
+      <ResponsiveLayout active="home" isAdmin={false} onLogout={() => {}} userName="">
         <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
           <View style={s.header}>
             <TouchableOpacity style={s.iconBtn} onPress={() => setWebViewUrl(null)}>
@@ -100,7 +100,7 @@ export default function MyLockScreen() {
 
   // Vista principal (catálogo)
   return (
-    <ResponsiveLayout active="muestrario" isAdmin={false} onLogout={() => {}} userName="">
+    <ResponsiveLayout active="home" isAdmin={false} onLogout={() => {}} userName="">
       <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
         <View style={s.header}>
           <TouchableOpacity style={s.iconBtn} onPress={() => router.back()}>

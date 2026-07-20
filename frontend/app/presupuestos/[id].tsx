@@ -167,7 +167,7 @@ export default function BudgetEditor() {
         try {
           const def = await api.budgetsDefaultEquipos();
           setDefaultEquipos(def.items || []);
-        } catch {}
+        } catch { /* silent */ }
         if (budgetId) {
           const b = await api.getBudget(budgetId);
           setF((prev: any) => ({ ...prev, ...b }));
@@ -190,7 +190,7 @@ export default function BudgetEditor() {
                   material_id: m.id,
                 }));
               }
-            } catch {}
+            } catch { /* silent */ }
           }
         }
       } catch (e: any) {

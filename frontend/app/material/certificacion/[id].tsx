@@ -153,7 +153,7 @@ export default function CertificacionEditor() {
                 lineas: lastLineas,
               }));
             }
-          } catch {}
+          } catch { /* silent */ }
         }
       } catch (e: any) {
         if (/401|expired/i.test(e?.message || "")) { await clearToken(); router.replace("/login"); }

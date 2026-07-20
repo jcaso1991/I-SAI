@@ -74,8 +74,9 @@ NO saltees pasos. NO empieces a investigar antes de pasar por los 3 gates. Si du
 
 ## Documentación obligatoria
 
-Cada cambio o añadido en la aplicación debe quedar reflejado en estos dos archivos:
+Cada cambio o añadido en la aplicación debe quedar reflejado en estos tres archivos:
 1. **`frontend/app/portfolio.tsx`** — Info App dentro de la aplicación. Añadir/actualizar el módulo en el array `MODULOS`.
 2. **`backend/pdf_funcionalidades.py`** — Documento PDF offline. Actualizar la sección correspondiente (módulos, permisos, endpoints, relaciones, diagrama).
+3. **`frontend/src/ChatBot.tsx`** — Asistente FAQ de la app. Añadir preguntas frecuentes en el array `FAQ` cuando se añadan funcionalidades nuevas o cambien flujos existentes.
 
-Siempre después de hacer cambios en funcionalidad, permisos, endpoints o relaciones entre módulos, actualizá ambos archivos sin que la persona tenga que pedirlo.
+Siempre después de hacer cambios en funcionalidad, permisos, endpoints o relaciones entre módulos, actualizá los tres archivos sin que la persona tenga que pedirlo.

@@ -13,7 +13,7 @@ const Print = require("expo-print");
 let Sharing: any = null;
 try {
   Sharing = require("expo-sharing");
-} catch {}
+} catch { /* silent */ }
 
 const MODULOS = [
   {

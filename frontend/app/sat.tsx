@@ -115,7 +115,7 @@ export default function SATScreen() {
     try {
       const [its, cls] = await Promise.all([api.satList(tab, yearFilter, monthFilter), api.satClientList()]);
       setItems(its); setClients(cls);
-    } catch {}
+    } catch { /* silent */ }
   }, [tab, yearFilter, monthFilter]);
 
   useFocusEffect(useCallback(() => {

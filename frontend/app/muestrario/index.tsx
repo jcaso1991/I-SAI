@@ -55,7 +55,7 @@ export default function MuestrarioIndex() {
   if (selectedVariant) {
     const v = selectedVariant;
     return (
-      <ResponsiveLayout active="muestrario" isAdmin={false} onLogout={() => {}} userName="">
+      <ResponsiveLayout active="home" isAdmin={false} onLogout={() => {}} userName="">
         <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
           <View style={s.header}>
             <TouchableOpacity style={s.iconBtn} onPress={() => setSelectedVariant(null)}>
@@ -293,7 +293,7 @@ export default function MuestrarioIndex() {
 
   if (selectedFamily) {
     return (
-      <ResponsiveLayout active="muestrario" isAdmin={false} onLogout={() => {}} userName="">
+      <ResponsiveLayout active="home" isAdmin={false} onLogout={() => {}} userName="">
         <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
           <View style={s.header}>
             <TouchableOpacity style={s.iconBtn} onPress={() => setSelectedFamily(null)}>
@@ -330,7 +330,7 @@ export default function MuestrarioIndex() {
   }
 
   return (
-    <ResponsiveLayout active="muestrario" isAdmin={false} onLogout={() => {}} userName="">
+    <ResponsiveLayout active="home" isAdmin={false} onLogout={() => {}} userName="">
       <SafeAreaView style={s.root} edges={isWide ? [] : ["top"]}>
         {/* Header */}
         <View style={s.header}>

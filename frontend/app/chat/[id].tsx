@@ -67,7 +67,7 @@ export default function ChatDetail() {
           const others = (chat.participants || []).filter((p: any) => p.id !== who.id);
           setChatTitle(chat.name || others.map((p: any) => p.name || p.email.split("@")[0]).join(", ") || "Conversación");
         }
-      } catch {}
+      } catch { /* silent */ }
     })();
     loadMessages();
     const t = setInterval(() => loadMessages(), 4000);

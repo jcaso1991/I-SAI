@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Animated, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import ChatBot from "./ChatBot";
 
 type ToastType = "success" | "error" | "warning" | "info";
 
@@ -98,6 +99,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           </View>
         </View>
       )}
+
+      <ChatBot />
     </ToastContext.Provider>
   );
 }

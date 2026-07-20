@@ -143,7 +143,7 @@ export default function DashboardData() {
     try {
       const saved = localStorage?.getItem?.("dashboard_widgets_v1");
       if (saved) setWidgets((prev) => ({ ...prev, ...JSON.parse(saved) }));
-    } catch {}
+    } catch { /* silent */ }
   }, []);
   const toggleWidget = (key: string) => {
     setWidgets((prev) => {
@@ -566,7 +566,7 @@ function BudgetsKPI() {
         const d = await api.getBudgetsStats().catch(() => null);
         if (!alive) return;
         setStats(d);
-      } catch {}
+      } catch { /* silent */ }
     })();
     return () => { alive = false; };
   }, []));
@@ -740,7 +740,7 @@ function TechHours() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) setData(await res.json());
-    } catch {}
+    } catch { /* silent */ }
   };
 
   useEffect(() => { load(selectedYear, selectedMonth); }, [selectedYear, selectedMonth]);
@@ -763,7 +763,7 @@ function TechHours() {
       a.download = `horas_tecnicos_${label}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch {}
+    } catch { /* silent */ }
   };
 
   const now = new Date();

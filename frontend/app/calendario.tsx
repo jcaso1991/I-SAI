@@ -196,7 +196,7 @@ export default function CalendarScreen() {
       const res = await api.listNotifications();
       setNotifications(res.items || []);
       setUnreadCount(res.unread || 0);
-    } catch {}
+    } catch { /* silent */ }
   };
   useEffect(() => {
     loadNotifications();
@@ -215,8 +215,8 @@ export default function CalendarScreen() {
         try {
           const raw = await AsyncStorage.getItem("cal_user_filter_v1");
           if (raw) setDisabledUserIds(new Set(JSON.parse(raw)));
-        } catch {}
-      } catch {}
+        } catch { /* silent */ }
+      } catch { /* silent */ }
     })();
   }, [me?.role]);
 
@@ -321,7 +321,7 @@ export default function CalendarScreen() {
       const toDate = rangeTo.toISOString().slice(0, 10);
       const gList = await api.listGuards(fromDate, toDate);
       setGuards(gList || []);
-    } catch {}
+    } catch { /* silent */ }
   };
 
   useFocusEffect(useCallback(() => { load(); }, [rangeFrom.getTime(), rangeTo.getTime()]));
@@ -369,7 +369,7 @@ export default function CalendarScreen() {
         try {
           const d = new Date(ev.start_at);
           if (!isNaN(d.getTime())) setAnchor(d);
-        } catch {}
+        } catch { /* silent */ }
       } catch (err: any) {
         if (cancelled) return;
         const msg = String(err?.message || "");
@@ -386,7 +386,7 @@ export default function CalendarScreen() {
             const res = await api.listNotifications();
             const stale = (res.items || []).filter((n: any) => (n.event_id || "").split(":")[0] === targetId);
             await Promise.all(stale.map((n: any) => api.deleteNotification(n.id).catch(() => {})));
-          } catch {}
+          } catch { /* silent */ }
         }
       } finally {
         // @ts-ignore: setParams may not exist in older versions
@@ -404,7 +404,7 @@ export default function CalendarScreen() {
         setAnchor(d);
         if (view === "month") setView("week");
       }
-    } catch {}
+    } catch { /* silent */ }
     router.setParams?.({ date: undefined });
   }, [params.date]);
 
@@ -1198,8 +1198,9 @@ function MultiView({
   onMoveEvent: (ev: EventT, s: Date, e: Date) => Promise<void>;
   onSelectDay: (d: Date) => void;
   users: { id: string; name: string; email: string; color?: string }[];
-  disabledUserIds: Set<string>;
+  disabledUserIds: string[];
 }) {
+  const { isWide } = useBreakpoint();
   const s = useThemedStyles(useS);
   const visibleUsers = users.filter((u) => !disabledUserIds.has(u.id));
 
@@ -1982,7 +1983,7 @@ function CreateEventModal({
         try {
           const res = await api.getTiposManoObra();
           setTiposMO(res.tipos || []);
-        } catch {}
+        } catch { /* silent */ }
       })();
     }
   }, [visible]);

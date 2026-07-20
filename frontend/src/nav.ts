@@ -12,7 +12,7 @@ export function safeBack(router: Pick<Router, "back" | "canGoBack" | "replace">,
       router.back();
       return;
     }
-  } catch {}
+  } catch { /* silent */ }
   // Also check real browser history on web — some routers don't reflect it
   if (typeof window !== "undefined" && typeof window.history !== "undefined" && window.history.length > 1) {
     try { window.history.back(); return; } catch {}

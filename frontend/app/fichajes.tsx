@@ -121,7 +121,7 @@ export default function FichajesScreen() {
       const hoy = todayISO();
       const items = await api.fichajesListar(undefined, `${hoy}T00:00:00`, `${hoy}T23:59:59`);
       setFichajesHoy(items || []);
-    } catch {}
+    } catch { /* silent */ }
   }
 
   async function cargarFichajesMes() {
@@ -133,7 +133,7 @@ export default function FichajesScreen() {
     try {
       const items = await api.fichajesListar(undefined, from, to);
       setFichajesMes(items || []);
-    } catch {}
+    } catch { /* silent */ }
   }
 
   async function cargarVacaciones() {
@@ -145,14 +145,14 @@ export default function FichajesScreen() {
       ]);
       setVacacionesList(lista || []);
       setSaldoDias(saldo);
-    } catch {}
+    } catch { /* silent */ }
   }
 
   async function cargarConfig() {
     try {
       const c = await api.configFichajes();
       setConfig(c);
-    } catch {}
+    } catch { /* silent */ }
   }
 
   async function cargarResumen() {
@@ -162,7 +162,7 @@ export default function FichajesScreen() {
       const finHoy = ahora.toISOString();
       const items = await api.fichajesListar(undefined, inicioAnio, finHoy);
       setFichajesAnio(items || []);
-    } catch {}
+    } catch { /* silent */ }
   }
 
   // Resumen semanal / mensual / anual
