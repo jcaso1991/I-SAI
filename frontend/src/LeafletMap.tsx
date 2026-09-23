@@ -26,7 +26,7 @@ function FitBounds({ points }: { points: [number, number][] }) {
       try {
         map.invalidateSize();
         map.fitBounds(points, { padding: [40, 40] });
-      } catch {}
+      } catch { /* silent */ }
     }, 600);
     return () => clearTimeout(t);
   }, [map, points]);

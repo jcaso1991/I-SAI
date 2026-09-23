@@ -183,7 +183,7 @@ export default function DashboardData() {
         <Ionicons name="bar-chart-outline" size={48} color={COLORS.textDisabled} />
         <Text style={{ marginTop: 12, fontSize: 15, color: COLORS.textSecondary }}>Sin datos disponibles</Text>
         <Text style={{ marginTop: 4, fontSize: 13, color: COLORS.textDisabled }}>
-          Conectá OneDrive o cargá materiales para ver estadísticas
+          Cargá materiales para ver estadísticas
         </Text>
       </View>
     );

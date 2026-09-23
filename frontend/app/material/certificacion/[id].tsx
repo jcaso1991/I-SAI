@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View, Text, TouchableOpacity, TextInput, StyleSheet, ScrollView,
   ActivityIndicator, Alert, Platform,
@@ -91,6 +91,30 @@ export default function CertificacionEditor() {
     iva: "21",
     observaciones: "",
   });
+
+  const inputRefs = useRef<{ [k: string]: TextInput | null }>({});
+  const COLS: (keyof Linea)[] = ["concepto", "cantidad_alcance", "precio_alcance", "cantidad_ejecutado", "precio_ejecutado"];
+
+  const moveFocus = (i: number, ci: number, key: string) => {
+    let ni = i;
+    let nci = ci;
+    if (key === "ArrowRight") nci = ci + 1;
+    else if (key === "ArrowLeft") nci = ci - 1;
+    else if (key === "ArrowDown") ni = i + 1;
+    else if (key === "ArrowUp") ni = i - 1;
+    else return;
+    if (ni < 0 || ni >= f.lineas.length) return;
+    if (nci < 0 || nci >= COLS.length) return;
+    inputRefs.current[`${ni}-${nci}`]?.focus();
+  };
+
+  const onCellKey = (i: number, ci: number) => (e: any) => {
+    const k = e.nativeEvent?.key;
+    if (k === "ArrowRight" || k === "ArrowLeft" || k === "ArrowDown" || k === "ArrowUp") {
+      e.preventDefault?.();
+      moveFocus(i, ci, k);
+    }
+  };
 
   useFocusEffect(useCallback(() => {
     let alive = true;
@@ -332,14 +356,14 @@ export default function CertificacionEditor() {
             const totE = toNum(l.cantidad_ejecutado) * toNum(l.precio_ejecutado);
             return (
               <View key={i} style={s.eqRow}>
-                <TextInput value={l.concepto} onChangeText={(v) => setLn(i, "concepto", v)} style={[s.eqInp, { flex: 2 }]} placeholder="Concepto" placeholderTextColor={COLORS.textDisabled} />
-                <TextInput value={l.cantidad_alcance} onChangeText={(v) => setLn(i, "cantidad_alcance", v)} style={[s.eqInp, { flex: 0.7, textAlign: "center" }]} placeholder="0" placeholderTextColor={COLORS.textDisabled} keyboardType="decimal-pad" inputMode="decimal" />
-                <TextInput value={l.precio_alcance} onChangeText={(v) => setLn(i, "precio_alcance", v)} style={[s.eqInp, { flex: 0.8, textAlign: "center" }]} placeholder="0.00" placeholderTextColor={COLORS.textDisabled} keyboardType="decimal-pad" inputMode="decimal" />
+                <TextInput ref={(el) => { inputRefs.current[`${i}-0`] = el; }} onKeyPress={onCellKey(i, 0)} value={l.concepto} onChangeText={(v) => setLn(i, "concepto", v)} style={[s.eqInp, { flex: 2 }]} placeholder="Concepto" placeholderTextColor={COLORS.textDisabled} />
+                <TextInput ref={(el) => { inputRefs.current[`${i}-1`] = el; }} onKeyPress={onCellKey(i, 1)} value={l.cantidad_alcance} onChangeText={(v) => setLn(i, "cantidad_alcance", v)} style={[s.eqInp, { flex: 0.7, textAlign: "center" }]} placeholder="0" placeholderTextColor={COLORS.textDisabled} keyboardType="decimal-pad" inputMode="decimal" />
+                <TextInput ref={(el) => { inputRefs.current[`${i}-2`] = el; }} onKeyPress={onCellKey(i, 2)} value={l.precio_alcance} onChangeText={(v) => { setLn(i, "precio_alcance", v); setLn(i, "precio_ejecutado", v); }} style={[s.eqInp, { flex: 0.8, textAlign: "center" }]} placeholder="0.00" placeholderTextColor={COLORS.textDisabled} keyboardType="decimal-pad" inputMode="decimal" />
                 <View style={[s.eqInpR, { flex: 0.8 }]}>
                   <Text style={s.eqInpRTxt}>{totA.toFixed(2)}</Text>
                 </View>
-                <TextInput value={l.cantidad_ejecutado} onChangeText={(v) => setLn(i, "cantidad_ejecutado", v)} style={[s.eqInp, { flex: 0.7, textAlign: "center" }]} placeholder="0" placeholderTextColor={COLORS.textDisabled} keyboardType="decimal-pad" inputMode="decimal" />
-                <TextInput value={l.precio_ejecutado} onChangeText={(v) => setLn(i, "precio_ejecutado", v)} style={[s.eqInp, { flex: 0.8, textAlign: "center" }]} placeholder="0.00" placeholderTextColor={COLORS.textDisabled} keyboardType="decimal-pad" inputMode="decimal" />
+                <TextInput ref={(el) => { inputRefs.current[`${i}-3`] = el; }} onKeyPress={onCellKey(i, 3)} value={l.cantidad_ejecutado} onChangeText={(v) => setLn(i, "cantidad_ejecutado", v)} style={[s.eqInp, { flex: 0.7, textAlign: "center" }]} placeholder="0" placeholderTextColor={COLORS.textDisabled} keyboardType="decimal-pad" inputMode="decimal" />
+                <TextInput ref={(el) => { inputRefs.current[`${i}-4`] = el; }} onKeyPress={onCellKey(i, 4)} value={l.precio_ejecutado} onChangeText={(v) => setLn(i, "precio_ejecutado", v)} style={[s.eqInp, { flex: 0.8, textAlign: "center" }]} placeholder="0.00" placeholderTextColor={COLORS.textDisabled} keyboardType="decimal-pad" inputMode="decimal" />
                 <View style={[s.eqInpR, { flex: 0.8 }]}>
                   <Text style={s.eqInpRTxt}>{totE.toFixed(2)}</Text>
                 </View>

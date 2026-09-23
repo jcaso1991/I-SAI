@@ -16,7 +16,7 @@ export type PermissionKey =
   | "presupuestos.view" | "presupuestos.edit" | "presupuestos.export"
   | "sat.view" | "sat.edit" | "sat.export"
   | "chat.view" | "chat.edit"
-  | "users.manage" | "roles.manage" | "onedrive.manage"
+  | "users.manage" | "roles.manage"
   | "preciario.view" | "preciario.ver_precios" | "preciario.edit"
   | "notas.view"
   | "documentos.manage"

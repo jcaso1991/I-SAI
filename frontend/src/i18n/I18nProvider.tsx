@@ -42,7 +42,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
         if (v === "es" || v === "en") {
           setLangState(v);
         }
-      } catch {}
+      } catch { /* silent */ }
       loaded.current = true;
     })();
   }, []);

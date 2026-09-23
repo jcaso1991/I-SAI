@@ -51,7 +51,6 @@ export default function ResponsiveLayout({
   const has = (p: string) => perms.includes(p);
   const canManageUsers = has("users.manage");
   const canManageRoles = has("roles.manage");
-  const canOnedrive = has("onedrive.manage");
 
   const s = useThemedStyles(useS);
 
@@ -159,19 +158,14 @@ export default function ResponsiveLayout({
           <SideLink active={active === "documentos"} label="Documentos Internos" icon="folder-open" to="/documentos" />
         )}
 
-        {(canOnedrive || canManageUsers || canManageRoles) && (
+        {(canManageUsers || canManageRoles) && (
           <>
             <Text style={s.sectionLabel}>Administración</Text>
-            {canOnedrive && (
-              <SideLink active={active === "ajustes"} label="Ajustes" icon="cloud-outline" to="/admin" />
-            )}
-            {!canOnedrive && (
-              <SideLink active={active === "ajustes"} label="Ajustes" icon="settings-outline" to="/admin" />
-            )}
+            <SideLink active={active === "ajustes"} label="Ajustes" icon="settings-outline" to="/admin" />
             <SideLink active={active === "solicitudes"} label="Solicitudes presupuesto" icon="cart-outline" to="/admin/solicitudes" />
           </>
         )}
-        {!canOnedrive && !canManageUsers && !canManageRoles && (
+        {!canManageUsers && !canManageRoles && (
           <SideLink active={active === "ajustes"} label="Ajustes" icon="settings-outline" to="/admin" />
         )}
 

@@ -271,7 +271,7 @@ export default function MaterialDetail() {
       const updated = await api.updateMaterial(id, payload);
       setM(updated);
       setDirty(false);
-      Alert.alert("Guardado", "Cambios guardados. Se sincronizarán con OneDrive automáticamente.");
+      Alert.alert("Guardado", "Cambios guardados.");
     } catch (e: any) {
       Alert.alert("Error", e.message);
     } finally {

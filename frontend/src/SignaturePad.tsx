@@ -24,7 +24,7 @@ export default function SignaturePad({
           const r = el.getBoundingClientRect();
           if (r.width > 0) sizeRef.current = { w: Math.round(r.width), h: Math.round(r.height) };
         }
-      } catch {}
+      } catch { /* silent */ }
     }
   };
 

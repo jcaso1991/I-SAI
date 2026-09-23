@@ -609,7 +609,15 @@ function ObraEnCursoContent() {
   const [loading, setLoading] = useState(true);
   const [searchObra, setSearchObra] = useState("");
   const [activeFilter, setActiveFilter] = useState("todos");
+  const [sortCol, setSortCol] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
   const s = useThemedStyles(useS);
+
+  const toggleSort = (col: string) => {
+    if (sortCol !== col) { setSortCol(col); setSortDir("desc"); }
+    else if (sortDir === "desc") { setSortDir("asc"); }
+    else { setSortCol(null); setSortDir(null); }
+  };
 
   useEffect(() => {
     (async () => {
@@ -642,6 +650,20 @@ function ObraEnCursoContent() {
   else if (activeFilter === "en_curso") proyectos = proyectos.filter((p: any) => p.pct_avance > 30 && p.pct_avance <= 70);
   else if (activeFilter === "limite") proyectos = proyectos.filter((p: any) => p.pct_avance > 70 && p.pct_avance < 100);
   else if (activeFilter === "excedido") proyectos = proyectos.filter((p: any) => p.pct_avance >= 100);
+
+  // Sorting
+  if (sortCol && sortDir) {
+    const keyMap: Record<string, string> = { proyecto: "materiales", avance: "pct_avance", mod: "mod_real", beneficio: "beneficio_avance", facturado: "ingreso_facturado", oec: "obra_en_curso" };
+    const key = keyMap[sortCol] || sortCol;
+    proyectos = [...proyectos].sort((a: any, b: any) => {
+      const va = a[key] ?? 0;
+      const vb = b[key] ?? 0;
+      if (typeof va === "string") return sortDir === "desc" ? vb.localeCompare(va) : va.localeCompare(vb);
+      return sortDir === "desc" ? vb - va : va - vb;
+    });
+  }
+
+  const sortArrow = (col: string) => sortCol === col ? (sortDir === "desc" ? " ▼" : " ▲") : "";
 
   const totalProy = proyectosAll.length;
   const holgado = proyectosAll.filter((p: any) => p.pct_avance <= 30).length;
@@ -734,14 +756,26 @@ function ObraEnCursoContent() {
         <Text style={{ fontSize: 11, fontWeight: "700", color: PREMIUM_COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>
           Desglose de Producción en Curso ({proyectos.length})
         </Text>
-        <View style={s.tableHeaderOEC}>
-          <Text style={[s.thOEC, { flex: 1.8 }]}>CÓDIGO DE PROYECTO</Text>
-          <Text style={[s.thOEC, { flex: 0.9, textAlign: "center" }]}>DESVIACIÓN AVANCE</Text>
-          <Text style={[s.thOEC, { flex: 0.8, textAlign: "right" }]}>MOD INVERTIDA</Text>
-          <Text style={[s.thOEC, { flex: 0.8, textAlign: "right" }]}>Bº RECONOCIDO</Text>
-          <Text style={[s.thOEC, { flex: 0.8, textAlign: "right" }]}>FACTURADO</Text>
-          <Text style={[s.thOEC, { flex: 1, textAlign: "right", color: PREMIUM_COLORS.accent }]}>VALOR NETO OEC</Text>
-        </View>
+         <View style={s.tableHeaderOEC}>
+           <TouchableOpacity style={{ flex: 1.8, flexDirection: "row", alignItems: "center" }} onPress={() => toggleSort("proyecto")}>
+             <Text style={[s.thOEC, { flex: 1 }]}>CÓDIGO DE PROYECTO{sortArrow("proyecto")}</Text>
+           </TouchableOpacity>
+           <TouchableOpacity style={{ flex: 0.9, flexDirection: "row", justifyContent: "center" }} onPress={() => toggleSort("avance")}>
+             <Text style={[s.thOEC, { textAlign: "center" }]}>DESVIACIÓN AVANCE{sortArrow("avance")}</Text>
+           </TouchableOpacity>
+           <TouchableOpacity style={{ flex: 0.8, flexDirection: "row", justifyContent: "flex-end" }} onPress={() => toggleSort("mod")}>
+             <Text style={[s.thOEC, { textAlign: "right" }]}>MOD INVERTIDA{sortArrow("mod")}</Text>
+           </TouchableOpacity>
+           <TouchableOpacity style={{ flex: 0.8, flexDirection: "row", justifyContent: "flex-end" }} onPress={() => toggleSort("beneficio")}>
+             <Text style={[s.thOEC, { textAlign: "right" }]}>Bº RECONOCIDO{sortArrow("beneficio")}</Text>
+           </TouchableOpacity>
+           <TouchableOpacity style={{ flex: 0.8, flexDirection: "row", justifyContent: "flex-end" }} onPress={() => toggleSort("facturado")}>
+             <Text style={[s.thOEC, { textAlign: "right" }]}>FACTURADO{sortArrow("facturado")}</Text>
+           </TouchableOpacity>
+           <TouchableOpacity style={{ flex: 1, flexDirection: "row", justifyContent: "flex-end" }} onPress={() => toggleSort("oec")}>
+             <Text style={[s.thOEC, { textAlign: "right", color: PREMIUM_COLORS.accent }]}>VALOR NETO OEC{sortArrow("oec")}</Text>
+           </TouchableOpacity>
+         </View>
         {proyectos.map((p: any) => {
           const pct = p.pct_avance;
           let statusColor = PREMIUM_COLORS.success;

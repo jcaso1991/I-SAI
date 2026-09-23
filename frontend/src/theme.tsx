@@ -340,7 +340,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
             setThemeKey((k) => k + 1);
           }
         }
-      } catch {}
+      } catch { /* silent */ }
       loaded.current = true;
     })();
      

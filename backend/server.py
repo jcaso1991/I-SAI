@@ -20,6 +20,7 @@ import jwt as pyjwt
 import msal
 import httpx
 import io
+import csv
 import math
 import base64
 from openpyxl import load_workbook
@@ -48,36 +49,13 @@ JWT_EXPIRE_HOURS = int(os.environ.get('JWT_EXPIRE_HOURS', '24'))
 MS_TENANT_ID = os.environ.get('MS_TENANT_ID', '')
 MS_CLIENT_ID = os.environ.get('MS_CLIENT_ID', '')
 MS_CLIENT_SECRET = os.environ.get('MS_CLIENT_SECRET', '')
-MS_REDIRECT_URI = os.environ.get('MS_REDIRECT_URI', '')
-ONEDRIVE_FILE_PATH = os.environ.get('ONEDRIVE_FILE_PATH', '/Materiales.xlsx')
-ONEDRIVE_SHARE_URL = os.environ.get('ONEDRIVE_SHARE_URL', '').strip()
 INITIAL_EXCEL_PATH = os.environ.get('INITIAL_EXCEL_PATH', '/app/backend/Materiales.xlsx')
+GOOGLE_SHEETS_CSV_URL = os.environ.get('GOOGLE_SHEETS_CSV_URL', 'https://docs.google.com/spreadsheets/d/1R9IoZjB6zcWzoem_BFtH-ojwiExePkOio12Y73oLru0/export?format=csv')
+GOOGLE_SHEETS_WEBAPP_URL = os.environ.get('GOOGLE_SHEETS_WEBAPP_URL', '')
 
 # Support personal + work accounts
 MS_AUTHORITY = "https://login.microsoftonline.com/common"
-MS_SCOPES = ["Files.ReadWrite.All", "User.Read"]  # offline_access added automatically by MSAL
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
-
-ONEDRIVE_TOKEN_ENCRYPTION_KEY = os.environ.get('ONEDRIVE_TOKEN_ENCRYPTION_KEY', '')
-
-def _onedrive_fernet() -> Fernet:
-    if not ONEDRIVE_TOKEN_ENCRYPTION_KEY:
-        raise HTTPException(500, "ONEDRIVE_TOKEN_ENCRYPTION_KEY no configurada. Contactá al administrador del sistema.")
-    try:
-        return Fernet(ONEDRIVE_TOKEN_ENCRYPTION_KEY.encode())
-    except Exception:
-        raise HTTPException(500, "ONEDRIVE_TOKEN_ENCRYPTION_KEY inválida. Generá una clave Fernet válida.")
-
-def _encrypt_onedrive_token(token: str) -> str:
-    return _onedrive_fernet().encrypt(token.encode()).decode()
-
-def _decrypt_onedrive_token(token_enc: str) -> str:
-    try:
-        return _onedrive_fernet().decrypt(token_enc.encode()).decode()
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(500, "No se pudo descifrar el token de OneDrive. Revisá la clave de cifrado o reconectá OneDrive.")
 
 # Microsoft user-authentication redirect URIs
 MS_AUTH_REDIRECT_URI = os.environ.get('MS_AUTH_REDIRECT_URI', 'http://localhost:8000/api/auth/microsoft/callback')
@@ -103,10 +81,6 @@ SMTP_PASS = os.environ.get('SMTP_PASS', '')
 SMTP_FROM = os.environ.get('SMTP_FROM', '')
 EMAIL_NOTIFICATIONS_ENABLED = os.environ.get('EMAIL_NOTIFICATIONS_ENABLED', 'false').lower() == 'true'
 
-# Auto-sync config
-AUTO_IMPORT_INTERVAL_SEC = 300  # re-import OneDrive file every 5 min on read
-AUTO_PUSH_DELAY_SEC = 6         # debounce pushes: wait 6s after last edit
-
 # ---------------- DB ----------------
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -125,7 +99,7 @@ def _cleanup_expired_codes():
             del _auth_codes[k]
 
 # ---------------- App ----------------
-app = FastAPI(title="Materiales OneDrive App")
+app = FastAPI(title="Materiales App")
 api_router = APIRouter(prefix="/api")
 
 # ---------------- Models ----------------
@@ -340,15 +314,6 @@ class ClienteOut(BaseModel):
     mantenimientos: Optional[List[dict]] = None
     materiales_instalados: Optional[List[dict]] = None  # [{material, cantidad, fecha_terminacion, proyecto_id, proyecto_nombre}]
 
-class OneDriveStatus(BaseModel):
-    connected: bool
-    admin_email: Optional[str] = None
-    last_import_at: Optional[str] = None
-    last_push_at: Optional[str] = None
-    file_path: str = ONEDRIVE_FILE_PATH
-    file_name: Optional[str] = None
-    using_share_url: bool = bool(ONEDRIVE_SHARE_URL)
-
 # ---------------- Helpers ----------------
 def hash_password(pw: str) -> str:
     return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
@@ -420,7 +385,6 @@ PERMISSIONS_CATALOG = [
     {"key": "sat.export", "label": "Exportar SAT a Excel", "module": "CRM SAT"},
     {"key": "users.manage", "label": "Gestionar usuarios", "module": "Administración"},
     {"key": "roles.manage", "label": "Gestionar roles y permisos", "module": "Administración"},
-    {"key": "onedrive.manage", "label": "Conectar/Sincronizar OneDrive", "module": "Administración"},
     {"key": "chat.view", "label": "Ver el chat", "module": "Chat"},
     {"key": "chat.edit", "label": "Enviar mensajes en el chat", "module": "Chat"},
     {"key": "dashboard.view", "label": "Ver panel de datos", "module": "Dashboard"},
@@ -659,6 +623,55 @@ def _safe_float(v) -> float:
     except (ValueError, TypeError):
         return 0.0
 
+def _gs_parse_num(s):
+    s = (s or '').strip().replace(' ', '')
+    if not s:
+        return None
+    if ',' in s and '.' in s:
+        s = s.replace('.', '').replace(',', '.')
+    elif ',' in s:
+        s = s.replace(',', '.')
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+def _gs_parse_fecha(s):
+    s = (s or '').strip()
+    m = re.fullmatch(r'(\d{1,2})/(\d{1,2})/(\d{4})', s)
+    if m:
+        d, mo, y = m.groups()
+        return f"{y}-{mo.zfill(2)}-{d.zfill(2)}"
+    return s or None
+
+def _gs_status_web(s):
+    v = (s or '').strip().strip('"').strip().lower()
+    return {
+        'terminado': 'terminado',
+        'pendiente': 'pendiente',
+        'planificado': 'planificado',
+        'a facturar': 'a_facturar',
+        'facturado': 'facturado',
+        'bloqueado': 'bloqueado',
+        'anulado': 'anulado',
+    }.get(v, 'pendiente')
+
+def _gs_bool_web(s):
+    v = (s or '').strip().upper()
+    if v in ('VERDADERO', 'TRUE', 'SÍ', 'SI'):
+        return True
+    if v in ('FALSO', 'FALSE', 'NO'):
+        return False
+    return None
+
+def _gs_status_sheet(s):
+    return {'terminado': 'Terminado', 'pendiente': 'Pendiente', 'planificado': 'Planificado',
+            'a_facturar': 'A facturar', 'facturado': 'Facturado',
+            'bloqueado': 'Bloqueado', 'anulado': 'Anulado'}.get(s, s or '')
+
+def _gs_bool_sheet(b):
+    return 'Sí' if b is True else ''
+
 # ---------------- Excel parsing ----------------
 # Column mapping (A..M in the Excel):
 # A=Materiales, B=CLIENTE, C=Ubicación Cliente, D=Horas PREV, E=Comercial,
@@ -705,108 +718,6 @@ def _msal_app():
         authority=MS_AUTHORITY,
     )
 
-async def _get_onedrive_token() -> str:
-    """Return a fresh access token using the stored refresh token (encrypted)."""
-    doc = await db.onedrive_tokens.find_one({"_id": "admin"})
-    if not doc:
-        raise HTTPException(400, "OneDrive no conectado. El admin debe vincular OneDrive primero.")
-
-    access_token_enc = doc.get("access_token_enc")
-    refresh_token_enc = doc.get("refresh_token_enc")
-
-    if access_token_enc and refresh_token_enc:
-        refresh_token = _decrypt_onedrive_token(refresh_token_enc)
-    elif "access_token" in doc and "refresh_token" in doc:
-        access_token = doc["access_token"]
-        refresh_token = doc["refresh_token"]
-        await db.onedrive_tokens.update_one(
-            {"_id": "admin"},
-            {"$set": {
-                "access_token_enc": _encrypt_onedrive_token(access_token),
-                "refresh_token_enc": _encrypt_onedrive_token(refresh_token),
-            },
-            "$unset": {"access_token": "", "refresh_token": ""}}
-        )
-    else:
-        raise HTTPException(400, "OneDrive no conectado. El admin debe vincular OneDrive primero.")
-
-    app_msal = _msal_app()
-    result = app_msal.acquire_token_by_refresh_token(refresh_token, scopes=MS_SCOPES)
-    if "error" in result:
-        raise HTTPException(401, f"Error refrescando token OneDrive: {result.get('error_description')}")
-    if not result.get("access_token"):
-        raise HTTPException(401, "Microsoft no devolvió access token al refrescar OneDrive")
-    new_access = result["access_token"]
-    new_refresh = result.get("refresh_token")
-    update = {"access_token_enc": _encrypt_onedrive_token(new_access)}
-    if new_refresh:
-        update["refresh_token_enc"] = _encrypt_onedrive_token(new_refresh)
-    await db.onedrive_tokens.update_one({"_id": "admin"}, {"$set": update})
-    return new_access
-
-async def _graph_get(url: str, token: str) -> httpx.Response:
-    async with httpx.AsyncClient(timeout=60) as c:
-        return await c.get(url, headers={"Authorization": f"Bearer {token}"})
-
-async def _graph_request(method: str, url: str, token: str, **kw) -> httpx.Response:
-    async with httpx.AsyncClient(timeout=120) as c:
-        headers = kw.pop("headers", {})
-        headers["Authorization"] = f"Bearer {token}"
-        return await c.request(method, url, headers=headers, **kw)
-
-async def _resolve_share_url(token: str) -> dict:
-    """Resolve ONEDRIVE_SHARE_URL to driveId + itemId + name (cached in Mongo)."""
-    cached = await db.onedrive_share_cache.find_one({"_id": ONEDRIVE_SHARE_URL})
-    if cached:
-        return cached
-    # Encode URL per Graph spec: u! + base64url(no padding)
-    b64 = base64.urlsafe_b64encode(ONEDRIVE_SHARE_URL.encode()).decode().rstrip("=")
-    share_id = f"u!{b64}"
-    url = f"{GRAPH_BASE}/shares/{share_id}/driveItem"
-    r = await _graph_get(url, token)
-    if r.status_code != 200:
-        raise HTTPException(r.status_code, f"No se pudo resolver el enlace compartido: {r.text}")
-    data = r.json()
-    drive_id = data.get("parentReference", {}).get("driveId")
-    item_id = data.get("id")
-    name = data.get("name")
-    if not drive_id or not item_id:
-        raise HTTPException(500, f"Respuesta inesperada del share: {data}")
-    doc = {"_id": ONEDRIVE_SHARE_URL, "drive_id": drive_id, "item_id": item_id, "name": name}
-    await db.onedrive_share_cache.update_one({"_id": ONEDRIVE_SHARE_URL}, {"$set": doc}, upsert=True)
-    return doc
-
-async def _download_excel_from_onedrive() -> bytes:
-    token = await _get_onedrive_token()
-    if ONEDRIVE_SHARE_URL:
-        info = await _resolve_share_url(token)
-        url = f"{GRAPH_BASE}/drives/{info['drive_id']}/items/{info['item_id']}/content"
-    else:
-        url = f"{GRAPH_BASE}/me/drive/root:{ONEDRIVE_FILE_PATH}:/content"
-    r = await _graph_get(url, token)
-    if r.status_code not in (200, 302):
-        raise HTTPException(r.status_code, "Error al descargar el archivo de OneDrive")
-    return r.content
-
-async def _upload_excel_to_onedrive(xlsx_bytes: bytes) -> None:
-    token = await _get_onedrive_token()
-    if ONEDRIVE_SHARE_URL:
-        info = await _resolve_share_url(token)
-        url = f"{GRAPH_BASE}/drives/{info['drive_id']}/items/{info['item_id']}/content"
-    else:
-        url = f"{GRAPH_BASE}/me/drive/root:{ONEDRIVE_FILE_PATH}:/content"
-    async with httpx.AsyncClient(timeout=120) as c:
-        r = await c.put(
-            url,
-            content=xlsx_bytes,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            },
-        )
-    if r.status_code not in (200, 201):
-        raise HTTPException(r.status_code, f"No se pudo subir Excel: {r.text}")
-
 # ---------------- Rate limiter (simple in-memory) ----------------
 import time as _time
 from collections import defaultdict
@@ -839,136 +750,12 @@ async def rate_limit_middleware(request: Request, call_next):
     await _rate_limit(request, 500)
     return await call_next(request)
 import asyncio
-_sync_lock = asyncio.Lock()
-_push_task: Optional[asyncio.Task] = None
-_import_task: Optional[asyncio.Task] = None
 
 def _fire_and_forget(coro):
     """Lanza una corrutina en background con logging de errores."""
     task = asyncio.create_task(coro)
     task.add_done_callback(lambda t: logging.getLogger(__name__).error(f"Background task failed: {t.exception()}", exc_info=t.exception()) if t.exception() else None)
     return task
-
-async def _has_onedrive_link() -> bool:
-    return await db.onedrive_tokens.find_one({"_id": "admin"}) is not None
-
-async def _do_import() -> int:
-    """Internal import — no auth, used by background job."""
-    async with _sync_lock:
-        xlsx_bytes = await _download_excel_from_onedrive()
-        rows = parse_workbook(xlsx_bytes)
-        existing = {m["row_index"]: m for m in await db.materiales.find({}, {"_id": 0}).to_list(10000)}
-        docs = []
-        imported_row_indexes = []
-        imported_at = datetime.now(timezone.utc).isoformat()
-        for r in rows:
-            old = existing.get(r["row_index"])
-            preserved = {}
-            if old:
-                for key in ("manager_id", "manager_name", "project_status", "tecnicos", "demo_seed"):
-                    if key in old:
-                        preserved[key] = old[key]
-            docs.append({
-                "id": old["id"] if old else str(uuid.uuid4()),
-                **r,
-                **preserved,
-                "sync_status": "synced",
-                "updated_at": imported_at,
-                "updated_by": old.get("updated_by", "onedrive") if old else "onedrive",
-            })
-            imported_row_indexes.append(r["row_index"])
-
-        if not docs:
-            raise HTTPException(400, "El Excel de OneDrive no contiene filas para importar; no se modificaron los materiales actuales.")
-
-        # Sincronizar carpetas con concurrencia limitada
-        _sync_sem = asyncio.Semaphore(5)
-        async def _sync_one(doc):
-            async with _sync_sem:
-                await _sync_project_folder(doc)
-        for doc in docs:
-            await db.materiales.update_one(
-                {"row_index": doc["row_index"]},
-                {"$set": doc},
-                upsert=True,
-            )
-            _fire_and_forget(_sync_one(doc))
-        await db.materiales.delete_many({"row_index": {"$nin": imported_row_indexes}})
-        await db.sync_meta.update_one(
-            {"_id": "meta"},
-            {"$set": {"_id": "meta", "last_import_at": imported_at}},
-            upsert=True,
-        )
-        return len(docs)
-
-async def _do_push() -> int:
-    """Internal push — merges pending edits into the OneDrive Excel."""
-    async with _sync_lock:
-        xlsx_bytes = await _download_excel_from_onedrive()
-        wb = load_workbook(io.BytesIO(xlsx_bytes))
-        ws = wb.active
-        materials = await db.materiales.find({}, {"_id": 0}).to_list(10000)
-        for m in materials:
-            row = m["row_index"]
-            for field, col in EDITABLE_COL_MAP.items():
-                val = m.get(field)
-                if val is not None:
-                    ws[f"{col}{row}"] = val
-        out = io.BytesIO()
-        wb.save(out)
-        await _upload_excel_to_onedrive(out.getvalue())
-        await db.materiales.update_many({}, {"$set": {"sync_status": "synced"}})
-        await db.sync_meta.update_one(
-            {"_id": "meta"},
-            {"$set": {"_id": "meta", "last_push_at": datetime.now(timezone.utc).isoformat()}},
-            upsert=True,
-        )
-        return len(materials)
-
-async def _delayed_push():
-    try:
-        await asyncio.sleep(AUTO_PUSH_DELAY_SEC)
-        if not await _has_onedrive_link():
-            return
-        logger = logging.getLogger(__name__)
-        try:
-            n = await _do_push()
-            logger.info(f"Auto-push: {n} filas sincronizadas con OneDrive")
-        except Exception as e:
-            logger.error(f"Auto-push falló: {e}")
-    except asyncio.CancelledError:
-        pass
-
-def schedule_auto_push():
-    global _push_task
-    if _push_task and not _push_task.done():
-        _push_task.cancel()
-    _push_task = _fire_and_forget(_delayed_push())
-
-async def maybe_auto_import():
-    """If OneDrive linked and last import older than AUTO_IMPORT_INTERVAL_SEC, import in background."""
-    global _import_task
-    if not await _has_onedrive_link():
-        return
-    meta = await db.sync_meta.find_one({"_id": "meta"})
-    last = meta.get("last_import_at") if meta else None
-    if last:
-        try:
-            last_dt = datetime.fromisoformat(last)
-            if (datetime.now(timezone.utc) - last_dt).total_seconds() < AUTO_IMPORT_INTERVAL_SEC:
-                return
-        except Exception:
-            pass
-    # Don't run two imports simultaneously
-    if _import_task and not _import_task.done():
-        return
-    async def _runner():
-        try:
-            n = await _do_import()
-            logging.getLogger(__name__).info(f"Auto-import: {n} filas traídas de OneDrive")
-        except Exception as e:
-            logging.getLogger(__name__).error(f"Auto-import falló: {e}")
-    _import_task = _fire_and_forget(_runner())
 
 # ---------------- Auth routes ----------------
 @api_router.post("/auth/register", response_model=TokenOut)
@@ -2506,101 +2293,6 @@ async def delete_stamp(sid: str, admin: dict = Depends(require_permission("plano
         raise HTTPException(404, "Sello no encontrado")
     return {"ok": True}
 
-# ---------------- OneDrive routes ----------------
-@api_router.get("/auth/onedrive/login")
-async def onedrive_login(user: dict = Depends(require_permission("onedrive.manage"))):
-    app_msal = _msal_app()
-    state = pyjwt.encode(
-        {
-            "sub": user["id"],
-            "purpose": "onedrive_link",
-            "exp": datetime.now(timezone.utc) + timedelta(minutes=10),
-        },
-        JWT_SECRET,
-        algorithm=JWT_ALGORITHM,
-    )
-    auth_url = app_msal.get_authorization_request_url(
-        scopes=MS_SCOPES,
-        redirect_uri=MS_REDIRECT_URI,
-        state=state,
-        prompt="select_account",
-    )
-    return {"auth_url": auth_url}
-
-@api_router.get("/auth/onedrive/callback")
-async def onedrive_callback(code: str, state: Optional[str] = None, error: Optional[str] = None, error_description: Optional[str] = None):
-    if error:
-        return HTMLResponse(f"<h2>Error</h2><p>{error}: {error_description}</p>", status_code=400)
-    if not state:
-        return HTMLResponse("<h2>Error</h2><p>Falta state de seguridad. Volvé a iniciar la vinculación.</p>", status_code=400)
-    try:
-        state_payload = pyjwt.decode(state, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        if state_payload.get("purpose") != "onedrive_link":
-            raise ValueError("invalid purpose")
-    except pyjwt.ExpiredSignatureError:
-        return HTMLResponse("<h2>Error</h2><p>State expirado. Volvé a iniciar la vinculación de OneDrive.</p>", status_code=400)
-    except Exception:
-        return HTMLResponse("<h2>Error</h2><p>State inválido. Volvé a iniciar la vinculación de OneDrive.</p>", status_code=400)
-    app_msal = _msal_app()
-    result = app_msal.acquire_token_by_authorization_code(
-        code, scopes=MS_SCOPES, redirect_uri=MS_REDIRECT_URI
-    )
-    if "error" in result:
-        return HTMLResponse(f"<h2>Error</h2><p>{result.get('error_description')}</p>", status_code=400)
-    admin_email = result.get("id_token_claims", {}).get("preferred_username") or result.get("id_token_claims", {}).get("email", "unknown")
-    access_token = result["access_token"]
-    refresh_token = result.get("refresh_token", "")
-    if not refresh_token:
-        return HTMLResponse("<h2>Error</h2><p>Microsoft no devolvió refresh token. Volvé a vincular OneDrive.</p>", status_code=400)
-    try:
-        access_token_enc = _encrypt_onedrive_token(access_token)
-        refresh_token_enc = _encrypt_onedrive_token(refresh_token)
-    except HTTPException as exc:
-        return HTMLResponse(f"<h2>Error del servidor</h2><p>{exc.detail}</p>", status_code=exc.status_code)
-    await db.onedrive_tokens.update_one(
-        {"_id": "admin"},
-        {"$set": {
-            "_id": "admin",
-            "access_token_enc": access_token_enc,
-            "refresh_token_enc": refresh_token_enc,
-            "admin_email": admin_email,
-            "connected_at": datetime.now(timezone.utc).isoformat(),
-        },
-        "$unset": {"access_token": "", "refresh_token": ""}},
-        upsert=True,
-    )
-    return HTMLResponse(
-        f"""<html><body style='font-family:sans-serif;text-align:center;padding:40px;background:#F8FAFC'>
-        <h1 style='color:#EA580C'>✓ OneDrive conectado</h1>
-        <p>Cuenta: <b>{admin_email}</b></p>
-        <p>Ya puedes cerrar esta ventana y volver a la app.</p>
-        </body></html>"""
-    )
-
-@api_router.get("/auth/onedrive/status", response_model=OneDriveStatus)
-async def onedrive_status(user: dict = Depends(current_user)):
-    doc = await db.onedrive_tokens.find_one({"_id": "admin"}, {"_id": 0, "access_token": 0, "refresh_token": 0, "access_token_enc": 0, "refresh_token_enc": 0})
-    if not doc:
-        return OneDriveStatus(connected=False)
-    meta = await db.sync_meta.find_one({"_id": "meta"}, {"_id": 0}) or {}
-    file_name = None
-    if ONEDRIVE_SHARE_URL:
-        share_doc = await db.onedrive_share_cache.find_one({"_id": ONEDRIVE_SHARE_URL})
-        if share_doc:
-            file_name = share_doc.get("name")
-    return OneDriveStatus(
-        connected=True,
-        admin_email=doc.get("admin_email"),
-        last_import_at=meta.get("last_import_at"),
-        last_push_at=meta.get("last_push_at"),
-        file_name=file_name,
-    )
-
-@api_router.post("/auth/onedrive/disconnect")
-async def onedrive_disconnect(user: dict = Depends(require_permission("onedrive.manage"))):
-    await db.onedrive_tokens.delete_one({"_id": "admin"})
-    return {"ok": True}
-
 # ---------------- Microsoft user authentication (Entra ID / Azure AD) ----------------
 @api_router.get("/auth/microsoft/status")
 async def microsoft_status():
@@ -2823,22 +2515,9 @@ async def microsoft_exchange(payload: MicrosoftExchangeRequest, request: Request
     )
 
 
-# ---------------- Sync routes (manual override — uses internal helpers) ----------------
-@api_router.post("/sync/import-from-onedrive")
-async def sync_import(user: dict = Depends(require_permission("onedrive.manage"))):
-    n = await _do_import()
-    return {"imported": n}
-
-@api_router.post("/sync/push-to-onedrive")
-async def sync_push(user: dict = Depends(require_permission("onedrive.manage"))):
-    n = await _do_push()
-    return {"pushed": n}
-
 # ---------------- Materials routes ----------------
 @api_router.get("/materiales", response_model=List[Material])
 async def list_materiales(user: dict = Depends(require_permission("proyectos.view")), q: Optional[str] = None, pending_only: bool = False, limit: int = 2000, manager_id: Optional[str] = None, unassigned: bool = False, project_status: Optional[str] = None, year: Optional[str] = None, month: Optional[str] = None):
-    # fire-and-forget auto-import if stale
-    await maybe_auto_import()
     user_perms = await get_user_permissions(user)
     es_editor_completo = "proyectos.edit" in user_perms
     conditions = []
@@ -2859,6 +2538,7 @@ async def list_materiales(user: dict = Depends(require_permission("proyectos.vie
         conditions.append({"$or": [
             {"materiales": rx}, {"cliente": rx}, {"ubicacion": rx},
             {"tecnico": rx}, {"comentarios": rx}, {"comercial": rx}, {"gestor": rx},
+            {"numero_pedido": rx},
         ]})
     if manager_id:
         ids = [i.strip() for i in manager_id.split(",") if i.strip()]
@@ -2935,6 +2615,109 @@ async def create_material(payload: MaterialManualCreate, user: dict = Depends(re
     }
     await db.materiales.insert_one(doc)
     return doc
+
+
+@api_router.post("/sync/google-sheets")
+async def sync_google_sheets(user: dict = Depends(require_permission("proyectos.edit"))):
+    if not GOOGLE_SHEETS_CSV_URL:
+        raise HTTPException(503, "GOOGLE_SHEETS_CSV_URL no configurada")
+    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as c:
+        r = await c.get(GOOGLE_SHEETS_CSV_URL)
+    if r.status_code != 200:
+        raise HTTPException(502, f"No se pudo leer el Google Sheets (HTTP {r.status_code}).")
+    rows = list(csv.reader(io.StringIO(r.text)))
+    if not rows:
+        raise HTTPException(502, "El Google Sheets está vacío.")
+    data = rows[1:]
+
+    existing = await db.materiales.find({}, {"numero_pedido": 1, "project_status": 1, "pedido_realizado": 1, "_id": 0}).to_list(10000)
+    by_numero = {m.get("numero_pedido"): m for m in existing if m.get("numero_pedido")}
+
+    imported = 0
+    updates = []
+    now = datetime.now(timezone.utc).isoformat()
+
+    for i, r in enumerate(data, 1):
+        numero = (r[0] or '').strip() if len(r) > 0 else ''
+        if not numero:
+            continue
+        if numero not in by_numero:
+            nombre = (r[2] or '').strip() if len(r) > 2 else ''
+            doc = {
+                "id": str(uuid.uuid4()),
+                "row_index": i,
+                "materiales": nombre,
+                "cliente": nombre,
+                "numero_pedido": numero,
+                "ubicacion": (r[3] or '').strip() if len(r) > 3 else None,
+                "horas_prev": (r[4] or '').strip() if len(r) > 4 else None,
+                "comercial": (r[9] or '').strip() if len(r) > 9 else None,
+                "gestor": (r[10] or '').strip() if len(r) > 10 else None,
+                "fecha": _gs_parse_fecha(r[1]) if len(r) > 1 else None,
+                "comentarios": (r[5] or '').strip() if len(r) > 5 else None,
+                "project_status": _gs_status_web(r[12]) if len(r) > 12 else "pendiente",
+                "importe_venta_prev_materiales": _gs_parse_num(r[6]) if len(r) > 6 else None,
+                "coste_prev_materiales": _gs_parse_num(r[7]) if len(r) > 7 else None,
+                "importe_venta_prev_mano_de_obra": None,
+                "coste_prev_mano_de_obra": None,
+                "coste_prev_actualizado_materiales": None,
+                "coste_prev_actualizado_mano_de_obra": None,
+                "coste_real_materiales": None,
+                "coste_real_mano_de_obra": None,
+                "beneficio_inicial": None,
+                "beneficio_real": None,
+                "ingreso_facturado": 0,
+                "pedido_realizado": _gs_bool_web(r[11]) if len(r) > 11 else None,
+                "fecha_entrega_material": None,
+                "fecha_prevista_planificacion": None,
+                "fecha_prevista_facturacion": None,
+                "manager_id": None,
+                "manager_name": None,
+                "tecnicos": None,
+                "horas_imputadas": 0,
+                "historial_horas": [],
+                "materiales_proyecto": [],
+                "sync_status": "synced",
+                "created_at": now,
+                "updated_at": now,
+            }
+            await db.materiales.insert_one(doc)
+            imported += 1
+        else:
+            m = by_numero[numero]
+            web_status = m.get("project_status") or "pendiente"
+            target_status = _gs_status_sheet(web_status)
+            current_status = (r[12] or '').strip() if len(r) > 12 else ''
+            target_pedido = _gs_bool_sheet(m.get("pedido_realizado"))
+            current_pedido = (r[11] or '').strip() if len(r) > 11 else ''
+            upd = {"numero_proyecto": numero}
+            changed = False
+            if target_status != current_status:
+                upd["estado"] = target_status
+                changed = True
+            if target_pedido != current_pedido and m.get("pedido_realizado") is not None:
+                upd["pedido_lanzado"] = m.get("pedido_realizado") is True
+                changed = True
+            if changed:
+                updates.append(upd)
+
+    updated = 0
+    if updates:
+        if not GOOGLE_SHEETS_WEBAPP_URL:
+            raise HTTPException(503, f"GOOGLE_SHEETS_WEBAPP_URL no configurada (hay {len(updates)} cambios pendientes de enviar).")
+        async with httpx.AsyncClient(timeout=120, follow_redirects=True) as c:
+            r = await c.post(GOOGLE_SHEETS_WEBAPP_URL, json={"updates": updates})
+        updated = len(updates)
+        try:
+            resp = r.json()
+            if resp.get("ok") is False:
+                raise HTTPException(502, f"El script de Google devolvió error: {resp.get('error')}")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
+    return {"imported": imported, "updated": updated}
 
 
 @api_router.get("/materiales/export-excel")
@@ -3200,8 +2983,6 @@ async def update_material(mid: str, payload: MaterialUpdate, user: dict = Depend
                 "created_at": datetime.now(timezone.utc).isoformat(),
             })
     doc = await db.materiales.find_one({"id": mid}, {"_id": 0})
-    if await _has_onedrive_link():
-        schedule_auto_push()
     # Sincronizar carpeta del proyecto
     _fire_and_forget(_sync_project_folder(doc))
     # Si el proyecto pasa a terminado, sincronizar materiales instalados al cliente
@@ -6009,7 +5790,7 @@ async def seed_demo_data():
 # ---------------- Root/Health ----------------
 @api_router.get("/")
 async def root():
-    return {"status": "ok", "service": "Materiales OneDrive App"}
+    return {"status": "ok", "service": "Materiales App"}
 
 
 # ====================  CRM SAT — incidencias  ====================
@@ -7192,6 +6973,53 @@ async def delete_nota(
     return {"ok": True}
 
 
+# ---------------- Dashboard Notes ----------------
+
+class DashboardNoteCreate(BaseModel):
+    texto: str
+    color: Optional[str] = None
+
+
+class DashboardNoteUpdate(BaseModel):
+    color: Optional[str] = None
+
+
+@api_router.get("/dashboard-notes")
+async def list_dashboard_notes(user: dict = Depends(current_user)):
+    docs = await db.dashboard_notes.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return docs
+
+
+@api_router.post("/dashboard-notes")
+async def create_dashboard_note(payload: DashboardNoteCreate, user: dict = Depends(current_user)):
+    texto = (payload.texto or "").strip()
+    if not texto:
+        raise HTTPException(400, "La anotación no puede estar vacía")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "texto": texto,
+        "color": payload.color or "#1E88E5",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "user_email": user.get("email") or "",
+    }
+    await db.dashboard_notes.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.patch("/dashboard-notes/{note_id}")
+async def update_dashboard_note(note_id: str, payload: DashboardNoteUpdate, user: dict = Depends(current_user)):
+    if payload.color is not None:
+        await db.dashboard_notes.update_one({"id": note_id}, {"$set": {"color": payload.color}})
+    return {"ok": True}
+
+
+@api_router.delete("/dashboard-notes/{note_id}")
+async def delete_dashboard_note(note_id: str, user: dict = Depends(current_user)):
+    await db.dashboard_notes.delete_one({"id": note_id})
+    return {"ok": True}
+
+
 # ---------------- Documentos (fichas técnicas / manuales) ----------------
 
 DOCUMENTOS_DIR = ROOT_DIR / "uploads" / "documentos"
@@ -7760,8 +7588,8 @@ async def download_encrypted_backup(user: dict = Depends(require_permission("use
         "budget_templates", "budget_versions", "budget_requests",
         "sat_incidents", "sat_clients", "chats", "messages", "notas",
         "documentos", "notifications", "guards", "stamps",
-        "preciario_descuentos", "project_history", "onedrive_tokens",
-        "sync_meta", "config", "consentimientos",
+        "preciario_descuentos", "project_history",
+        "config", "consentimientos",
     ]
     dump = {}
     for coll_name in collections:

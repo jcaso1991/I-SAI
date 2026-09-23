@@ -394,7 +394,7 @@ def _s2_roles():
         ["Documentos", "Subir documentos", "Si", "Si", "-", "-"],
         ["Administracion", "Panel de administracion", "Si", "-", "-", "-"],
         ["Administracion", "Gestionar usuarios y roles", "Si", "-", "-", "-"],
-        ["Administracion", "Configurar OneDrive", "Si", "-", "-", "-"],
+        ["Administracion", "Sincronizacion Google Sheets", "Si", "-", "-", "-"],
         ["Notas", "Ver notas propias", "Si", "Si", "Si", "Si"],
         ["Notas", "Ver notas de otros", "Si", "Si", "-", "-"],
         ["Portfolio", "Ver portfolio publico", "Si", "Si", "Si", "Si"],
@@ -448,7 +448,17 @@ def _s3_modulos():
           "sincroniza automaticamente las cantidades al completar eventos. Esto permite "
           "monitorizar en tiempo real que porcentaje de materiales se ha instalado en cada obra. "
           "Los gestores pueden monitorizar el progreso de cada proyecto desde el dashboard, "
-          "mientras que los tecnicos actualizan el estado desde el movil en tiempo real."),
+          "mientras que los tecnicos actualizan el estado desde el movil en tiempo real.\n\n"
+          "El modulo Proyectos funciona como cuadro de mando: vista Lista, Tablero Kanban por "
+          "estado y Calendario por fecha de planificacion. Permite ordenar por fecha de alta o "
+          "de planificacion, ver KPIs de planificados y planificacion vencida, y editar rapido "
+          "desde la tarjeta (estado, fecha de planificacion, material pedido y notas) sin abrir "
+          "la ficha completa.\n\n"
+          "Ademas, el panel lateral del cuadro de mando incluye un <b>bloc de notas</b> para "
+          "anotaciones rapidas. Las notas se guardan en backend (coleccion "
+          "<b>dashboard_notes</b>) y quedan disponibles para todos los usuarios con acceso, "
+          "permitiendo dejar avisos o recordatorios compartidos desde los endpoints "
+          "<b>GET/POST/DELETE /api/dashboard-notes</b>."),
 
         ("Calendario + cascada automatica",
          "Calendario visual compartido con vistas semanales y mensuales donde se planifican "
@@ -618,9 +628,9 @@ def _s3_modulos():
          "notificar. Las guardias pueden configurarse con rotaciones semanales y tipos "
          "de guardia (localizada, presencial, etc.)."),
 
-        ("Administracion (OneDrive, temas, precios)",
+        ("Administracion (Google Sheets, temas, precios)",
          "Panel de configuracion general accesible solo para administradores. Desde aqui "
-         "se gestiona: la conexion con Microsoft OneDrive para sincronizacion de Excels, "
+          "se gestiona: la sincronizacion con Google Sheets para importar y actualizar proyectos, "
          "la personalizacion visual de la aplicacion (temas de color, logotipo de empresa), "
          "la configuracion de parametros globales (IVA por defecto, moneda, formato de "
          "fechas), la gestion de usuarios y roles, y los ajustes de precios y margenes "
@@ -755,7 +765,7 @@ def _s5_diagrama():
 
     diagrama = (
         "                                                            +------------------+\n"
-        "                                                            |    OneDrive      |\n"
+        "                                                            |   Google Sheets  |\n"
         "                                                            | sincronizacion   |\n"
         "                                                            | Excel (5m/6s)    |\n"
         "                                                            +--------+---------+\n"
@@ -977,25 +987,20 @@ def _s7_complementarios():
         "I-SAI se integra con varios sistemas externos y servicios complementarios que "
         "amplian sus capacidades y automatizan procesos que de otra forma requeririan "
         "trabajo manual. Estas integraciones estan disenadas para que la empresa pueda "
-        "seguir usando sus herramientas habituales (Excel, OneDrive, Active Directory) "
+        "seguir usando sus herramientas habituales (Excel, Google Sheets, Active Directory) "
         "mientras I-SAI mantiene los datos sincronizados automaticamente.",
         S["body"]
     ))
 
     sistemas = [
-        ("OneDrive (sincronizacion Excel bidireccional)",
-         "Conexion con Microsoft OneDrive para importar y exportar archivos Excel de "
-         "forma bidireccional y automatica. Muchas empresas instaladoras gestionan sus "
-         "datos en Excels compartidos (tarifas, listados de materiales, planificaciones). "
-         "I-SAI no les obliga a abandonar sus Excels, sino que los sincroniza: "
-         "<b>Auto-import cada 5 minutos</b>: el sistema monitoriza los archivos Excel "
-         "en las carpetas de OneDrive configuradas y detecta cambios. Si una fila se "
-         "modifica en el Excel, el cambio se refleja en la base de datos de I-SAI. "
-         "<b>Auto-push cada 6 segundos</b>: cuando un usuario modifica datos desde "
-         "la aplicacion, el sistema escribe los cambios de vuelta al Excel en OneDrive "
-         "casi instantaneamente. Esto permite que los Excels y la aplicacion esten "
-         "siempre en sincronia, y que los empleados que prefieran trabajar con Excel "
-         "puedan seguir haciendolo sin romper la integridad de los datos."),
+        ("Sincronizacion con Google Sheets",
+         "Integracion con un Google Sheets de proyectos. Desde el modulo Proyectos, el "
+         "boton <b>Sincronizar</b> conecta con el Google Sheets configurado e importa "
+         "los proyectos nuevos que haya en la hoja. A la vez, escribe en el Excel los "
+         "cambios de estado y de pedido realizados desde la aplicacion web, de modo que "
+         "la hoja de calculo y la aplicacion se mantienen alineadas. Permite a las "
+         "empresas seguir planificando en su hoja de calculo habitual sin duplicar el "
+         "trabajo en la aplicacion."),
 
         ("Microsoft Entra ID (login SSO)",
          "Integracion con Microsoft Entra ID (anteriormente Azure AD) para autenticacion "
@@ -1039,7 +1044,7 @@ def _s7_complementarios():
         ("Exportacion Excel/PDF",
          "Funcionalidad transversal que permite exportar datos desde practicamente "
          "cualquier modulo a formatos Excel y PDF. Los Excels exportados se pueden "
-         "configurar para que se sincronicen automaticamente con OneDrive (si esta "
+          "configurar para que se sincronicen automaticamente con Google Sheets (si esta "
          "configurado). Formatos disponibles: listados de proyectos con filtros "
          "aplicados, historial de fichajes para la gestoria, presupuestos en PDF "
          "profesional con membrete, planos con sellos exportados a PDF, informes "
@@ -1116,14 +1121,7 @@ def _s8_seguridad():
          "para incidencias. El historial es inmutable: solo se pueden anadir entradas "
          "(append-only), nunca modificar ni eliminar las existentes."),
 
-        ("OneDrive encriptado con Fernet",
-         "Los tokens de acceso y refresco de Microsoft Graph API se almacenan "
-         "encriptados con <b>Fernet</b>, que implementa AES-128 en modo CBC con "
-         "HMAC-SHA256 para garantizar confidencialidad e integridad. Los tokens "
-         "nunca se guardan en texto plano en la base de datos. La clave de cifrado "
-         "se almacena en variable de entorno, no en el codigo."),
-
-        ("Sanitizacion XSS",
+         ("Sanitizacion XSS",
          "Todas las entradas de texto se sanitizan mediante <b>html.escape()</b> en "
          "la funcion <b>_clean()</b>, que escapa los caracteres &lt; &gt; &amp; "
          "&quot; &#x27; en todas las entradas de usuario. Esto previene ataques de "
@@ -1280,7 +1278,7 @@ def _s10_infraestructura():
         ["Generacion PDF", "reportlab 4.2.5 (platypus, tablas, graficos)"],
         ["Manipulacion PDF", "pypdf 5.1.0 (lectura, escritura, fusion)"],
         ["Procesamiento imagenes", "Pillow 12.2.0"],
-        ["Tareas programadas", "APScheduler / Celery (OneDrive sync, purgas)"],
+        ["Tareas programadas", "APScheduler / Celery (purgas)"],
         ["Notificaciones push", "Expo Push API + Firebase Cloud Messaging"],
 
         ["Contenedores", "Docker (imagen Python 3.12-slim)"],
@@ -1340,11 +1338,10 @@ def _s10_infraestructura():
     E.append(Paragraph(
         "<b>MONGODB_URI</b> - cadena de conexion al cluster de MongoDB. "
         "<b>JWT_SECRET_KEY</b> - clave secreta para firma de tokens JWT. "
-        "<b>ONEDRIVE_CLIENT_ID / ONEDRIVE_CLIENT_SECRET</b> - credenciales de la "
-        "aplicacion registrada en Microsoft Azure. "
         "<b>ENTRA_TENANT_ID</b> - identificador del tenant de Microsoft Entra ID "
         "para login SSO. "
-        "<b>ENCRYPTION_KEY</b> - clave Fernet para cifrado de tokens OneDrive. "
+        "<b>GOOGLE_SHEETS_WEBAPP_URL</b> - URL del Google Apps Script/Web App para "
+        "sincronizar proyectos con Google Sheets. "
         "<b>CORS_ORIGINS</b> - lista de origenes permitidos para CORS. "
         "<b>SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASSWORD</b> - configuracion "
         "del servidor de correo para envio de emails (notificaciones, recuperacion "
@@ -1417,7 +1414,7 @@ def _s11_endpoints():
         ["/api/portfolio", "3", "Listado productos publicos (sin auth), detalle producto publico, contacto/solicitud presupuesto"],
         ["/api/utils", "4", "Imagenes a PDF, exportacion generica Excel/PDF, compresion imagenes, generacion QR"],
         ["/api/notifications", "3", "Listado notificaciones del usuario, marcar leidas, preferencias notificaciones"],
-        ["/api/onedrive", "4", "Estado sincronizacion, forzar import manual, forzar export manual, configurar carpeta OneDrive"],
+        ["/api/sync/google-sheets", "1", "Sincronizar proyectos con Google Sheets (importar nuevos, escribir cambios)"],
         ["/api/entra", "2", "URL de login Entra ID, callback Entra ID (intercambia codigo por token JWT)"],
         ["/api/audit", "2", "Historial cambios (por proyecto/entidad, por usuario, por rango fechas), detalle cambio"],
         ["/api/gdpr", "7", "Exportar datos personales, solicitar eliminacion, estado solicitud, registro consentimiento (POST /consent/register), historial consentimientos (GET /consent/history), revocar consentimiento"],
@@ -1481,7 +1478,7 @@ def _s12_resumen():
          "aceptados, partes de trabajo electronicos. El papel desaparece de todos "
          "los procesos operativos."),
         ("Eliminacion de Excels duplicados",
-         "La sincronizacion bidireccional con OneDrive y la base de datos unificada "
+          "La sincronizacion bidireccional con Google Sheets y la base de datos unificada "
          "aseguran que solo existe una version de cada dato. Si alguien modifica "
          "el Excel de tarifas, el cambio se refleja en la app en minutos. Si alguien "
          "actualiza un precio en la app, el Excel se actualiza en segundos."),

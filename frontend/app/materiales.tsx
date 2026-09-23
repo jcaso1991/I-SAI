@@ -42,6 +42,12 @@ const STATUS_LABELS: Record<string, string> = {
   facturado: "Fact.", terminado: "Term.", bloqueado: "Bloq.", anulado: "Anul.",
 };
 
+const fmtFecha = (iso?: string) => {
+  if (!iso) return "";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+};
+
 export default function Materiales() {
   const router = useRouter();
   const routerRef = useRef(router);
@@ -66,6 +72,17 @@ export default function Materiales() {
   const [showManagerPanel, setShowManagerPanel] = useState(false);
   const [yearFilter, setYearFilter] = useState(params.year || "todos");
   const [monthFilter, setMonthFilter] = useState(params.month || "");
+  const [sortField, setSortField] = useState<null | "fecha" | "fecha_prevista_planificacion">(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [showSortMenu, setShowSortMenu] = useState(false);
+  const [viewMode, setViewMode] = useState<"lista" | "kanban" | "calendario">("lista");
+  const [calCursor, setCalCursor] = useState(() => {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
+  const [calCollapsed, setCalCollapsed] = useState(false);
+  const [pedidoFilter, setPedidoFilter] = useState<null | "si" | "no">(null);
+  const [syncing, setSyncing] = useState(false);
   // Modal nuevo proyecto
   const [showNewProject, setShowNewProject] = useState(false);
   const [newMat, setNewMat] = useState("");
@@ -78,6 +95,16 @@ export default function Materiales() {
   const [newTecnico, setNewTecnico] = useState("");
   const [newComent, setNewComent] = useState("");
   const [newSaving, setNewSaving] = useState(false);
+  const [quickEdit, setQuickEdit] = useState<any>(null);
+  const [qeStatus, setQeStatus] = useState("pendiente");
+  const [qePlan, setQePlan] = useState("");
+  const [qePedido, setQePedido] = useState<null | "si" | "no">(null);
+  const [qeNotas, setQeNotas] = useState("");
+  const [qeSaving, setQeSaving] = useState(false);
+  const [dashNotes, setDashNotes] = useState<any[]>([]);
+  const [dashNoteText, setDashNoteText] = useState("");
+  const NOTE_COLORS = ["#1E88E5", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899", "#14B8A6", "#F97316"];
+  const [noteColorMenu, setNoteColorMenu] = useState<string | null>(null);
 
   const s = useThemedStyles(useS);
   const { theme } = useTheme();
@@ -145,6 +172,7 @@ export default function Materiales() {
     load();
     api.listManagers().then(setManagers).catch(() => {});
     api.statsByManager(yearFilter).then(setManagerStats).catch(() => {});
+    api.listDashboardNotes().then(setDashNotes).catch(() => {});
   }, [load, yearFilter]));
 
   useEffect(() => {
@@ -164,6 +192,78 @@ export default function Materiales() {
 
   const clearManagerFilter = () => setManagerFilterIds([]);
 
+  const syncSheets = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      const res = await api.syncGoogleSheets();
+      Alert.alert("Sincronización completada", `Proyectos añadidos: ${res.imported}\nProyectos modificados: ${res.updated}`);
+      load();
+    } catch (e: any) {
+      Alert.alert("Error de sincronización", e.message || "No se pudo sincronizar");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const openQuickEdit = (item: any) => {
+    setQuickEdit(item);
+    setQeStatus(item.project_status || "pendiente");
+    setQePlan(item.fecha_prevista_planificacion || "");
+    setQePedido(item.pedido_realizado === true ? "si" : item.pedido_realizado === false ? "no" : null);
+    setQeNotas(item.comentarios || "");
+  };
+
+  const saveQuickEdit = async () => {
+    if (!quickEdit) return;
+    setQeSaving(true);
+    try {
+      await api.updateMaterial(quickEdit.id, {
+        project_status: qeStatus,
+        fecha_prevista_planificacion: qePlan || null,
+        pedido_realizado: qePedido === "si" ? true : qePedido === "no" ? false : null,
+        comentarios: qeNotas || null,
+      });
+      setQuickEdit(null);
+      load();
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "No se pudo guardar");
+    } finally {
+      setQeSaving(false);
+    }
+  };
+
+  const addDashNote = async () => {
+    const t = dashNoteText.trim();
+    if (!t) return;
+    try {
+      await api.createDashboardNote(t, NOTE_COLORS[Math.floor(Math.random() * NOTE_COLORS.length)]);
+      setDashNoteText("");
+      const notes = await api.listDashboardNotes();
+      setDashNotes(notes);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "No se pudo guardar la nota");
+    }
+  };
+
+  const deleteDashNote = async (id: string) => {
+    try {
+      await api.deleteDashboardNote(id);
+      setDashNotes((prev) => prev.filter((n) => n.id !== id));
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "No se pudo borrar la nota");
+    }
+  };
+
+  const changeNoteColor = async (id: string, color: string) => {
+    try {
+      await api.updateDashboardNote(id, color);
+      setDashNotes((prev) => prev.map((n) => (n.id === id ? { ...n, color } : n)));
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "No se pudo cambiar el color");
+    }
+  };
+
   const logout = async () => {
     await clearToken();
     router.replace("/login");
@@ -173,6 +273,91 @@ export default function Materiales() {
 
   const { has } = usePermissions();
   const esEditorCompleto = has("proyectos.edit");
+
+  const filteredItems = useMemo(() => {
+    if (!pedidoFilter) return items;
+    if (pedidoFilter === "si") return items.filter((it: any) => it.pedido_realizado === true);
+    return items.filter((it: any) => !it.pedido_realizado);
+  }, [items, pedidoFilter]);
+
+  const sortedItems = useMemo(() => {
+    if (!sortField) return filteredItems;
+    const arr = [...filteredItems];
+    arr.sort((a: any, b: any) => {
+      const fa = (a[sortField] || "").toString();
+      const fb = (b[sortField] || "").toString();
+      if (!fa && !fb) return 0;
+      if (!fa) return 1;
+      if (!fb) return -1;
+      const cmp = fa.localeCompare(fb);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return arr;
+  }, [filteredItems, sortField, sortDir]);
+
+  const planificadosCount = useMemo(() => items.filter((it: any) => it.project_status === "planificado").length, [items]);
+  const vencidosCount = useMemo(() => {
+    const hoy = new Date().toISOString().slice(0, 10);
+    return items.filter((it: any) => {
+      const fp = it.fecha_prevista_planificacion;
+      return fp && fp < hoy && !["terminado", "facturado", "anulado"].includes(it.project_status);
+    }).length;
+  }, [items]);
+
+  const groupedByStatus = useMemo(() => {
+    if (statusFilterIds.length < 2) return null;
+    return statusFilterIds.map((key) => {
+      const st = PROJECT_STATUSES.find((x) => x.key === key);
+      return {
+        key,
+        label: st?.label || key,
+        color: st?.color || COLORS.primary,
+        items: sortedItems.filter((it: any) => (it.project_status || "pendiente") === key),
+      };
+    });
+  }, [statusFilterIds, sortedItems]);
+
+  const kanbanColumns = useMemo(() => {
+    const order = ["pendiente", "planificado", "terminado"];
+    return order.map((key) => {
+      const st = PROJECT_STATUSES.find((x) => x.key === key);
+      return {
+        key,
+        label: st?.label || key,
+        color: st?.color || COLORS.primary,
+        items: sortedItems.filter((it: any) => (it.project_status || "pendiente") === key),
+      };
+    });
+  }, [sortedItems]);
+
+  const calDays = useMemo(() => {
+    const { year, month } = calCursor;
+    const first = new Date(year, month, 1);
+    const offset = (first.getDay() + 6) % 7;
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells: (null | { day: number; date: string })[] = [];
+    for (let i = 0; i < offset; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) {
+      cells.push({ day: d, date: `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}` });
+    }
+    return cells;
+  }, [calCursor]);
+
+  const projectsByDate = useMemo(() => {
+    const map: Record<string, any[]> = {};
+    for (const it of sortedItems) {
+      const fp = it.fecha_prevista_planificacion;
+      if (!fp) continue;
+      (map[fp] = map[fp] || []).push(it);
+    }
+    return map;
+  }, [sortedItems]);
+
+  const calMonthLabel = new Date(calCursor.year, calCursor.month, 1).toLocaleDateString("es-ES", { month: "long", year: "numeric" });
+  const calTodayStr = new Date().toISOString().slice(0, 10);
+  const calPrev = () => setCalCursor((c) => (c.month === 0 ? { year: c.year - 1, month: 11 } : { year: c.year, month: c.month - 1 }));
+  const calNext = () => setCalCursor((c) => (c.month === 11 ? { year: c.year + 1, month: 0 } : { year: c.year, month: c.month + 1 }));
+  const calToday = () => { const d = new Date(); setCalCursor({ year: d.getFullYear(), month: d.getMonth() }); };
 
   const renderItem = ({ item }: any) => {
     const pending = item.sync_status === "pending";
@@ -187,12 +372,24 @@ export default function Materiales() {
       .join("")
       .toUpperCase()
       .slice(0, 2);
+    const planRaw = item.fecha_prevista_planificacion;
+    const doneState = ["terminado", "facturado", "anulado"].includes(projectStatus);
+    let planTagStyle: any = null;
+    if (planRaw && !doneState) {
+      const hoy = new Date().toISOString().slice(0, 10);
+      if (planRaw < hoy) planTagStyle = { backgroundColor: COLORS.errorBg, color: COLORS.errorText };
+      else {
+        const diff = (new Date(planRaw).getTime() - new Date(hoy).getTime()) / 86400000;
+        if (diff <= 7) planTagStyle = { backgroundColor: COLORS.pendingBg, color: COLORS.pendingText };
+        else planTagStyle = { backgroundColor: COLORS.syncedBg, color: COLORS.syncedText };
+      }
+    }
 
     return (
       <TouchableOpacity
         testID={`material-item-${item.id}`}
         style={s.card}
-        onPress={() => router.push(`/material/${item.id}`)}
+        onPress={() => openQuickEdit(item)}
         activeOpacity={0.7}
       >
         <View style={[s.cardBar, { backgroundColor: statusColor }]} />
@@ -202,8 +399,13 @@ export default function Materiales() {
           </View>
           <View style={s.cardInfo}>
             <View style={s.cardTopRow}>
+              {item.numero_pedido ? (
+                <Text style={s.cardNumero} numberOfLines={1}>{item.numero_pedido}</Text>
+              ) : null}
               <Text style={s.cardCode} numberOfLines={1}>{item.materiales || "—"}</Text>
-              <Text style={s.cardClient} numberOfLines={1}>{item.cliente || ""}</Text>
+              {item.cliente && item.cliente !== item.materiales ? (
+                <Text style={s.cardClient} numberOfLines={1}>{item.cliente}</Text>
+              ) : null}
             </View>
             {item.ubicacion ? (
               <View style={s.cardAddressRow}>
@@ -212,6 +414,18 @@ export default function Materiales() {
               </View>
             ) : null}
             <View style={s.cardMetaRow}>
+              {item.fecha ? (
+                <View style={s.cardMetaTag}>
+                  <Ionicons name="calendar-outline" size={9} color={COLORS.textSecondary} />
+                  <Text style={s.cardMetaText}>Alta: {fmtFecha(item.fecha)}</Text>
+                </View>
+              ) : null}
+              {item.comentarios ? (
+                <View style={s.cardMetaTag}>
+                  <Ionicons name="document-text-outline" size={9} color={COLORS.textSecondary} />
+                  <Text style={s.cardMetaText} numberOfLines={1}>{item.comentarios}</Text>
+                </View>
+              ) : null}
               <View style={s.cardMetaTag}>
                 <Text style={s.cardMetaText}>{item.horas_prev || "—"}h</Text>
               </View>
@@ -233,9 +447,9 @@ export default function Materiales() {
                 </View>
               ) : null}
               {item.fecha_prevista_planificacion ? (
-                <View style={s.cardMetaTag}>
-                  <Ionicons name="calendar-outline" size={9} color={COLORS.textSecondary} />
-                  <Text style={s.cardMetaText}>Plan: {item.fecha_prevista_planificacion}</Text>
+                <View style={[s.cardMetaTag, planTagStyle ? { backgroundColor: planTagStyle.backgroundColor } : null]}>
+                  <Ionicons name="calendar-outline" size={9} color={planTagStyle ? planTagStyle.color : COLORS.textSecondary} />
+                  <Text style={[s.cardMetaText, planTagStyle ? { color: planTagStyle.color, fontWeight: "700" } : null]}>Plan: {fmtFecha(item.fecha_prevista_planificacion)}</Text>
                 </View>
               ) : null}
               {item.fecha_prevista_facturacion ? (
@@ -268,8 +482,47 @@ export default function Materiales() {
     );
   };
 
+  const renderNotesBlock = () => (
+    <View style={s.managerSection}>
+      <Text style={s.managerSectionTitle}>NOTAS</Text>
+      <View style={{ flexDirection: "row", gap: 6, marginBottom: 8, alignItems: "flex-end" }}>
+        <TextInput
+          style={{ flex: 1, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: COLORS.text, minHeight: 40, textAlignVertical: "top" }}
+          value={dashNoteText}
+          onChangeText={setDashNoteText}
+          placeholder="Escribe una anotación..."
+          placeholderTextColor={COLORS.textDisabled}
+          multiline
+        />
+        <TouchableOpacity onPress={addDashNote} style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: COLORS.primary, alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name="add" size={20} color="#fff" />
+        </TouchableOpacity>
+      </View>
+      {dashNotes.map((n) => (
+        <View key={n.id}>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, marginBottom: 4 }}>
+            <Text style={{ flex: 1, fontSize: 13, color: COLORS.text, lineHeight: 18, textDecorationLine: "underline", textDecorationColor: n.color || COLORS.primary }}>{n.texto}</Text>
+            <TouchableOpacity onPress={() => setNoteColorMenu(noteColorMenu === n.id ? null : n.id)} hitSlop={8}>
+              <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: n.color || COLORS.primary, borderWidth: 2, borderColor: COLORS.border }} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => deleteDashNote(n.id)} hitSlop={8}>
+              <Ionicons name="close" size={16} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          </View>
+          {noteColorMenu === n.id && (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 6, paddingLeft: 4 }}>
+              {NOTE_COLORS.map((c) => (
+                <TouchableOpacity key={c} onPress={() => { changeNoteColor(n.id, c); setNoteColorMenu(null); }} style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: c, borderWidth: n.color === c ? 3 : 1, borderColor: n.color === c ? COLORS.text : "#fff" }} />
+              ))}
+            </View>
+          )}
+        </View>
+      ))}
+    </View>
+  );
+
   const renderStatsSidebar = () => {
-    if (managerStats.length === 0) return null;
+    if (managerStats.length === 0) return <>{renderNotesBlock()}</>;
     const totalProyectos = managerStats.reduce((s, m) => s + m.total, 0);
     const totalByStatus: Record<string, number> = {};
     managerStats.forEach((m) => {
@@ -343,6 +596,21 @@ export default function Materiales() {
           </View>
         </TouchableOpacity>
 
+        <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+          <View style={{ flex: 1, backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, padding: 10 }}>
+            <Text style={{ fontSize: 18, fontWeight: "800", color: COLORS.pendingText }}>{totalByStatus["pendiente"] || 0}</Text>
+            <Text style={{ fontSize: 10, fontWeight: "600", color: COLORS.textSecondary }}>Pendientes</Text>
+          </View>
+          <View style={{ flex: 1, backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, padding: 10 }}>
+            <Text style={{ fontSize: 18, fontWeight: "800", color: COLORS.primary }}>{planificadosCount}</Text>
+            <Text style={{ fontSize: 10, fontWeight: "600", color: COLORS.textSecondary }}>Planificados</Text>
+          </View>
+          <View style={{ flex: 1, backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, padding: 10 }}>
+            <Text style={{ fontSize: 18, fontWeight: "800", color: COLORS.errorText }}>{vencidosCount}</Text>
+            <Text style={{ fontSize: 10, fontWeight: "600", color: COLORS.textSecondary }}>Plan. vencida</Text>
+          </View>
+        </View>
+
         <View style={s.managerSection}>
           <Text style={s.managerSectionTitle}>RESPONSABLES</Text>
           {managerStats.map((mgr) => (
@@ -362,6 +630,8 @@ export default function Materiales() {
             </TouchableOpacity>
           ))}
         </View>
+
+        {renderNotesBlock()}
       </>
     );
   };
@@ -536,39 +806,70 @@ export default function Materiales() {
 
             {!isWide && renderMobileStats()}
 
-            {stats && (
-              <View style={s.kpiStrip}>
-                <View style={s.kpiCard}>
-                  <View style={[s.kpiIconWrap, { backgroundColor: COLORS.pillBlueBg }]}>
-                    <Ionicons name="folder-outline" size={14} color={COLORS.primary} />
-                  </View>
-                  <Text style={s.kpiNumber}>{stats.total}</Text>
-                  <Text style={s.kpiLabel}>Total</Text>
-                </View>
-                <TouchableOpacity
-                  style={[s.kpiCard, pendingOnly && s.kpiCardActive]}
-                  onPress={() => {
-                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                    setPendingOnly(!pendingOnly);
-                  }}
-                  testID="stat-pending"
-                  activeOpacity={0.75}
-                >
-                  <View style={[s.kpiIconWrap, { backgroundColor: COLORS.pendingBg }]}>
-                    <Ionicons name="time-outline" size={14} color={COLORS.pendingText} />
-                  </View>
-                  <Text style={s.kpiNumber}>{stats.pending}</Text>
-                  <Text style={s.kpiLabel}>Pendientes</Text>
+            <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+              <View style={s.calHeader}>
+                <TouchableOpacity onPress={calPrev} style={s.calNavBtn}>
+                  <Ionicons name="chevron-back" size={18} color={COLORS.textSecondary} />
                 </TouchableOpacity>
-                <View style={s.kpiCard}>
-                  <View style={[s.kpiIconWrap, { backgroundColor: COLORS.syncedBg }]}>
-                    <Ionicons name="checkmark-circle-outline" size={14} color={COLORS.syncedText} />
-                  </View>
-                  <Text style={s.kpiNumber}>{stats.synced}</Text>
-                  <Text style={s.kpiLabel}>Sincronizados</Text>
-                </View>
+                <Text style={s.calTitle}>{calMonthLabel}</Text>
+                <TouchableOpacity onPress={calNext} style={s.calNavBtn}>
+                  <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={calToday} style={[s.calNavBtn, { width: "auto", paddingHorizontal: 12 }]}>
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.primary }}>Hoy</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setCalCollapsed((v) => !v)} style={s.calNavBtn}>
+                  <Ionicons name={calCollapsed ? "chevron-down" : "chevron-up"} size={18} color={COLORS.textSecondary} />
+                </TouchableOpacity>
               </View>
-            )}
+              {!calCollapsed && (
+                <>
+                  <View style={s.calWeekdays}>
+                    {["L", "M", "X", "J", "V", "S", "D"].map((d, i) => (
+                      <Text key={i} style={s.calWeekday}>{d}</Text>
+                    ))}
+                  </View>
+                  <View style={s.calGrid}>
+                    {calDays.map((cell, i) =>
+                      cell === null ? (
+                        <View key={i} style={s.calCell} />
+                      ) : (
+                        <View key={i} style={[s.calCell, cell.date === calTodayStr && s.calCellToday]}>
+                          <Text style={[s.calDayNum, cell.date === calTodayStr && { color: COLORS.primary, fontWeight: "800" }]}>{cell.day}</Text>
+                          {(projectsByDate[cell.date] || []).map((p: any) => (
+                            <TouchableOpacity
+                              key={p.id}
+                              onPress={() => openQuickEdit(p)}
+                              style={[s.calChip, { backgroundColor: (STATUS_COLORS[p.project_status] || COLORS.primary) + "22" }]}
+                            >
+                              <Text style={[s.calChipText, { color: STATUS_COLORS[p.project_status] || COLORS.primary }]} numberOfLines={1}>
+                                {p.numero_pedido ? `${p.numero_pedido} · ${p.materiales || ""}` : (p.materiales || "")}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )
+                    )}
+                  </View>
+                </>
+              )}
+            </View>
+
+            <View style={s.viewSelector}>
+              {[
+                { key: "lista", label: "Lista", icon: "list-outline" },
+                { key: "kanban", label: "Tablero", icon: "grid-outline" },
+              ].map((v) => (
+                <TouchableOpacity
+                  key={v.key}
+                  onPress={() => setViewMode(v.key as any)}
+                  style={[s.viewBtn, viewMode === v.key && s.viewBtnActive]}
+                >
+                  <Ionicons name={v.icon as any} size={14} color={viewMode === v.key ? "#fff" : COLORS.textSecondary} />
+                  <Text style={[s.viewBtnText, viewMode === v.key && s.viewBtnTextActive]}>{v.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
             <View style={s.searchRow}>
               <View style={s.searchBox}>
@@ -593,6 +894,35 @@ export default function Materiales() {
                 onPress={() => setPendingOnly(!pendingOnly)}
               >
                 <Ionicons name="time-outline" size={14} color={pendingOnly ? "#fff" : COLORS.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="btn-sort-date"
+                style={[s.actionChip, sortField && s.actionChipActive]}
+                onPress={() => setShowSortMenu((v) => !v)}
+              >
+                <Ionicons name="swap-vertical-outline" size={14} color={sortField ? "#fff" : COLORS.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="btn-filter-pedido"
+                style={[s.actionChip, pedidoFilter && s.actionChipActive]}
+                onPress={() => setPedidoFilter((v) => (v === null ? "si" : v === "si" ? "no" : null))}
+              >
+                <Ionicons
+                  name={pedidoFilter === "si" ? "checkmark-circle-outline" : pedidoFilter === "no" ? "close-circle-outline" : "cube-outline"}
+                  size={14}
+                  color={pedidoFilter ? "#fff" : COLORS.textSecondary}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="btn-sync-sheets"
+                style={[s.actionChip, { borderColor: COLORS.primary }]}
+                onPress={syncSheets}
+              >
+                {syncing ? (
+                  <ActivityIndicator size="small" color={COLORS.primary} />
+                ) : (
+                  <Ionicons name="sync-outline" size={14} color={COLORS.primary} />
+                )}
               </TouchableOpacity>
               <TouchableOpacity
                 testID="btn-filter-manager"
@@ -670,7 +1000,7 @@ export default function Materiales() {
             {showStatusFilter && (
               <View style={s.filterChipsRow}>
                 <View style={s.filterChips}>
-                  {PROJECT_STATUSES.map((st) => {
+                  {PROJECT_STATUSES.filter((st) => !["facturado", "en_curso", "completado"].includes(st.key)).map((st) => {
                     const on = statusFilterIds.includes(st.key);
                     return (
                       <TouchableOpacity
@@ -688,6 +1018,39 @@ export default function Materiales() {
               </View>
             )}
 
+            {showSortMenu && (
+              <View style={s.filterChipsRow}>
+                <View style={s.filterChips}>
+                  {[
+                    { label: "Alta más reciente", field: "fecha", dir: "desc" },
+                    { label: "Alta más antigua", field: "fecha", dir: "asc" },
+                    { label: "Planificación próxima", field: "fecha_prevista_planificacion", dir: "asc" },
+                    { label: "Planificación lejana", field: "fecha_prevista_planificacion", dir: "desc" },
+                  ].map((opt) => {
+                    const on = sortField === opt.field && sortDir === opt.dir;
+                    return (
+                      <TouchableOpacity
+                        key={opt.label}
+                        style={[s.filterChip, on && s.filterChipActive]}
+                        onPress={() => { setSortField(opt.field as any); setSortDir(opt.dir as any); setShowSortMenu(false); }}
+                      >
+                        <Text style={[s.filterChipText, on && s.filterChipTextActive]}>{opt.label}</Text>
+                        {on && <Ionicons name="checkmark" size={12} color={COLORS.primary} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                  {sortField && (
+                    <TouchableOpacity
+                      style={s.filterChip}
+                      onPress={() => { setSortField(null); setShowSortMenu(false); }}
+                    >
+                      <Text style={s.filterChipText}>Sin orden</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            )}
+
             {loading ? (
               <View style={s.centerBox}>
                 <ActivityIndicator color={COLORS.primary} size="large" />
@@ -697,11 +1060,74 @@ export default function Materiales() {
                 <Ionicons name="cube-outline" size={48} color={COLORS.textDisabled} />
                 <Text style={{ color: COLORS.textSecondary, fontSize: 15, fontWeight: "500", marginTop: 8 }}>Sin resultados</Text>
               </View>
+            ) : viewMode === "kanban" ? (
+              <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }}>
+                <View style={{ flex: 1, flexDirection: "row", padding: 16, gap: 16, alignItems: "stretch" }}>
+                {kanbanColumns.map((col) => (
+                  <View key={col.key} style={{ flex: 1, minWidth: 0, gap: 12 }}>
+                    <View style={s.columnHeader}>
+                      <View style={[s.columnDot, { backgroundColor: col.color }]} />
+                      <Text style={s.columnTitle}>{col.label}</Text>
+                      <View style={s.columnCount}>
+                        <Text style={s.columnCountText}>{col.items.length}</Text>
+                      </View>
+                    </View>
+                    {col.items.length === 0 ? (
+                      <Text style={s.columnEmpty}>Sin proyectos</Text>
+                    ) : (
+                      col.items.map((item) => (
+                        <View key={item.id}>
+                          {renderItem({ item })}
+                        </View>
+                      ))
+                    )}
+                  </View>
+                ))}
+                </View>
+              </ScrollView>
+            ) : groupedByStatus ? (
+              <ScrollView
+                testID="materiales-list"
+                showsVerticalScrollIndicator={false}
+                style={{ flex: 1 }}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={() => { setRefreshing(true); load(); }}
+                    tintColor={COLORS.primary}
+                  />
+                }
+                contentContainerStyle={{ flexGrow: 1 }}
+              >
+                <View style={s.columnsContainer}>
+                  {groupedByStatus.map((col) => (
+                    <View key={col.key} style={s.column}>
+                      <View style={s.columnHeader}>
+                        <View style={[s.columnDot, { backgroundColor: col.color }]} />
+                        <Text style={s.columnTitle}>{col.label}</Text>
+                        <View style={s.columnCount}>
+                          <Text style={s.columnCountText}>{col.items.length}</Text>
+                        </View>
+                      </View>
+                      {col.items.length === 0 ? (
+                        <Text style={s.columnEmpty}>Sin proyectos</Text>
+                      ) : (
+                        col.items.map((item) => (
+                          <View key={item.id}>
+                            {renderItem({ item })}
+                          </View>
+                        ))
+                      )}
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
             ) : (
               <ScrollView
                 testID="materiales-list"
                 contentContainerStyle={s.listContent}
                 showsVerticalScrollIndicator={false}
+                style={{ flex: 1 }}
                 refreshControl={
                   <RefreshControl
                     refreshing={refreshing}
@@ -710,7 +1136,7 @@ export default function Materiales() {
                   />
                 }
               >
-                {items.map((item) => (
+                {sortedItems.map((item) => (
                   <View key={item.id}>
                     {renderItem({ item })}
                   </View>
@@ -720,6 +1146,73 @@ export default function Materiales() {
           </View>
         </View>
       </SafeAreaView>
+
+      {/* Modal edición rápida */}
+      <Modal visible={!!quickEdit} transparent animationType="slide" onRequestClose={() => setQuickEdit(null)}>
+        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <View style={{ backgroundColor: "#FFF", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, maxHeight: "90%" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <Text style={{ fontSize: 15, fontWeight: "800", color: "#0F172A", flex: 1 }} numberOfLines={1}>{quickEdit?.numero_pedido ? `${quickEdit.numero_pedido} · ` : ""}{quickEdit?.materiales || ""}</Text>
+              <TouchableOpacity onPress={() => setQuickEdit(null)}>
+                <Ionicons name="close" size={24} color="#0F172A" />
+              </TouchableOpacity>
+            </View>
+            <Text style={{ fontSize: 12, color: "#64748B", marginBottom: 16 }}>{quickEdit?.cliente && quickEdit?.cliente !== quickEdit?.materiales ? quickEdit.cliente : ""}</Text>
+            <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: "#475569", marginBottom: 6 }}>Estado</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                {PROJECT_STATUSES.filter((st) => !["en_curso", "completado", "cancelado"].includes(st.key)).map((st) => (
+                  <TouchableOpacity key={st.key} onPress={() => setQeStatus(st.key)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, backgroundColor: qeStatus === st.key ? st.color : "#F1F5F9", borderWidth: 1, borderColor: qeStatus === st.key ? st.color : "#E2E8F0" }}>
+                    <Text style={{ fontSize: 12, fontWeight: "600", color: qeStatus === st.key ? "#fff" : "#475569" }}>{st.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={{ fontSize: 12, fontWeight: "600", color: "#475569", marginTop: 14, marginBottom: 6 }}>Fecha de planificación</Text>
+              {Platform.OS === "web" ? (
+                <input
+                  type="date"
+                  value={qePlan}
+                  onChange={(e: any) => setQePlan(e.target.value)}
+                  style={{ height: 42, backgroundColor: "#F8FAFC", border: "1px solid #CBD5E1", borderRadius: 8, paddingHorizontal: 12, fontSize: 14, color: "#1E293B", width: "100%", boxSizing: "border-box" } as any}
+                />
+              ) : (
+                <TextInput style={{ height: 42, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, fontSize: 14, color: "#1E293B" }} value={qePlan} onChangeText={setQePlan} placeholder="YYYY-MM-DD" placeholderTextColor="#94A3B8" />
+              )}
+
+              <Text style={{ fontSize: 12, fontWeight: "600", color: "#475569", marginTop: 14, marginBottom: 6 }}>Material pedido</Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <TouchableOpacity onPress={() => setQePedido("si")} style={{ flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: "center", backgroundColor: qePedido === "si" ? "#D1FAE5" : "#F1F5F9", borderWidth: 1, borderColor: qePedido === "si" ? "#059669" : "#E2E8F0" }}>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: qePedido === "si" ? "#059669" : "#475569" }}>Sí</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setQePedido("no")} style={{ flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: "center", backgroundColor: qePedido === "no" ? "#FEE2E2" : "#F1F5F9", borderWidth: 1, borderColor: qePedido === "no" ? "#DC2626" : "#E2E8F0" }}>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: qePedido === "no" ? "#DC2626" : "#475569" }}>No</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setQePedido(null)} style={{ flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: "center", backgroundColor: qePedido === null ? "#E2E8F0" : "#F1F5F9", borderWidth: 1, borderColor: "#E2E8F0" }}>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: "#475569" }}>—</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={{ fontSize: 12, fontWeight: "600", color: "#475569", marginTop: 14, marginBottom: 6 }}>Notas / detalles</Text>
+              <TextInput style={{ height: 80, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, paddingTop: 10, fontSize: 14, color: "#1E293B", textAlignVertical: "top" }} value={qeNotas} onChangeText={setQeNotas} placeholder="Detalles, pendientes..." placeholderTextColor="#94A3B8" multiline />
+
+              <TouchableOpacity
+                style={{ height: 48, backgroundColor: COLORS.primary, borderRadius: 12, alignItems: "center", justifyContent: "center", marginTop: 16, opacity: qeSaving ? 0.6 : 1 }}
+                onPress={saveQuickEdit}
+                disabled={qeSaving}
+              >
+                {qeSaving ? <ActivityIndicator color="#fff" /> : <Text style={{ color: "#fff", fontSize: 14, fontWeight: "700" }}>Guardar</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center", marginTop: 8, marginBottom: 20, borderWidth: 1, borderColor: "#CBD5E1" }}
+                onPress={() => { const id = quickEdit?.id; setQuickEdit(null); if (id) router.push(`/material/${id}`); }}
+              >
+                <Text style={{ color: "#475569", fontSize: 13, fontWeight: "600" }}>Ver ficha completa</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* Modal nuevo proyecto */}
       <Modal visible={showNewProject} transparent animationType="slide" onRequestClose={() => setShowNewProject(false)}>
@@ -1032,6 +1525,101 @@ const useS = () =>
       paddingVertical: 8,
       alignItems: "center",
     },
+    viewSelector: {
+      flexDirection: "row",
+      gap: 8,
+      paddingHorizontal: 24,
+      paddingBottom: 8,
+    },
+    viewBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 10,
+      backgroundColor: COLORS.surface,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    viewBtnActive: {
+      backgroundColor: COLORS.primary,
+      borderColor: COLORS.primary,
+    },
+    viewBtnText: {
+      fontSize: 12,
+      fontWeight: "600",
+      color: COLORS.textSecondary,
+    },
+    viewBtnTextActive: {
+      color: "#fff",
+      fontWeight: "700",
+    },
+    calHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginBottom: 12,
+    },
+    calNavBtn: {
+      width: 34,
+      height: 34,
+      borderRadius: 10,
+      backgroundColor: COLORS.surface,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    calTitle: {
+      flex: 1,
+      fontSize: 16,
+      fontWeight: "800",
+      color: COLORS.text,
+      textTransform: "capitalize",
+    },
+    calWeekdays: {
+      flexDirection: "row",
+    },
+    calWeekday: {
+      width: "14.285%",
+      textAlign: "center",
+      fontSize: 11,
+      fontWeight: "700",
+      color: COLORS.textSecondary,
+      paddingVertical: 6,
+    },
+    calGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+    },
+    calCell: {
+      width: "14.285%",
+      minHeight: 76,
+      borderTopWidth: 1,
+      borderTopColor: COLORS.border,
+      padding: 3,
+      gap: 2,
+    },
+    calCellToday: {
+      backgroundColor: COLORS.primarySoft,
+      borderRadius: 6,
+    },
+    calDayNum: {
+      fontSize: 11,
+      fontWeight: "600",
+      color: COLORS.textSecondary,
+      marginBottom: 2,
+    },
+    calChip: {
+      borderRadius: 4,
+      paddingHorizontal: 3,
+      paddingVertical: 1,
+    },
+    calChipText: {
+      fontSize: 9,
+      fontWeight: "700",
+    },
     searchBox: {
       flex: 1,
       flexDirection: "row",
@@ -1111,6 +1699,53 @@ const useS = () =>
       alignSelf: "center",
       width: "100%",
     },
+    columnsContainer: {
+      flexDirection: "row",
+      padding: 16,
+      gap: 16,
+      alignItems: "stretch",
+    },
+    column: {
+      flex: 1,
+      minWidth: 0,
+      gap: 12,
+    },
+    columnHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingHorizontal: 4,
+    },
+    columnDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+    },
+    columnTitle: {
+      fontSize: 14,
+      fontWeight: "800",
+      color: COLORS.text,
+      flex: 1,
+    },
+    columnCount: {
+      backgroundColor: COLORS.surface,
+      borderRadius: 10,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    columnCountText: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: COLORS.textSecondary,
+    },
+    columnEmpty: {
+      color: COLORS.textDisabled,
+      fontSize: 12,
+      paddingVertical: 20,
+      textAlign: "center",
+    },
     card: {
       flexDirection: "row",
       backgroundColor: COLORS.surface,
@@ -1163,6 +1798,14 @@ const useS = () =>
       fontWeight: "600",
       color: COLORS.textSecondary,
       flexShrink: 1,
+    },
+    cardNumero: {
+      fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+      fontSize: 12,
+      fontWeight: "700",
+      color: COLORS.primary,
+      letterSpacing: 0.2,
+      flexShrink: 0,
     },
     cardAddressRow: {
       flexDirection: "row",

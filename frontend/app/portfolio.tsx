@@ -63,7 +63,7 @@ const MODULOS = [
     badge: "Obras y materiales",
     title: "Proyectos",
     roles: "Admin · Gestor · Técnico",
-    description: "Gestión completa de obras y materiales. Cada proyecto tiene código, cliente, ubicación, fechas, estado, horas, datos financieros (venta prevista, costes reales, ingreso facturado), logística (pedido realizado, fecha entrega, nº pedido, planificación), costes actualizados y lista de materiales con seguimiento de instalación. Los materiales se sincronizan con los eventos: al completar un evento se actualiza automáticamente la cantidad instalada. Técnicos solo ven sus proyectos asignados. Filtros combinados por gestor, estado, año y mes. Creación manual con formulario completo.",
+    description: "Gestión completa de obras y materiales. Cuadro de mando de proyectos con vistas Lista, Tablero (Kanban por estado) y Calendario (por fecha de planificación). Ordenación por fecha de alta o planificación, KPIs de planificados y vencidos, y edición rápida de estado, planificación, material pedido y notas desde la tarjeta. Cada proyecto tiene código, cliente, ubicación, fechas, estado, horas, datos financieros (venta prevista, costes reales, ingreso facturado), logística (pedido realizado, fecha entrega, nº pedido, planificación), costes actualizados y lista de materiales con seguimiento de instalación. Los materiales se sincronizan con los eventos: al completar un evento se actualiza automáticamente la cantidad instalada. Técnicos solo ven sus proyectos asignados. Filtros combinados por gestor, estado, año y mes. Creación manual con formulario completo. Bloc de notas en el panel lateral del cuadro de mando para anotaciones rápidas, con persistencia en backend.",
     features: [
       "Ficha financiera completa con 12 campos económicos",
       "Logística: pedido, entrega, planificación y facturación",
@@ -71,8 +71,9 @@ const MODULOS = [
       "Checklist de instalación en eventos (sincronización automática)",
       "Filtros combinados por gestor y estado simultáneamente",
       "Export Excel con 20+ columnas",
+      "Bloc de notas en el panel lateral con persistencia",
     ],
-    techData: { endpoint: "GET/POST/PUT /api/materials", sync: "OneDrive cada 5 min", perm: "Admin crea, Gestor edita, Técnico consulta" },
+    techData: { endpoint: "GET/POST/PUT /api/materials", sync: "Google Sheets", perm: "Admin crea, Gestor edita, Técnico consulta" },
     renderMockup: () => (
       <>
         {[
@@ -242,46 +243,16 @@ const MODULOS = [
     ),
   },
   {
-    accent: "#5BC87C",
-    accentBg: "rgba(91,200,124,0.15)",
-    badge: "Nube",
-    title: "OneDrive",
-    roles: "Admin",
-    description: "Sincronización bidireccional automática entre la app y Excel en OneDrive. La app sube cambios al guardar y descarga cambios externos cada 5 minutos. Sincroniza materiales, stock y descuentos. Conexión única vía OAuth por el administrador. Forzar importación/exportación manual.",
-    features: [
-      "Sincronización automática bidireccional",
-      "Conexión única vía OAuth",
-      "Actualización cada 5 minutos",
-      "Forzar sincronización manual",
-    ],
-    techData: { endpoint: "GET /api/onedrive/status", sync: "Cada 5 minutos", perm: "Admin con onedrive.manage" },
-    renderMockup: () => (
-      <>
-        <View style={{ alignItems: "center", marginBottom: 6 }}>
-          <Ionicons name="cloud-outline" size={28} color="#5BC87C" />
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 7 }}>
-          <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: "#5BC87C", marginRight: 4 }} />
-          <Text style={{ color: "#5BC87C", fontSize: 10, fontWeight: "600" }}>Conectado</Text>
-        </View>
-        <View style={{ height: 3.5, backgroundColor: "#1E293B", borderRadius: 1.75, marginBottom: 5 }}>
-          <View style={{ width: "62%", height: 3.5, backgroundColor: "#3B82F6", borderRadius: 1.75 }} />
-        </View>
-        <Text style={{ color: "#64748B", fontSize: 8, textAlign: "center" }}>Última sinc: 12:45</Text>
-      </>
-    ),
-  },
-  {
     accent: "#7E51FD",
     accentBg: "rgba(126,81,253,0.15)",
     badge: "Catálogo",
     title: "Preciario",
     roles: "Admin · Comercial · Técnico",
-    description: "Catálogo de precios con referencia, descripción, precio unitario, descuento %, precio final y stock. Búsqueda por referencia o descripción con filtro por stock mínimo. Paginación de 50 productos. Descuentos y stock editables inline. Datos desde Excel de OneDrive. El autocompletado de presupuestos consulta este catálogo.",
+    description: "Catálogo de precios con referencia, descripción, precio unitario, descuento %, precio final y stock. Búsqueda por referencia o descripción con filtro por stock mínimo. Paginación de 50 productos. Descuentos y stock editables inline. Datos desde Excel. El autocompletado de presupuestos consulta este catálogo.",
     features: [
       "Búsqueda con filtro de stock mínimo",
       "Edición inline de descuentos y stock",
-      "Sincronizado con OneDrive",
+      "Sincronizado con Google Sheets",
       "Autocompletado en presupuestos",
     ],
     techData: { endpoint: "GET/PUT /api/prices", perm: "preciario.edit y preciario.ver_precios" },

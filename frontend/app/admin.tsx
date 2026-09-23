@@ -15,9 +15,7 @@ import { ios, fontStyle } from "../src/ui/iosTheme";
 export default function Admin() {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
-  const [status, setStatus] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
   const [homepage, setHomepage] = useState("/home");
   const [precios, setPrecios] = useState<any>({});
@@ -60,8 +58,7 @@ export default function Admin() {
 
   const load = async () => {
     try {
-      const [st, me] = await Promise.all([api.onedriveStatus(), api.me()]);
-      setStatus(st);
+      const me = await api.me();
       setUser(me);
       setHomepage(me.homepage || "/home");
       loadPrecios();
@@ -73,22 +70,6 @@ export default function Admin() {
   };
 
   useFocusEffect(useCallback(() => { load(); }, []));
-
-  const connectOneDrive = async () => {
-    try {
-      setBusy("connect");
-      const { auth_url } = await api.onedriveLogin();
-      await Linking.openURL(auth_url);
-      Alert.alert(
-        "Conectando con OneDrive",
-        "Completa el inicio de sesión en tu navegador y vuelve a esta pantalla. Luego pulsa 'Actualizar estado'."
-      );
-    } catch (e: any) {
-      Alert.alert("Error", e.message);
-    } finally {
-      setBusy(null);
-    }
-  };
 
   /** Abre el portfolio público (presentación para clientes) en el navegador. */
   const openPortfolio = async () => {
@@ -111,52 +92,6 @@ export default function Admin() {
     }
   };
 
-  const disconnect = async () => {
-    Alert.alert("Desconectar OneDrive", "¿Seguro?", [
-      { text: "Cancelar", style: "cancel" },
-      {
-        text: "Desconectar", style: "destructive",
-        onPress: async () => {
-          try {
-            setBusy("disconnect");
-            await api.onedriveDisconnect();
-            await load();
-          } catch (e: any) {
-            Alert.alert("Error", e.message);
-          } finally {
-            setBusy(null);
-          }
-        },
-      },
-    ]);
-  };
-
-  const importFromOD = async () => {
-    try {
-      setBusy("import");
-      const res = await api.syncImport();
-      Alert.alert("Importación completa", `${res.imported} materiales importados desde OneDrive`);
-      await load();
-    } catch (e: any) {
-      Alert.alert("Error", e.message);
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const pushToOD = async () => {
-    try {
-      setBusy("push");
-      const res = await api.syncPush();
-      Alert.alert("Subida completa", `${res.pushed} materiales actualizados en OneDrive`);
-      await load();
-    } catch (e: any) {
-      Alert.alert("Error", e.message);
-    } finally {
-      setBusy(null);
-    }
-  };
-
   if (loading) {
     return (
       <SafeAreaView style={s.root}>
@@ -171,8 +106,6 @@ export default function Admin() {
   const perms: string[] = (user?.permissions as string[]) || [];
   const canManageUsers = perms.includes("users.manage");
   const canManageRoles = perms.includes("roles.manage");
-  const canManageOnedrive = perms.includes("onedrive.manage");
-  const connected = status?.connected;
 
   const allModulos = [
     { label: "Inicio", to: "/home", icon: "home", perm: null },
@@ -412,110 +345,6 @@ export default function Admin() {
             <Text style={s.btnPrimaryText}>DESCARGAR PDF</Text>
           </TouchableOpacity>
         </View>
-
-        {!canManageOnedrive && (
-          <View style={[s.card, { backgroundColor: COLORS.pendingBg, borderColor: "#FDE68A" }]}>
-            <Ionicons name="information-circle" size={22} color={COLORS.pendingText} />
-            <Text style={[s.cardText, { color: COLORS.pendingText }]}>
-              Solo el administrador puede gestionar la conexión con OneDrive.
-            </Text>
-          </View>
-        )}
-
-        <View style={s.card} testID="onedrive-status-card">
-          <View style={s.cardHeader}>
-            <View style={[s.iconCircle, { backgroundColor: connected ? COLORS.syncedBg : COLORS.errorBg }]}>
-              <Ionicons
-                name={connected ? "cloud-done" : "cloud-offline"}
-                size={22}
-                color={connected ? COLORS.syncedText : COLORS.errorText}
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.cardTitle}>OneDrive</Text>
-              <Text style={s.cardSub}>
-                {connected ? status.admin_email : "No conectado"}
-              </Text>
-            </View>
-          </View>
-
-          {connected && (
-            <View style={s.metaBlock}>
-              <Text style={s.metaLabel}>Archivo</Text>
-              <Text style={s.metaValue}>
-                {status.file_name || status.file_path}
-                {status.using_share_url ? " (enlace compartido)" : ""}
-              </Text>
-              {status.last_import_at && (
-                <>
-                  <Text style={s.metaLabel}>Última importación</Text>
-                  <Text style={s.metaValue}>{new Date(status.last_import_at).toLocaleString("es-ES")}</Text>
-                </>
-              )}
-              {status.last_push_at && (
-                <>
-                  <Text style={s.metaLabel}>Última subida</Text>
-                  <Text style={s.metaValue}>{new Date(status.last_push_at).toLocaleString("es-ES")}</Text>
-                </>
-              )}
-            </View>
-          )}
-
-          {canManageOnedrive && (
-            <View style={{ gap: 10, marginTop: 12 }}>
-              {!connected ? (
-                <TouchableOpacity
-                  testID="btn-connect-onedrive"
-                  style={s.btnPrimary}
-                  onPress={connectOneDrive}
-                  disabled={busy === "connect"}
-                >
-                  {busy === "connect" ? <ActivityIndicator color="#fff" /> : (
-                    <>
-                      <Ionicons name="cloud-upload" size={20} color="#fff" />
-                      <Text style={s.btnPrimaryText}>CONECTAR ONEDRIVE</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  testID="btn-disconnect-onedrive"
-                  style={s.btnSecondary}
-                  onPress={disconnect}
-                  disabled={busy === "disconnect"}
-                >
-                  <Text style={s.btnSecondaryText}>Desconectar</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity style={s.btnGhost} onPress={load}>
-                <Ionicons name="refresh" size={18} color={COLORS.primary} />
-                <Text style={s.btnGhostText}>Actualizar estado</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-
-        {connected && canManageOnedrive && (
-          <View style={s.card}>
-            <Text style={s.cardTitle}>Sincronización automática</Text>
-            <Text style={s.cardSub}>
-              La app se sincroniza sola con OneDrive. Los cambios se suben automáticamente al guardar, y los cambios externos se traen cada 5 minutos.
-            </Text>
-            <TouchableOpacity
-              testID="btn-import"
-              style={[s.btnSecondary, { marginTop: 12 }]}
-              onPress={importFromOD}
-              disabled={busy === "import"}
-            >
-              {busy === "import" ? <ActivityIndicator color={COLORS.navy} /> : (
-                <>
-                  <Ionicons name="refresh" size={20} color={COLORS.navy} />
-                  <Text style={s.btnSecondaryText}>FORZAR SINCRONIZACIÓN AHORA</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
 
         {canManageUsers && (
         <View style={s.card}>

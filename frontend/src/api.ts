@@ -100,11 +100,7 @@ export const api = {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 15000);
   },
-  onedriveStatus: () => request("/auth/onedrive/status"),
-  onedriveLogin: () => request("/auth/onedrive/login"),
-  onedriveDisconnect: () => request("/auth/onedrive/disconnect", { method: "POST" }),
-  syncImport: () => request("/sync/import-from-onedrive", { method: "POST" }),
-  syncPush: () => request("/sync/push-to-onedrive", { method: "POST" }),
+  syncGoogleSheets: () => request("/sync/google-sheets", { method: "POST" }),
   // Users mgmt
   listUsers: () => request("/users"),
   createUser: (body: { email: string; password: string; name?: string; role_id?: string; role?: string; color?: string }) =>
@@ -293,6 +289,10 @@ export const api = {
   updateNota: (id: string, body: { titulo?: string; contenido?: string; fecha?: string; material_id?: string; marcada?: boolean; color?: string; priority?: string; tags?: string[]; pinned?: boolean; archived?: boolean }) =>
     request(`/notas/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteNota: (id: string) => request(`/notas/${id}`, { method: "DELETE" }),
+  listDashboardNotes: () => request("/dashboard-notes"),
+  createDashboardNote: (texto: string, color?: string) => request("/dashboard-notes", { method: "POST", body: JSON.stringify({ texto, color }) }),
+  updateDashboardNote: (id: string, color: string) => request(`/dashboard-notes/${id}`, { method: "PATCH", body: JSON.stringify({ color }) }),
+  deleteDashboardNote: (id: string) => request(`/dashboard-notes/${id}`, { method: "DELETE" }),
 
   // Documentos (fichas técnicas / manuales)
   listDocumentos: (categoria?: string) => request(`/documentos${categoria ? "?categoria=" + categoria : ""}`),
