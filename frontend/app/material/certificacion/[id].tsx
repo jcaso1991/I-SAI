@@ -90,21 +90,31 @@ export default function CertificacionEditor() {
     certificaciones_anteriores: "",
     iva: "21",
     observaciones: "",
+    sin_precios: false,
+    numero: null,
   });
 
   const inputRefs = useRef<{ [k: string]: TextInput | null }>({});
-  const COLS: (keyof Linea)[] = ["concepto", "cantidad_alcance", "precio_alcance", "cantidad_ejecutado", "precio_ejecutado"];
+  const visibleColIdx: number[] = f.sin_precios ? [0, 1, 3] : [0, 1, 2, 3, 4];
 
   const moveFocus = (i: number, ci: number, key: string) => {
     let ni = i;
     let nci = ci;
-    if (key === "ArrowRight") nci = ci + 1;
-    else if (key === "ArrowLeft") nci = ci - 1;
-    else if (key === "ArrowDown") ni = i + 1;
-    else if (key === "ArrowUp") ni = i - 1;
-    else return;
+    const idx = visibleColIdx.indexOf(ci);
+    if (key === "ArrowRight") {
+      if (idx < 0 || idx >= visibleColIdx.length - 1) return;
+      nci = visibleColIdx[idx + 1];
+    } else if (key === "ArrowLeft") {
+      if (idx <= 0) return;
+      nci = visibleColIdx[idx - 1];
+    } else if (key === "ArrowDown") {
+      ni = i + 1;
+    } else if (key === "ArrowUp") {
+      ni = i - 1;
+    } else {
+      return;
+    }
     if (ni < 0 || ni >= f.lineas.length) return;
-    if (nci < 0 || nci >= COLS.length) return;
     inputRefs.current[`${ni}-${nci}`]?.focus();
   };
 
@@ -169,6 +179,7 @@ export default function CertificacionEditor() {
                 ...prev,
                 material_id: p.material_id,
                 nombre: `${projectName}${clientName} (Certificacion ${num} - ${today})`,
+                numero: num,
                 cliente: lastCert?.cliente || m.cliente || "",
                 poblacion: lastCert?.poblacion || "",
                 fecha_certificacion: today,
@@ -224,6 +235,8 @@ export default function CertificacionEditor() {
         certificaciones_anteriores: f.certificaciones_anteriores ? toNum(f.certificaciones_anteriores) : null,
         iva: f.iva ? toNum(f.iva) : 21,
         observaciones: f.observaciones || "",
+        sin_precios: !!f.sin_precios,
+        numero: f.numero ?? null,
       };
       if (certId) {
         await api.updateCertificacion(certId, payload);
@@ -257,12 +270,20 @@ export default function CertificacionEditor() {
 
   const del = () => {
     if (!certId) { router.back(); return; }
+    const performDelete = async () => {
+      try { await api.deleteCertificacion(certId); router.back(); }
+      catch (e: any) { Alert.alert("Error", e.message); }
+    };
+    // En web, Alert.alert con callbacks NO funciona — usar window.confirm
+    if (typeof window !== "undefined" && typeof window.confirm === "function") {
+      if (window.confirm("¿Eliminar esta certificación? Esta acción no se puede deshacer.")) {
+        performDelete();
+      }
+      return;
+    }
     Alert.alert("Eliminar certificacion", "¿Seguro?", [
       { text: "Cancelar", style: "cancel" },
-      { text: "Eliminar", style: "destructive", onPress: async () => {
-        try { await api.deleteCertificacion(certId); router.back(); }
-        catch (e: any) { Alert.alert("Error", e.message); }
-      }},
+      { text: "Eliminar", style: "destructive", onPress: performDelete },
     ]);
   };
 
@@ -303,6 +324,20 @@ export default function CertificacionEditor() {
         </View>
       </View>
       <ScrollView contentContainerStyle={[s.scroll]}>
+         <TouchableOpacity
+           style={[s.sinPreciosRow, f.sin_precios && s.sinPreciosRowActive]}
+           onPress={() => set("sin_precios", !f.sin_precios)}
+           activeOpacity={0.7}
+         >
+           <View style={[s.sinPreciosBox, f.sin_precios && s.sinPreciosBoxActive]}>
+             {f.sin_precios && <Ionicons name="checkmark" size={16} color="#fff" />}
+           </View>
+           <View style={{ flex: 1 }}>
+             <Text style={s.sinPreciosLabel}>Sin precios</Text>
+             <Text style={s.sinPreciosHint}>Ocultar los precios en el formulario y en el PDF</Text>
+           </View>
+         </TouchableOpacity>
+
          <CertSection s={s} title="DATOS DE LA CERTIFICACION">
            <CertField s={s} label="Nombre proyecto" value={f.nombre} onChange={(v) => set("nombre", v)} />
            <CertField s={s} label="Cliente" value={f.cliente} onChange={(v) => set("cliente", v)} />
@@ -344,11 +379,11 @@ export default function CertificacionEditor() {
           <View style={s.eqHeader}>
             <Text style={[s.eqHeaderTxt, { flex: 2 }]}>Concepto</Text>
             <Text style={[s.eqHeaderTxt, { flex: 0.7, textAlign: "center" }]}>Cant. Alc.</Text>
-            <Text style={[s.eqHeaderTxt, { flex: 0.8, textAlign: "center" }]}>P.U. Alc.</Text>
-            <Text style={[s.eqHeaderTxt, { flex: 0.8, textAlign: "right" }]}>Total Alc.</Text>
+            {!f.sin_precios && <Text style={[s.eqHeaderTxt, { flex: 0.8, textAlign: "center" }]}>P.U. Alc.</Text>}
+            {!f.sin_precios && <Text style={[s.eqHeaderTxt, { flex: 0.8, textAlign: "right" }]}>Total Alc.</Text>}
             <Text style={[s.eqHeaderTxt, { flex: 0.7, textAlign: "center" }]}>Cant. Eje.</Text>
-            <Text style={[s.eqHeaderTxt, { flex: 0.8, textAlign: "center" }]}>P.U. Eje.</Text>
-            <Text style={[s.eqHeaderTxt, { flex: 0.8, textAlign: "right" }]}>Total Eje.</Text>
+            {!f.sin_precios && <Text style={[s.eqHeaderTxt, { flex: 0.8, textAlign: "center" }]}>P.U. Eje.</Text>}
+            {!f.sin_precios && <Text style={[s.eqHeaderTxt, { flex: 0.8, textAlign: "right" }]}>Total Eje.</Text>}
             <View style={{ width: 28 }} />
           </View>
           {f.lineas.map((l: Linea, i: number) => {
@@ -358,15 +393,19 @@ export default function CertificacionEditor() {
               <View key={i} style={s.eqRow}>
                 <TextInput ref={(el) => { inputRefs.current[`${i}-0`] = el; }} onKeyPress={onCellKey(i, 0)} value={l.concepto} onChangeText={(v) => setLn(i, "concepto", v)} style={[s.eqInp, { flex: 2 }]} placeholder="Concepto" placeholderTextColor={COLORS.textDisabled} />
                 <TextInput ref={(el) => { inputRefs.current[`${i}-1`] = el; }} onKeyPress={onCellKey(i, 1)} value={l.cantidad_alcance} onChangeText={(v) => setLn(i, "cantidad_alcance", v)} style={[s.eqInp, { flex: 0.7, textAlign: "center" }]} placeholder="0" placeholderTextColor={COLORS.textDisabled} keyboardType="decimal-pad" inputMode="decimal" />
-                <TextInput ref={(el) => { inputRefs.current[`${i}-2`] = el; }} onKeyPress={onCellKey(i, 2)} value={l.precio_alcance} onChangeText={(v) => { setLn(i, "precio_alcance", v); setLn(i, "precio_ejecutado", v); }} style={[s.eqInp, { flex: 0.8, textAlign: "center" }]} placeholder="0.00" placeholderTextColor={COLORS.textDisabled} keyboardType="decimal-pad" inputMode="decimal" />
-                <View style={[s.eqInpR, { flex: 0.8 }]}>
-                  <Text style={s.eqInpRTxt}>{totA.toFixed(2)}</Text>
-                </View>
+                {!f.sin_precios && <TextInput ref={(el) => { inputRefs.current[`${i}-2`] = el; }} onKeyPress={onCellKey(i, 2)} value={l.precio_alcance} onChangeText={(v) => { setLn(i, "precio_alcance", v); setLn(i, "precio_ejecutado", v); }} style={[s.eqInp, { flex: 0.8, textAlign: "center" }]} placeholder="0.00" placeholderTextColor={COLORS.textDisabled} keyboardType="decimal-pad" inputMode="decimal" />}
+                {!f.sin_precios && (
+                  <View style={[s.eqInpR, { flex: 0.8 }]}>
+                    <Text style={s.eqInpRTxt}>{totA.toFixed(2)}</Text>
+                  </View>
+                )}
                 <TextInput ref={(el) => { inputRefs.current[`${i}-3`] = el; }} onKeyPress={onCellKey(i, 3)} value={l.cantidad_ejecutado} onChangeText={(v) => setLn(i, "cantidad_ejecutado", v)} style={[s.eqInp, { flex: 0.7, textAlign: "center" }]} placeholder="0" placeholderTextColor={COLORS.textDisabled} keyboardType="decimal-pad" inputMode="decimal" />
-                <TextInput ref={(el) => { inputRefs.current[`${i}-4`] = el; }} onKeyPress={onCellKey(i, 4)} value={l.precio_ejecutado} onChangeText={(v) => setLn(i, "precio_ejecutado", v)} style={[s.eqInp, { flex: 0.8, textAlign: "center" }]} placeholder="0.00" placeholderTextColor={COLORS.textDisabled} keyboardType="decimal-pad" inputMode="decimal" />
-                <View style={[s.eqInpR, { flex: 0.8 }]}>
-                  <Text style={s.eqInpRTxt}>{totE.toFixed(2)}</Text>
-                </View>
+                {!f.sin_precios && <TextInput ref={(el) => { inputRefs.current[`${i}-4`] = el; }} onKeyPress={onCellKey(i, 4)} value={l.precio_ejecutado} onChangeText={(v) => setLn(i, "precio_ejecutado", v)} style={[s.eqInp, { flex: 0.8, textAlign: "center" }]} placeholder="0.00" placeholderTextColor={COLORS.textDisabled} keyboardType="decimal-pad" inputMode="decimal" />}
+                {!f.sin_precios && (
+                  <View style={[s.eqInpR, { flex: 0.8 }]}>
+                    <Text style={s.eqInpRTxt}>{totE.toFixed(2)}</Text>
+                  </View>
+                )}
                 <TouchableOpacity onPress={() => delLn(i)} style={s.eqDelBtn}>
                   <Ionicons name="close" size={16} color={COLORS.errorText} />
                 </TouchableOpacity>
@@ -379,6 +418,7 @@ export default function CertificacionEditor() {
           </TouchableOpacity>
         </CertSection>
 
+        {!f.sin_precios && (
         <CertSection s={s} title="TOTALES">
           <View style={s.totalsGrid}>
             <View style={s.totalRow}>
@@ -431,6 +471,7 @@ export default function CertificacionEditor() {
             </View>
           </View>
         </CertSection>
+        )}
 
         <CertSection s={s} title="OBSERVACIONES">
           <CertField s={s} multiline value={f.observaciones} onChange={(v) => set("observaciones", v)} placeholder="Observaciones..." />
@@ -473,6 +514,19 @@ const useS = () => StyleSheet.create({
     ...ios.shadow.card,
   },
   sectionTitle: { ...fontStyle("section"), color: COLORS.primary, textTransform: "uppercase" as any },
+  sinPreciosRow: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    backgroundColor: COLORS.surface, padding: ios.spacing.lg, borderRadius: ios.radius.lg,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  sinPreciosRowActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primarySoft },
+  sinPreciosBox: {
+    width: 24, height: 24, borderRadius: 6, borderWidth: 2, borderColor: COLORS.borderInput,
+    alignItems: "center", justifyContent: "center", backgroundColor: COLORS.bg,
+  },
+  sinPreciosBoxActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  sinPreciosLabel: { fontSize: 15, fontWeight: "800", color: COLORS.text },
+  sinPreciosHint: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
   lbl: { ...fontStyle("caption"), fontWeight: "800" as any, color: COLORS.textSecondary, marginBottom: 2 },
   inp: {
     backgroundColor: COLORS.bg, borderRadius: ios.radius.md, borderWidth: 2, borderColor: COLORS.borderInput,

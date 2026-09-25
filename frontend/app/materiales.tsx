@@ -82,6 +82,7 @@ export default function Materiales() {
   });
   const [calCollapsed, setCalCollapsed] = useState(false);
   const [pedidoFilter, setPedidoFilter] = useState<null | "si" | "no">(null);
+  const [overdueOnly, setOverdueOnly] = useState(false);
   const [syncing, setSyncing] = useState(false);
   // Modal nuevo proyecto
   const [showNewProject, setShowNewProject] = useState(false);
@@ -275,10 +276,13 @@ export default function Materiales() {
   const esEditorCompleto = has("proyectos.edit");
 
   const filteredItems = useMemo(() => {
-    if (!pedidoFilter) return items;
-    if (pedidoFilter === "si") return items.filter((it: any) => it.pedido_realizado === true);
-    return items.filter((it: any) => !it.pedido_realizado);
-  }, [items, pedidoFilter]);
+    const hoy = new Date().toISOString().slice(0, 10);
+    return items.filter((it: any) => {
+      if (pedidoFilter === "si" && it.pedido_realizado !== true) return false;
+      if (pedidoFilter === "no" && it.pedido_realizado === true) return false;
+      return !overdueOnly || (it.fecha_prevista_planificacion && it.fecha_prevista_planificacion < hoy && !["terminado", "facturado", "anulado", "cancelado", "completado"].includes(it.project_status));
+    });
+  }, [items, pedidoFilter, overdueOnly]);
 
   const sortedItems = useMemo(() => {
     if (!sortField) return filteredItems;
@@ -300,7 +304,7 @@ export default function Materiales() {
     const hoy = new Date().toISOString().slice(0, 10);
     return items.filter((it: any) => {
       const fp = it.fecha_prevista_planificacion;
-      return fp && fp < hoy && !["terminado", "facturado", "anulado"].includes(it.project_status);
+      return fp && fp < hoy && !["terminado", "facturado", "anulado", "cancelado", "completado"].includes(it.project_status);
     }).length;
   }, [items]);
 
@@ -318,7 +322,7 @@ export default function Materiales() {
   }, [statusFilterIds, sortedItems]);
 
   const kanbanColumns = useMemo(() => {
-    const order = ["pendiente", "planificado", "terminado"];
+    const order = PROJECT_STATUSES.filter((st) => sortedItems.some((it: any) => (it.project_status || "pendiente") === st.key)).map((st) => st.key);
     return order.map((key) => {
       const st = PROJECT_STATUSES.find((x) => x.key === key);
       return {
@@ -363,7 +367,7 @@ export default function Materiales() {
     const pending = item.sync_status === "pending";
     const projectStatus = item.project_status || "pendiente";
     const statusColor = STATUS_COLORS[projectStatus] || COLORS.pendingText;
-    const st = esEditorCompleto && item.project_status && item.project_status !== "pendiente" ? STATUS_BADGES[item.project_status] : null;
+    const st = item.project_status && item.project_status !== "pendiente" ? STATUS_BADGES[item.project_status] : null;
     const horasPrev = parseFloat(item.horas_prev) || 0;
     const horasImp = parseFloat(item.horas_imputadas) || 0;
     const initials = (item.gestor || item.manager_name || "?")
@@ -426,9 +430,12 @@ export default function Materiales() {
                   <Text style={s.cardMetaText} numberOfLines={1}>{item.comentarios}</Text>
                 </View>
               ) : null}
-              <View style={s.cardMetaTag}>
-                <Text style={s.cardMetaText}>{item.horas_prev || "—"}h</Text>
-              </View>
+              {(horasPrev > 0 || horasImp > 0) && (
+                <View style={[s.cardMetaTag, horasPrev > 0 && horasImp > horasPrev ? { backgroundColor: COLORS.errorBg } : null]}>
+                  <Ionicons name="time-outline" size={11} color={horasPrev > 0 && horasImp > horasPrev ? COLORS.errorText : COLORS.textSecondary} />
+                  <Text style={[s.cardMetaText, horasPrev > 0 && horasImp > horasPrev ? { color: COLORS.errorText, fontWeight: "700" } : null]}>{horasImp}/{horasPrev} h</Text>
+                </View>
+              )}
               {item.tecnicos?.length ? (
                 <View style={s.cardMetaTag}>
                   <Text style={s.cardMetaText}>{item.tecnicos.join(", ")}</Text>
@@ -871,6 +878,19 @@ export default function Materiales() {
               ))}
             </View>
 
+            <View style={s.focusRow}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Ver todos los proyectos" onPress={() => setOverdueOnly(false)} style={[s.focusChip, !overdueOnly && s.focusChipActive]}>
+                <Text style={[s.focusCount, !overdueOnly && s.focusTextActive]}>{items.length}</Text>
+                <Text style={[s.focusLabel, !overdueOnly && s.focusTextActive]}>Todos</Text>
+              </TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Ver proyectos con planificación vencida" onPress={() => setOverdueOnly((v) => !v)} style={[s.focusChip, overdueOnly && { backgroundColor: COLORS.errorBg, borderColor: COLORS.errorText }]}>
+                <Ionicons name="alert-circle-outline" size={16} color={COLORS.errorText} />
+                <Text style={[s.focusCount, { color: COLORS.errorText }]}>{vencidosCount}</Text>
+                <Text style={[s.focusLabel, overdueOnly && { color: COLORS.errorText }]}>Vencidos</Text>
+              </TouchableOpacity>
+              <Text style={s.focusHint}>{sortedItems.length} visibles · toca un proyecto para editarlo</Text>
+            </View>
+
             <View style={s.searchRow}>
               <View style={s.searchBox}>
                 <Ionicons name="search-outline" size={16} color={COLORS.textSecondary} />
@@ -1055,16 +1075,18 @@ export default function Materiales() {
               <View style={s.centerBox}>
                 <ActivityIndicator color={COLORS.primary} size="large" />
               </View>
-            ) : items.length === 0 ? (
+            ) : sortedItems.length === 0 ? (
               <View style={s.centerBox}>
                 <Ionicons name="cube-outline" size={48} color={COLORS.textDisabled} />
                 <Text style={{ color: COLORS.textSecondary, fontSize: 15, fontWeight: "500", marginTop: 8 }}>Sin resultados</Text>
+                {overdueOnly && <TouchableOpacity onPress={() => setOverdueOnly(false)}><Text style={{ color: COLORS.primary, marginTop: 12, fontWeight: "700" }}>Ver todos</Text></TouchableOpacity>}
               </View>
             ) : viewMode === "kanban" ? (
-              <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }}>
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1 }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={COLORS.primary} />}>
                 <View style={{ flex: 1, flexDirection: "row", padding: 16, gap: 16, alignItems: "stretch" }}>
                 {kanbanColumns.map((col) => (
-                  <View key={col.key} style={{ flex: 1, minWidth: 0, gap: 12 }}>
+                  <View key={col.key} style={{ width: isWide ? 310 : 280, gap: 12 }}>
                     <View style={s.columnHeader}>
                       <View style={[s.columnDot, { backgroundColor: col.color }]} />
                       <Text style={s.columnTitle}>{col.label}</Text>
@@ -1084,6 +1106,7 @@ export default function Materiales() {
                   </View>
                 ))}
                 </View>
+                </ScrollView>
               </ScrollView>
             ) : groupedByStatus ? (
               <ScrollView
@@ -1555,6 +1578,20 @@ const useS = () =>
       color: "#fff",
       fontWeight: "700",
     },
+    focusRow: {
+      flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8,
+      paddingHorizontal: 24, paddingBottom: 8,
+    },
+    focusChip: {
+      flexDirection: "row", alignItems: "center", gap: 5,
+      backgroundColor: COLORS.surface, borderColor: COLORS.border, borderWidth: 1,
+      borderRadius: 12, paddingHorizontal: 12, minHeight: 36,
+    },
+    focusChipActive: { backgroundColor: COLORS.primarySoft, borderColor: COLORS.primary },
+    focusCount: { color: COLORS.text, fontSize: 14, fontWeight: "800" },
+    focusLabel: { color: COLORS.textSecondary, fontSize: 12, fontWeight: "600" },
+    focusTextActive: { color: COLORS.primary },
+    focusHint: { color: COLORS.textSecondary, fontSize: 11 },
     calHeader: {
       flexDirection: "row",
       alignItems: "center",

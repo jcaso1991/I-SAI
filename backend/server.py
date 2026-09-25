@@ -7426,6 +7426,8 @@ class CertificacionCreate(BaseModel):
     certificaciones_anteriores: Optional[float] = None
     iva: float = 21
     observaciones: str = ""
+    sin_precios: bool = False
+    numero: Optional[int] = None
 
 class CertificacionUpdate(BaseModel):
     nombre: Optional[str] = None
@@ -7438,6 +7440,8 @@ class CertificacionUpdate(BaseModel):
     certificaciones_anteriores: Optional[float] = None
     iva: Optional[float] = None
     observaciones: Optional[str] = None
+    sin_precios: Optional[bool] = None
+    numero: Optional[int] = None
 
 class CertificacionOut(BaseModel):
     id: str
@@ -7452,6 +7456,8 @@ class CertificacionOut(BaseModel):
     certificaciones_anteriores: Optional[float] = None
     iva: float = 21
     observaciones: str = ""
+    sin_precios: bool = False
+    numero: Optional[int] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -7633,6 +7639,9 @@ async def create_certificacion(payload: CertificacionCreate, user: dict = Depend
     doc["id"] = str(uuid.uuid4())
     doc["created_at"] = now
     doc["updated_at"] = now
+    if doc.get("numero") is None:
+        count = await db.certificaciones.count_documents({"material_id": payload.material_id})
+        doc["numero"] = count + 1
     await db.certificaciones.insert_one(doc)
     doc.pop("_id", None)
     return doc
@@ -7769,12 +7778,13 @@ async def generate_certificacion_pdf(cid: str, request: Request, token: str = Qu
     normal_style = ParagraphStyle("NormalCert", parent=styles["Normal"], fontSize=8, leading=10)
     small_style = ParagraphStyle("SmallCert", parent=styles["Normal"], fontSize=7, leading=9)
 
-    # Extraer numero de certificacion del nombre
+    # Numero de certificacion: campo propio o extraer del nombre como respaldo
     cert_name = cert.get("nombre") or ""
-    cert_num = "1"
-    import re
-    m = re.search(r"Certificacion (\d+)", cert_name)
-    if m: cert_num = m.group(1)
+    cert_num = str(cert.get("numero") or "")
+    if not cert_num:
+        import re
+        m = re.search(r"Certificacion (\d+)", cert_name)
+        cert_num = m.group(1) if m else "1"
 
     elements.append(Paragraph("CERTIFICACION DE GARANTIA", title_style))
     elements.append(Paragraph(f"Certificacion N {cert_num}", ParagraphStyle("CertNum", parent=normal_style, fontSize=10, alignment=TA_CENTER, textColor=colors.HexColor("#1E88E5"))))
@@ -7796,15 +7806,27 @@ async def generate_certificacion_pdf(cid: str, request: Request, token: str = Qu
     elements.append(Spacer(1, 6*mm))
 
     lineas = cert.get("lineas") or []
-    header = [
-        Paragraph("<b>Concepto</b>", small_style),
-        Paragraph("<b>Cant. Alc.</b>", small_style),
-        Paragraph("<b>P.U. Alc.</b>", small_style),
-        Paragraph("<b>Total Alc.</b>", small_style),
-        Paragraph("<b>Cant. Eje.</b>", small_style),
-        Paragraph("<b>P.U. Eje.</b>", small_style),
-        Paragraph("<b>Total Eje.</b>", small_style),
-    ]
+    sin_precios = bool(cert.get("sin_precios"))
+
+    if sin_precios:
+        header = [
+            Paragraph("<b>Concepto</b>", small_style),
+            Paragraph("<b>Cant. Alc.</b>", small_style),
+            Paragraph("<b>Cant. Eje.</b>", small_style),
+        ]
+        col_widths = [125*mm, 15*mm, 15*mm]
+    else:
+        header = [
+            Paragraph("<b>Concepto</b>", small_style),
+            Paragraph("<b>Cant. Alc.</b>", small_style),
+            Paragraph("<b>P.U. Alc.</b>", small_style),
+            Paragraph("<b>Total Alc.</b>", small_style),
+            Paragraph("<b>Cant. Eje.</b>", small_style),
+            Paragraph("<b>P.U. Eje.</b>", small_style),
+            Paragraph("<b>Total Eje.</b>", small_style),
+        ]
+        col_widths = [65*mm, 15*mm, 18*mm, 18*mm, 15*mm, 18*mm, 18*mm]
+
     table_data = [header]
     total_alcance = 0
     total_ejecutado = 0
@@ -7817,17 +7839,23 @@ async def generate_certificacion_pdf(cid: str, request: Request, token: str = Qu
         tot_e = round(cant_e * prec_e, 2)
         total_alcance += tot_a
         total_ejecutado += tot_e
-        table_data.append([
-            Paragraph(l.get("concepto") or "", normal_style),
-            Paragraph(str(cant_a), normal_style),
-            Paragraph(f"{prec_a:.2f} €", normal_style),
-            Paragraph(f"{tot_a:.2f} €", normal_style),
-            Paragraph(str(cant_e), normal_style),
-            Paragraph(f"{prec_e:.2f} €", normal_style),
-            Paragraph(f"{tot_e:.2f} €", normal_style),
-        ])
+        if sin_precios:
+            table_data.append([
+                Paragraph(l.get("concepto") or "", normal_style),
+                Paragraph(str(cant_a), normal_style),
+                Paragraph(str(cant_e), normal_style),
+            ])
+        else:
+            table_data.append([
+                Paragraph(l.get("concepto") or "", normal_style),
+                Paragraph(str(cant_a), normal_style),
+                Paragraph(f"{prec_a:.2f} €", normal_style),
+                Paragraph(f"{tot_a:.2f} €", normal_style),
+                Paragraph(str(cant_e), normal_style),
+                Paragraph(f"{prec_e:.2f} €", normal_style),
+                Paragraph(f"{tot_e:.2f} €", normal_style),
+            ])
 
-    col_widths = [65*mm, 15*mm, 18*mm, 18*mm, 15*mm, 18*mm, 18*mm]
     t = Table(table_data, colWidths=col_widths, repeatRows=1)
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#DBEAFE")),
@@ -7841,30 +7869,30 @@ async def generate_certificacion_pdf(cid: str, request: Request, token: str = Qu
     elements.append(t)
     elements.append(Spacer(1, 4*mm))
 
-    cert_ant = cert.get("certificaciones_anteriores") or 0
-    iva_pct = cert.get("iva") or 21
-    total_cert = total_ejecutado - cert_ant
-    iva_importe = round(total_cert * iva_pct / 100, 2)
-    liquido = total_cert + iva_importe
+    if not sin_precios:
+        cert_ant = cert.get("certificaciones_anteriores") or 0
+        iva_pct = cert.get("iva") or 21
+        total_cert = total_ejecutado - cert_ant
+        iva_importe = round(total_cert * iva_pct / 100, 2)
+        liquido = total_cert + iva_importe
 
-    totals_data = [
-        [Paragraph("<b>Total Alcance</b>", normal_style), Paragraph(f"{total_alcance:.2f} €", normal_style)],
-        [Paragraph("<b>Total Ejecutado</b>", normal_style), Paragraph(f"{total_ejecutado:.2f} €", normal_style)],
-        [Paragraph("<b>Total Certificacion</b>", normal_style), Paragraph(f"{total_cert:.2f} €", normal_style)],
-        [Paragraph("<b>Certificaciones anteriores</b>", normal_style), Paragraph(f"{cert_ant:.2f} €", normal_style)],
-        [Paragraph(f"<b>IVA ({iva_pct}%)</b>", normal_style), Paragraph(f"{iva_importe:.2f} €", normal_style)],
-        [Paragraph("<b>LIQUIDO A PERCIBIR</b>", ParagraphStyle("BoldTot", parent=normal_style, fontSize=10, textColor=colors.HexColor("#1E88E5"))),
-         Paragraph(f"{liquido:.2f} €", ParagraphStyle("BoldTotR", parent=normal_style, fontSize=10, textColor=colors.HexColor("#1E88E5")))],
-
-    ]
-    tt = Table(totals_data, colWidths=[100*mm, 60*mm])
-    tt.setStyle(TableStyle([
-        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-        ("LINEBELOW", (0, 0), (-1, -2), 0.5, colors.HexColor("#E2E8F0")),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-    ]))
-    elements.append(tt)
+        totals_data = [
+            [Paragraph("<b>Total Alcance</b>", normal_style), Paragraph(f"{total_alcance:.2f} €", normal_style)],
+            [Paragraph("<b>Total Ejecutado</b>", normal_style), Paragraph(f"{total_ejecutado:.2f} €", normal_style)],
+            [Paragraph("<b>Total Certificacion</b>", normal_style), Paragraph(f"{total_cert:.2f} €", normal_style)],
+            [Paragraph("<b>Certificaciones anteriores</b>", normal_style), Paragraph(f"{cert_ant:.2f} €", normal_style)],
+            [Paragraph(f"<b>IVA ({iva_pct}%)</b>", normal_style), Paragraph(f"{iva_importe:.2f} €", normal_style)],
+            [Paragraph("<b>LIQUIDO A PERCIBIR</b>", ParagraphStyle("BoldTot", parent=normal_style, fontSize=10, textColor=colors.HexColor("#1E88E5"))),
+             Paragraph(f"{liquido:.2f} €", ParagraphStyle("BoldTotR", parent=normal_style, fontSize=10, textColor=colors.HexColor("#1E88E5")))],
+        ]
+        tt = Table(totals_data, colWidths=[100*mm, 60*mm])
+        tt.setStyle(TableStyle([
+            ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+            ("LINEBELOW", (0, 0), (-1, -2), 0.5, colors.HexColor("#E2E8F0")),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        elements.append(tt)
 
     obs = cert.get("observaciones") or ""
     if obs:

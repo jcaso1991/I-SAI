@@ -1552,7 +1552,7 @@ def _s13_relaciones():
         ("Clientes → Proyectos", "Campo cliente_id en materiales vincula cada proyecto a un cliente. Al abrir un proyecto se muestran los datos del cliente. En la ficha del cliente aparecen todos sus proyectos asociados."),
         ("Proyectos → Eventos (Calendario)", "Campo material_id en events vincula eventos al proyecto. Las horas de eventos completados se suman como horas_imputadas del proyecto. El calendario muestra el nombre del proyecto en cada evento. Cuando un evento pasa a completado, tambien sincroniza las cantidades de materiales instalados al proyecto."),
         ("Proyectos → Materiales (Seguimiento instalacion)", "Cada proyecto tiene una lista de materiales (materiales_proyecto) con cantidad prevista e instalada. Los tecnicos marcan materiales como instalados desde los eventos del calendario. Al completar un evento, el sistema suma automaticamente las cantidades al proyecto. Si se revierte a 'en curso', las resta. Esto permite tracking en tiempo real de que porcentaje de materiales se ha instalado."),
-        ("Proyectos → Certificaciones", "Campo material_id en certificaciones. Un proyecto puede tener multiples certificaciones, cada una con lineas de alcance (previsto) y ejecutado (real)."),
+        ("Proyectos → Certificaciones", "Campo material_id en certificaciones. Un proyecto puede tener multiples certificaciones, cada una con lineas de alcance (previsto) y ejecutado (real). Cada certificacion se numera secuencialmente por proyecto (campo numero: 1, 2, 3...). El campo sin_precios oculta precios en formulario y PDF."),
         ("Proyectos → Presupuestos", "Campo material_id en budgets. Presupuesto aceptado se vincula al proyecto. Estados: pendiente, en_revision, enviado, aceptado. Backend valida transiciones."),
         ("Clientes → SAT (Incidencias)", "Campo client_id en sat_incidents. Incidencias SAT asociadas al cliente, visibles en su ficha con estado y fecha."),
         ("Clientes → Mantenimiento SAT", "Campos mantenimiento_contratado + alta_mantenimiento. Un mes antes del aniversario de la fecha de alta se genera automaticamente una incidencia SAT con tipo 'Renovar mantenimiento'."),
@@ -1672,6 +1672,17 @@ def _s13_relaciones():
         "<b>IVA</b> = Total Certificacion x (iva / 100).<br/>"
         "<b>Liquido</b> = Total Certificacion + IVA.<br/>"
         "<b>Donde:</b> Formulario de certificaciones. Calculos en tiempo real al editar cantidades/precios.",
+        S["body"]
+    ))
+
+    E.append(Paragraph("Modo 'Sin precios' en Certificaciones", S["h3"]))
+    E.append(Paragraph(
+        "<b>Campo:</b> sin_precios (booleano, por defecto False) en cada certificacion.<br/>"
+        "<b>Comportamiento:</b> Al marcarlo, el formulario y el PDF ocultan las columnas de precios "
+        "(P.U. Alc., Total Alc., P.U. Eje., Total Eje.) y la seccion de totales. Solo se muestran los "
+        "materiales con sus cantidades de alcance y ejecutado.<br/>"
+        "<b>Donde:</b> Check 'Sin precios' arriba del formulario de certificaciones. Aplica al PDF generado "
+        "en GET /certificaciones/{id}/pdf.",
         S["body"]
     ))
 
